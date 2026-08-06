@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# raw/interim data is immutable Bloomberg exports and derived audit output — not code,
+# and not something to version until we decide on a data-storage policy
+data/raw/*
+data/interim/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep

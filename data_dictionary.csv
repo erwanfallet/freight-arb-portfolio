@@ -1,0 +1,25 @@
+ticker,description,chain,role,exchange_code,bbg_ticker,native_unit,frequency,source,gap_policy,verified,verified_date,fallback_gratuit,notes
+,Minerai de fer 62% Fe CFR Chine,iron_ore,p62,SGX FEF,,USD/dmt,daily,SGX futures,none,non,,Barchart / TradingView,"Contrat de reference mondial. Code FEF tres largement utilise, a confirmer sur le terminal."
+,Minerai de fer 65% Fe CFR Chine,iron_ore,p65,SGX M65F,,USD/dmt,daily,SGX futures,none,non,,TradingView SGX-M65F1!,"Existence confirmee. VERIFIER VOLUME ET OPEN INTEREST AVANT TOUT : si illiquide, le premium calcule est un artefact de cotation."
+,Fret route C3 Tubarao-Qingdao,iron_ore,c3,SGX C3F,,USD/wmt,daily,SGX FFA,none,non,,Barchart racine KW3,FFA front-month = proxy du spot avec base. A afficher comme avertissement (A-H3).
+,Fret route C5 Western Australia-Qingdao,iron_ore,c5,SGX C5F,,USD/wmt,daily,SGX FFA,none,non,,Barchart racine KWD,Idem C3.
+,Capesize 5TC time charter average,iron_ore,freight_fallback,SGX CWF,,USD/day,daily,SGX FFA,none,non,,Barchart racine KWC,Repli de niveau si C3/C5 indisponibles. Degrade la precision.
+,Importations chinoises de minerai par origine,iron_ore,flows,,,tonnes,monthly,Douanes chinoises GACC,none,non,,GACC site officiel,"Validation de flux pour S4. Mensuel = limite de resolution, declaree a l'avance."
+,Humidite fines bresiliennes,iron_ore,assumption,,,fraction,static,Specifications producteurs,none,non,,public,"Hypothese A-H2, defaut 0.090, slider 0.06-0.11."
+,Humidite fines australiennes,iron_ore,assumption,,,fraction,static,Specifications producteurs,none,non,,public,"Hypothese A-H2, defaut 0.080."
+,Charbon API2 CIF ARA,coal,p_destination,ICE ATW,,USD/t,daily,ICE futures,none,non,,investing.com / TradingView ICEEUR-ATW1!,Reglement sur indice Argus/McCloskey. Entitlement ICE bien plus simple que Platts.
+,Charbon API4 FOB Richards Bay,coal,p_origin,ICE AFR,,USD/t,daily,ICE futures,none,non,,investing.com / TradingView ICEEUR-AFR1!,Idem API2.
+,Fret route C4 Richards Bay-Rotterdam,coal,freight,,,USD/t,daily,Baltic / FFA,none,non,,a chercher,POINT FAIBLE DU PROJET B : existence d'un futures C4 liquide non confirmee. Repli Capesize 5TC + ratio de route.
+,Fret route C7 Bolivar-Rotterdam,coal,freight_alt,EEX C7,,USD/t,daily,EEX futures,none,non,,a chercher,Existence confirmee sur EEX.
+,Prix EUA (cout ETS maritime),coal,ets,ICE EUA,,EUR/tCO2,daily,ICE futures,none,non,,investing.com,Necessaire pour la couche ETS de la jambe europeenne depuis 2024.
+,Prix TTF gaz Europe,coal,control,,,EUR/MWh,daily,ICE futures,none,non,,investing.com,"CONTROLE OBLIGATOIRE : sans lui, le decrochage post-2022 sera attribue a l'Inde alors qu'il peut venir du choc gazier."
+,Importations europeennes de charbon sud-africain,coal,flows,,,tonnes,monthly,Eurostat,none,non,,Eurostat,"Validation de flux, jambe ARA."
+,Importations indiennes de charbon par origine,coal,flows,,,tonnes,monthly,Statistiques commerciales indiennes,none,non,,a confirmer,"Validation de flux, jambe Inde."
+,Essence conventionnelle spot NY Harbor,products,p_destination,,,USD/gal,daily,EIA,none,non,,EIA gratuit historique long,Disponible et gratuit. Attention : la serie de futures RBOB de l'EIA s'arrete apres le 5 avril 2024.
+,RBOB futures,products,p_destination_alt,CME RB,,USD/gal,daily,CME,none,non,,CME settlements,Code a confirmer sur le terminal.
+,Eurobob oxy barges ARA,products,p_origin,,,USD/t,daily,Argus,none,non,,aucun,"SOUS LICENCE ARGUS. Des futures ICE regles Argus existent probablement, code non verifie."
+,Fret route TC2 Continent-USAC,products,freight,ICE / CME TC2,,points WS ou USD/t,daily,ICE et CME futures,none,non,,Barchart racine IT2,"UNITE DE COTATION NON VERIFIEE. Si USD/t, le probleme Worldscale disparait. VERIFICATION N1 DU PROJET C."
+,Flat rates Worldscale route TC2,products,freight_conversion,,,USD/t,yearly,Worldscale Association,none,non,,aucune source gratuite trouvee,BLOCAGE PRINCIPAL DU PROJET C. Reinitialise chaque 1er janvier.
+,VLSFO Rotterdam,products,bunkers,,,USD/t,daily,Ship and Bunker,none,non,,shipandbunker.com,Necessaire uniquement pour la variante fret synthetique (voyage/tce.py).
+,Importations US d'essence par pays d'origine,products,flows,,,kb,monthly,EIA,none,non,,EIA gratuit,"Validation de flux, officielle et gratuite."
+,Stocks essence PADD1,products,context,,,kb,weekly,EIA,none,non,,EIA gratuit,Contexte de tension sur la cote Est.

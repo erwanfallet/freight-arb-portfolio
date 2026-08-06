@@ -1,0 +1,27 @@
+[project]
+name = "freight"
+version = "0.2.0"
+description = "Arbitrages physiques ou le fret est le terme decisif — minerai de fer, charbon, produits"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# le dashboard : separe du moteur, pour que les tests tournent sans streamlit
+app = ["streamlit>=1.30", "plotly>=5.18"]
+dev = ["pytest>=7.0"]
+# scipy n'est plus une dependance du moteur — il ne servait qu'aux modules H1/H2/H3
+# desormais dans archive/. A reinstaller uniquement pour rejouer ces archives.
+archive = ["scipy>=1.10"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
