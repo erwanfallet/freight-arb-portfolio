@@ -3,30 +3,6 @@
 Ce fichier n'est pas la vitrine. La vitrine, c'est `README.md` et le dashboard. Ici on
 garde les règles qu'on s'impose et l'historique des décisions, y compris les mauvaises.
 
-## Ce qui a changé le 6 août 2026
-
-L'itération précédente pré-enregistrait trois hypothèses (H1 attention mal allouée,
-H2 mesure biaisée, H3 seuil erroné) avec critères de falsification fixés avant toute
-donnée. La discipline était bonne. Le format était le problème :
-
-1. **H2 et H3 étaient indéfendables faute de données.** H2 exige le fret réellement payé
-   au chargement (donnée de fixture privée), H3 exige des départs physiques par AIS.
-   Aucun des deux n'est accessible de l'extérieur. Un critère de falsification qu'on ne
-   peut pas exécuter n'est pas de la rigueur, c'est une intention.
-2. **H1 était exécutable mais invendable.** Son résultat est une affirmation sur le modèle
-   mental de l'interlocuteur (« votre critère fret/valeur alloue mal l'attention »), pas
-   un chiffre de P&L. Ce n'est pas ce qui déclenche une réponse.
-3. **Cinq chaînes simultanées** diluaient tout. Une chaîne, une identité, un dashboard.
-
-Les modules correspondants sont dans `archive/h1_h2_h3/`, avec leurs tests. Rien n'est
-supprimé, rien n'est mis en avant.
-
-**Ce qu'on garde de cette itération, sans réserve :**
-
-- le contrat de données, et notamment le refus codé du forward-fill
-- `voyage/` en entier — le TCE et l'indifférence armateur C3\*/C5\* redeviennent utiles
-- l'idée qu'un critère doit être fixé avant de voir le résultat
-
 ## Règles qu'on ne relitige pas
 
 1. **On ne choisit pas la thèse avant d'avoir fait tourner le test.** Le projet A a un
@@ -58,7 +34,38 @@ supprimé, rien n'est mis en avant.
 
 ## Journal
 
-- **2026-08-06** — Repositionnement complet. Projet A défini et implémenté (moteur +
-  16 golden tests + dashboard 6 sections + pipeline synthétique de bout en bout). H1/H2/H3
-  archivés. `data_dictionary.csv` réécrit pour les trois chaînes avec `exchange_code`,
-  `bbg_ticker` et `verified`. Aucun ticker Bloomberg écrit : aucun n'a encore été vu.
+- **2026-08-07** — Passage de « trois projets » à « portefeuille » : `src/freight/portfolio.py`
+  devient la seule source de vérité (un `Project` par chaîne, `status` ready/planned), et
+  `app/Home.py` est réécrit pour la lire au lieu d'un contenu à trois colonnes codé en dur —
+  il n'a plus besoin d'être touché quand une chaîne s'ajoute. Deux entrées `STATUS_PLANNED`
+  ajoutées (agriculture, LNG) comme rappel du prochain travail de cadrage, pas comme code.
+  `docs/NOUVELLE_CHAINE.md` écrit : les sept fichiers que touche toujours une nouvelle
+  chaîne, dans l'ordre, avec le rappel que le sujet réel de chaque projet est un piège
+  d'unité de cotation, pas juste "un nouvel arb". Vérifié en conditions réelles : app lancée
+  en local, les trois dashboards et les deux sections "à construire" s'affichent, 90 tests
+  toujours verts.
+- **2026-08-06 (3)** — Projet C implémenté : `chains/products.py` (conversion volume/masse,
+  décomposition exacte de la variation de fret en parts marché / réglage / croisé, illusion
+  des jours ouverts, profil saisonnier, inversion du moteur TCE pour la variante C-2),
+  20 golden tests, dashboard 6 sections, pipeline synthétique. `signals/worldscale.py` est
+  réutilisé tel quel : il refusait déjà de convertir des points en $/t sans flat rate daté,
+  ce qui en fait le module le mieux vieilli du repo.
+  Le portefeuille a maintenant sa signature : **les trois projets reposent sur une unité de
+  cotation qui n'est pas l'unité économique** — tonne sèche contre tonne humide, kcal contre
+  tonne, gallon contre tonne. Ce n'est pas une coïncidence, c'est là que se cachent les
+  erreurs que personne ne corrige.
+  `DEMANDE_DONNEES.md` écrit : liste par priorité, fichiers à produire, entitlements à
+  tester, message prêt à envoyer.
+- **2026-08-06 (2)** — Projet B implémenté : `chains/coal.py` (arb ARA, couche ETS avec
+  montée en charge et conversion de change, base énergétique CV, MCO à contrôles, test de
+  rupture et statistiques de régime), 22 golden tests, dashboard 6 sections, pipeline
+  synthétique. Le générateur synthétique de B **impose** la rupture 2022 : c'est écrit en
+  tête du module, et la page affiche un avertissement plus dur que celle du projet A.
+  Résultat de méthode obtenu au passage : sur le jeu synthétique, dont la vraie pente
+  post-rupture est 0,15, la régression sans contrôle donne 0,71 et avec contrôle TTF 0,18.
+  Sans le contrôle, on conclurait l'inverse de la vérité. C'est la justification du test de
+  biais de variable omise ajouté à la suite.
+- **2026-08-06** — Projet A défini et implémenté (moteur + 16 golden tests + dashboard
+  6 sections + pipeline synthétique de bout en bout). `data_dictionary.csv` écrit pour les
+  trois chaînes avec `exchange_code`, `bbg_ticker` et `verified`. Aucun ticker Bloomberg
+  écrit : aucun n'a encore été vu.

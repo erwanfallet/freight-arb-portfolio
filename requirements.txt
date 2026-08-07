@@ -1,0 +1,7 @@
+# Lu par Streamlit Community Cloud pour installer l'app (voir DEPLOY.md).
+# -e . installe le paquet freight lui-meme (pandas/numpy suivent comme dependances) ;
+# le reste est l'extra "app" de pyproject.toml (streamlit + plotly, absents du moteur
+# pour que les tests tournent sans eux).
+-e .
+streamlit>=1.30
+plotly>=5.18

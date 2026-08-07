@@ -24,6 +24,8 @@ audit: install
 # verifie que le pipeline tourne de bout en bout sur le jeu SYNTHETIQUE
 smoke: install
 	$(PY) scripts/smoke_ironore.py
+	$(PY) scripts/smoke_coal.py
+	$(PY) scripts/smoke_products.py
 
 app: install
 	$(VENV)/bin/streamlit run app/Home.py

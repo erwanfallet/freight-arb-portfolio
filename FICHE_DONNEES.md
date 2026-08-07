@@ -87,6 +87,8 @@ dix minutes dans le code, et deux semaines si on la découvre à la fin.
 | B4 | Fret C7 Bolivar → Rotterdam | EEX Baltic Capesize C7 futures | EEX | Existence confirmée |
 | B5 | Prix EUA | ICE EUA futures | ICE ; gratuit sur investing.com | À confirmer |
 | B6 | **TTF gaz Europe** | ICE TTF futures | ICE ; gratuit | **Non négociable, voir ci-dessous** |
+| B7 | EURUSD | n'importe quelle source de change | gratuit partout | Le quota ETS est en EUR, l'arb en USD : c'est un terme du calcul |
+| B8 | Consommation de soutes du voyage RB → ARA | Hypothèse, pas une série | rapports publics de flotte | Paramètre B-H5. Un Capesize à ~40 t/jour sur ~24 jours de traversée donne l'ordre de grandeur |
 
 **Pourquoi B6 est non négociable.** La thèse du projet B est que l'arb ARA a perdu sa
 contrainte en 2022 parce que la cargaison marginale de Richards Bay part vers l'Inde. Mais
@@ -97,9 +99,17 @@ du projet B, et il se règle avec une série gratuite.
 
 **Ce que le projet B a de neuf, et que personne n'intègre :** le coût ETS maritime européen
 depuis 2024 rend le fret vers l'Europe structurellement plus cher que vers l'Inde à
-distance égale. Terme récent, chiffrable (part du voyage en zone UE × facteur d'émission ×
-prix EUA), et absent des modèles d'arb charbon publics. Ça peut devenir le résultat
-principal plutôt qu'un détail.
+distance égale. Couverture effective de 20 % en 2024, 35 % en 2025, 50 % à partir de 2026
+pour un voyage extra-UE.
+
+**Et l'ordre de grandeur, à ne pas survendre.** Avec des paramètres réalistes — un
+Capesize, ~960 t de soutes sur la traversée, 150 000 t de cargaison, un quota autour de
+80 EUR — ce terme vaut de l'ordre de **0,2 $/t en 2024** et **~0,9 $/t à pleine montée en
+charge**. Sur un arb de quelques dollars c'est significatif, mais ce n'est pas le terme qui
+décide. Sa valeur est ailleurs : **personne ne l'intègre**, ce qui n'est pas la même chose
+qu'un terme dominant. Dans l'email, présente-le comme un terme oublié, jamais comme
+l'explication du décrochage — sinon le premier lecteur qui fait le calcul de coin de table
+te reprend, et tu perds le reste du message avec.
 
 **Flux :** importations européennes de charbon sud-africain (Eurostat, mensuel, gratuit) et
 importations indiennes par origine (statistiques commerciales indiennes).

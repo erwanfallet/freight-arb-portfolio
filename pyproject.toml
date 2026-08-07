@@ -12,9 +12,6 @@ dependencies = [
 # le dashboard : separe du moteur, pour que les tests tournent sans streamlit
 app = ["streamlit>=1.30", "plotly>=5.18"]
 dev = ["pytest>=7.0"]
-# scipy n'est plus une dependance du moteur — il ne servait qu'aux modules H1/H2/H3
-# desormais dans archive/. A reinstaller uniquement pour rejouer ces archives.
-archive = ["scipy>=1.10"]
 
 [build-system]
 requires = ["setuptools>=68"]
