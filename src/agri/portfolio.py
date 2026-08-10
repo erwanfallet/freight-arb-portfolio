@@ -1,84 +1,84 @@
-"""Registre unique du portefeuille agri — chaque projet, son tier, son état.
+"""Canonical project registry — every project, its tier, its state.
 
-`app/Home.py` rend cette liste et rien d'autre : ajouter un `Project` ici le fait
-apparaître sur la plateforme, groupé par tier, qu'il soit construit ou non.
+`app/Home.py` renders this list and nothing else: adding a `Project` here puts it on the
+platform, grouped by tier, whether it is built or not.
 
-Volontairement du Python et pas un fichier de configuration : les métadonnées d'un projet
-sont à côté du type qui contraint leur forme, et rien ici ne peut dériver de ce que le
-dashboard affiche réellement.
+Deliberately Python rather than a config file: a project's metadata sits next to the type
+that constrains its shape, and nothing here can drift from what the dashboard shows.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-STATUS_READY = "ready"        # moteur + dashboard existent, testés
-STATUS_PLANNED = "planned"    # cadré, rien codé
+STATUS_READY = "ready"        # engine and dashboard exist, tested
+STATUS_PLANNED = "planned"    # scoped, nothing written
 
-DATA_SYNTHETIC = "synthétique"   # jeu fabriqué pour imposer le phénomène, en attente de données réelles
-DATA_REAL = "réel"               # tourne sur l'export Bloomberg de l'utilisateur
-DATA_HYBRID = "hybride"          # jambes principales réelles, un terme minoritaire reste paramétré (documenté dans le moteur)
+DATA_SYNTHETIC = "synthetic"  # fabricated to impose the phenomenon, waiting on real data
+DATA_REAL = "real"            # runs on the Bloomberg export
+DATA_HYBRID = "hybrid"        # main legs real, a minor term stays parameterised (documented in the engine)
 
-TIER_1 = "T1 — désaccords sourcés"
-TIER_2 = "T2 — tensions structurelles inférées"
-TIER_3 = "T3 — désaccords ouverts en août 2026"
-TIER_REAL = "Données Bloomberg réelles — oil & LNG"
+TIER_1 = "T1 — sourced disagreements"
+TIER_2 = "T2 — inferred structural tensions"
+TIER_3 = "T3 — disagreements open as of August 2026"
 
-# Niveau de risque sur l'accès aux données, tel qu'établi par les gates de la spec.
-GATE_NONE = "aucun"           # séries gratuites et publiques
-GATE_MEDIUM = "moyen"         # une série payante, repli codé
-GATE_HIGH = "élevé"           # à tester avant tout code
+# Data-access risk, as established by the spec's gates.
+GATE_NONE = "none"            # free, public series
+GATE_MEDIUM = "medium"        # one licensed series, fallback coded
+GATE_HIGH = "high"            # test before writing any code
 
 
 @dataclass(frozen=True)
 class Project:
-    id: str                       # "freight_cf" — correspond à chains/<id>.py
-    code: str                     # "T1-1" — la référence de la spec
+    id: str                       # "freight_cf" — matches chains/<id>.py
+    code: str                     # "T1-1" — the spec reference
     tier: str
     title: str
-    thesis: str                   # l'affirmation en une ligne, en gras sur la carte
-    disagreement: str             # d'où vient le désaccord, et entre qui
-    pivot: str                    # le point de bascule — le livrable de la page
-    mail_question: str            # la question que seul un insider peut trancher
-    targets: str                  # le vivier de cibles
+    thesis: str                   # the one-line claim, bold on the card
+    disagreement: str             # where the disagreement comes from, and between whom
+    pivot: str                    # the tipping point — the page's deliverable
+    mail_question: str            # the question only an insider can settle
+    targets: str                  # the target pool
     data_gate: str
-    data_fallback: str | None     # ce qu'on fait si le gate échoue
+    data_fallback: str | None     # what happens if the gate fails
     status: str
     dashboard_page: str | None
     chain_module: str | None
     n_tests: int | None
-    data_mode: str = DATA_SYNTHETIC   # DATA_REAL pour les projets branchés sur l'export Bloomberg
+    data_mode: str = DATA_SYNTHETIC
 
 
 PROJECTS: list[Project] = [
     # ======================================================================
-    # TIER 1 — désaccords sourcés, citables
+    # TIER 1 — sourced, quotable disagreements
     # ======================================================================
     Project(
         id="freight_cf",
         code="T1-1",
         tier=TIER_1,
-        title="Le fret dans le calcul C&F",
-        thesis="Sur la bande frontière, le fret ne bruite pas l'arb : il le détermine.",
+        title="Freight inside the C&F calculation",
+        thesis="On the marginal cargo, freight does not add noise to the arb — it decides it.",
         disagreement=(
-            "Interview Mat Halsall (Commodity Conversations, 25 nov. 2024) : chez Louis "
-            "Dreyfus, disputes récurrentes entre desks de trading et département fret, "
-            "les traders contestant le taux sans en connaître les composantes. Le desk "
-            "dit « votre taux n'est pas le marché » ; le fret répond « vous regardez un "
-            "index, pas un coût ». TRANCHÉ SUR DONNÉES RÉELLES : lire le taux P8 publié "
-            "sans facturer le ballast implique un TCE supérieur au pic du boom vraquier "
-            "2021 sur 99 % des cinq dernières années — arithmétiquement intenable. La "
-            "borne vient du segment de la série que l'export cote en USD/jour, isolé "
-            "d'abord comme défaut de données."
+            "Mat Halsall interview (Commodity Conversations, 25 Nov 2024): at Louis Dreyfus, "
+            "recurring arguments between trading desks and the freight department, with "
+            "traders disputing the rate without knowing its components. The desk says "
+            "\"your rate is not the market\"; freight replies \"you are looking at an index, "
+            "not a cost\". SETTLED ON REAL DATA: reading the published P8 rate without "
+            "charging ballast implies a TCE above the peak of the 2021 dry bulk boom on "
+            "99 % of the last five years — arithmetically untenable. The ceiling comes from "
+            "the segment of the series the export quotes in USD per day, isolated first as "
+            "a data defect."
         ),
-        pivot="La part de repositionnement à vide que le marché price réellement dans le taux publié",
+        pivot="The share of ballast repositioning the market actually prices into the published rate",
         mail_question=(
-            "Quelle part de repositionnement à vide votre taux interne facture-t-il "
-            "réellement, et est-elle négociée avec le desk trading ou imposée par le "
-            "département fret ?"
+            "How much ballast repositioning does your internal rate actually charge, and is "
+            "it negotiated with the trading desk or imposed by the freight department?"
         ),
-        targets="Desks fret (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra) ET traders grains/oléagineux",
+        targets="Freight desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra) and grain/oilseed traders",
         data_gate=GATE_MEDIUM,
-        data_fallback="Jambes de prix de l'arb (FOB Santos, CIF Chine) absentes -> la page porte sur le terme de fret seul, dit explicitement",
+        data_fallback=(
+            "The arb's price legs (FOB Santos, CIF China) are absent, so the page covers the "
+            "freight term alone and says so explicitly."
+        ),
         status=STATUS_READY,
         dashboard_page="pages/4_T1_1_Fret_CF.py",
         chain_module="agri.chains.freight_cf",
@@ -89,26 +89,28 @@ PROJECTS: list[Project] = [
         id="hedge_cost",
         code="T1-2",
         tier=TIER_1,
-        title="Le coût complet de la couverture — cacao et café",
-        thesis="La contrainte contraignante n'est pas le prix, c'est le collatéral.",
+        title="The full cost of hedging — cocoa and coffee",
+        thesis="The binding constraint is not the price, it is the collateral.",
         disagreement=(
-            "Barry Callebaut S1 2024/25 : marges initiales multipliées par neuf, coût de "
-            "backwardation 60 % plus cher au pic. Café nov. 2025 : ~7 Md USD d'appels de "
-            "marge en un mois ; chez Montesanto Tavares, le coût de maintien des "
-            "couvertures passe de 74 % à 158 % des créances clients, jugé insoutenable "
-            "par leurs propres avocats. VÉRIFIÉ SUR PRIX ICE RÉELS : le cacao NY a "
-            "réellement culminé à 12 565 USD/t le 18/12/2024, mobilisant 1,08 Md USD de "
-            "trésorerie sur un book de 100 kt — ce ne sont plus des ordres de grandeur "
-            "reconstruits, ce sont les chiffres du marché ce jour-là."
+            "Barry Callebaut H1 2024/25: initial margins up ninefold, backwardation cost 60 % "
+            "dearer at the peak. Coffee, Nov 2025: roughly 7 bn USD of margin calls in one "
+            "month; at Montesanto Tavares the cost of carrying hedges went from 74 % to "
+            "158 % of trade receivables, judged unsustainable by their own lawyers. VERIFIED "
+            "ON REAL ICE PRICES: NY cocoa did peak at 12 565 USD/t on 18 Dec 2024, tying up "
+            "1.08 bn USD of cash on a 100 kt book — no longer reconstructed orders of "
+            "magnitude but the market's own numbers on the day."
         ),
-        pivot="IM* — la marge initiale à laquelle la capacité de couverture tombe sous le book physique",
+        pivot="IM* — the initial margin at which hedging capacity falls below the physical book",
         mail_question=(
-            "À quel niveau d'initial margin votre desk arrête d'ajouter du physique parce "
-            "que la couverture ne se finance plus ? Limite formalisée, ou découverte en route ?"
+            "At what level of initial margin does your desk stop adding physical because the "
+            "hedge no longer finances? A formalised limit, or one discovered along the way?"
         ),
         targets="ofi/Olam, ECOM, Volcafe, Sucden Coffee, Touton, Barry Callebaut, Cargill Cocoa, Freepoint softs",
         data_gate=GATE_MEDIUM,
-        data_fallback="Pas d'échéance différée réelle disponible -> coût de roll neutralisé (deferred=front), affiché comme limite plutôt qu'estimé",
+        data_fallback=(
+            "No real deferred contract available, so roll cost is neutralised "
+            "(deferred = front) and shown as a limitation rather than estimated."
+        ),
         status=STATUS_READY,
         dashboard_page="pages/5_T1_2_Cout_Hedge.py",
         chain_module="agri.chains.hedge_cost",
@@ -116,40 +118,38 @@ PROJECTS: list[Project] = [
         data_mode=DATA_HYBRID,
     ),
     # ======================================================================
-    # TIER 2 — tensions inférées. « Il me semble que », jamais « j'ai lu que ».
+    # TIER 2 — inferred tensions. "It seems to me", never "I read that".
     # ======================================================================
     Project(
         id="crush_tracking",
         code="T2-3",
         tier=TIER_2,
-        title="Le board crush n'est pas un prix, c'est un rendement déguisé en prix",
+        title="The board crush is not a price, it is a yield in disguise",
         thesis=(
-            "Les coefficients 0,022 et 0,11 ne sont pas des conversions d'unité mais des "
-            "rendements figés (44 lb / 11 lb par boisseau). Se couvrir au board, c'est les "
-            "accepter comme les siens et garder l'écart en position nue."
+            "The coefficients 0.022 and 0.11 are not unit conversions but frozen yields "
+            "(44 lb and 11 lb per bushel). Hedging on the board means accepting them as "
+            "your own and keeping the difference as an open position."
         ),
         disagreement=(
-            "Tension inférée. Les traders board tiennent le crush CBOT pour un proxy "
-            "hedgeable de l'économie d'une usine ; les gens d'usine répondent que le basis "
-            "tourteau intérieur, le rendement réel et la logistique cassent le hedge "
-            "exactement quand il faut. MESURÉ SUR CBOT RÉEL : dans le décile de marge le "
-            "plus tendu, un écart de 0,5 lb de tourteau par boisseau — 1,2 % du rendement "
-            "que le contrat suppose — suffit à effacer toute la marge nette."
+            "Inferred tension. Board traders treat the CBOT crush as a hedgeable proxy for a "
+            "plant's economics; plant people reply that domestic meal basis, real yields and "
+            "logistics break the hedge exactly when it matters. MEASURED ON REAL CBOT DATA: "
+            "in the tightest margin decile, a 0.5 lb per bushel error on meal yield — 1.2 % "
+            "of the yield the contract assumes — is enough to erase the entire net margin."
         ),
         pivot=(
-            "La précision de rendement que le board exige sans le dire, en livres par "
-            "boisseau — et son effondrement dans le régime de marge tendue"
+            "The yield precision the board silently demands, in pounds per bushel — and its "
+            "collapse in the tight-margin regime"
         ),
         mail_question=(
-            "De combien votre rendement tourteau réel s'écarte-t-il des 44 lb du board sur "
-            "une campagne, et est-ce que quelqu'un couvre cet écart séparément — ou est-ce "
-            "qu'il reste dans le résultat ?"
+            "How far does your real meal yield drift from the board's 44 lb over a campaign, "
+            "and does anyone hedge that gap separately — or does it just sit in the result?"
         ),
-        targets="Trituration US/Brésil (ADM, Bunge, Cargill, LDC, CHS), risk managers oléagineux",
+        targets="US and Brazilian crushers (ADM, Bunge, Cargill, LDC, CHS), oilseed risk managers",
         data_gate=GATE_NONE,
         data_fallback=(
-            "Prix cash locaux absents de l'export -> aucun tracking error mesuré ; la page "
-            "est construite pour ne pas en avoir besoin, l'inversion ne demande que le board."
+            "Local cash prices are absent from the export, so no tracking error is measured; "
+            "the page is built not to need them — the inversion only requires the board."
         ),
         status=STATUS_READY,
         dashboard_page="pages/6_T2_3_Crush_Tracking.py",
@@ -161,34 +161,37 @@ PROJECTS: list[Project] = [
         id="white_premium",
         code="T2-4",
         tier=TIER_2,
-        title="Le white premium, ou ce qu'un prix peut dire et ce qu'il ne peut pas",
+        title="The white premium, or what a price can and cannot tell you",
         thesis=(
-            "Le NIVEAU de la rente de raffinage n'est pas identifiable à partir des prix — "
-            "un facteur de conversion que personne ne publie pèse autant que la réponse. Sa "
-            "VARIATION, elle, l'est entièrement : elle a basculé d'environ 60 USD/t."
+            "The LEVEL of the refining rent is not identifiable from prices — a conversion "
+            "factor nobody publishes weighs as much as the answer. Its VARIATION is: it "
+            "shifted by roughly 60 USD/t."
         ),
         disagreement=(
-            "Tension inférée. Le premium blanc (No.5 − No.11) est présenté comme la marge "
-            "de raffinage ; il me semble qu'il contient surtout un résidu de positionnement "
-            "et de contraintes de livraison. MESURÉ SUR ICE No.11/No.5 RÉELS avec un proxy "
-            "énergie Henry Hub réel : l'ajustement de polarisation qui annulerait la rente "
-            "vaut 1,0852, juste au-dessus de la plage plausible [1,06 ; 1,08] — le prix seul "
-            "ne tranche pas. Mais le classement des années est identique aux deux bornes "
-            "(corrélation de rang 1,0000), et la richness passe de −26 USD/t en 2021 à "
-            "+35 en 2024 : un basculement 5,5 fois plus grand que l'incertitude."
+            "Inferred tension. The white premium (No.5 − No.11) is presented as the refining "
+            "margin; it seems to me it mostly contains a residual of positioning and delivery "
+            "constraints. MEASURED ON REAL ICE No.11/No.5 with a real Henry Hub energy proxy: "
+            "the polarisation adjustment that would zero the rent is 1.0852, just above the "
+            "plausible band [1.06 ; 1.08] — price alone cannot settle it. But the ranking of "
+            "years is identical at both bounds (rank correlation 1.0000), and richness moves "
+            "from −26 USD/t in 2021 to +35 in 2024: a shift 5.5 times larger than the "
+            "parameter uncertainty."
         ),
         pivot=(
-            "Le prix que le marché paie pour l'acte de raffiner (~70 USD/t), observé sans "
-            "aucune hypothèse de coût — un raffineur fait la soustraction lui-même"
+            "The price the market pays for the act of refining (~70 USD/t), observed with no "
+            "cost assumption at all — a refiner does the subtraction themselves"
         ),
         mail_question=(
-            "Est-ce que votre coût de raffinage tout compris est de l'ordre de 70 USD/t ? Et "
-            "qu'est-ce qui a changé de votre côté entre 2021 et 2024, quand le prix payé "
-            "pour raffiner a basculé d'environ 60 USD/t ?"
+            "Is your all-in refining cost of the order of 70 USD/t? And what changed on your "
+            "side between 2021 and 2024, when the price paid for refining shifted by roughly "
+            "60 USD/t?"
         ),
-        targets="Raffineurs de destination (Al Khaleej, ASR, Tereos, Südzucker) + Sucden, Czarnikow, Alvean, Wilmar, ED&F Man",
+        targets="Destination refiners (Al Khaleej, ASR, Tereos, Südzucker) plus Sucden, Czarnikow, Alvean, Wilmar, ED&F Man",
         data_gate=GATE_NONE,
-        data_fallback="Main-d'œuvre et fret de raffinage restent des forfaits paramétrés — aucune comptabilité analytique de raffinerie n'est publique",
+        data_fallback=(
+            "Refining labour and freight remain parameterised flat rates — no refinery cost "
+            "accounting is public as a time series."
+        ),
         status=STATUS_READY,
         dashboard_page="pages/7_T2_4_White_Premium.py",
         chain_module="agri.chains.white_premium",
@@ -199,27 +202,31 @@ PROJECTS: list[Project] = [
         id="plant_option",
         code="T2-5",
         tier=TIER_2,
-        title="L'usine comme option sur la marge",
-        thesis="Une usine souvent en marge négative peut valoir plus qu'une usine stablement rentable.",
+        title="The plant as an option on the margin",
+        thesis=(
+            "A curtailment rule of the form \"margin below zero for N periods\" implements a "
+            "hysteresis band whether it means to or not — and a band corresponds to a precise "
+            "round-trip switching cost."
+        ),
         disagreement=(
-            "Tension inférée, et c'est le débat stratégique en cours du secteur "
-            "(restructuration Cargill, consolidation Bunge/Viterra). Asset-heavy ou "
-            "asset-light : les actifs créent-ils de la valeur d'option de trading, ou "
-            "détruisent-ils le ROIC ? Halsall note que les marges sont rares dans l'agri "
-            "sans actifs. TESTÉ SUR LA VRAIE MARGE DE CRUSH CBOT (soja/tourteau/huile, "
-            "aucun terme paramétré) : le verdict ADF+KPSS rejette la stationnarité sur "
-            "toute fenêtre — un résultat en soi, pas un échec de calibration : la marge "
-            "réelle traverse de vraies ruptures de régime (Covid, guerre en Ukraine, RVO) "
-            "qu'un OU à paramètres fixes ne peut pas absorber."
+            "Not a market dispute but a critique of a rule that can be pointed at: the "
+            "`consecutive_below(margin, 0, N=4)` signal used on the zinc and lithium pages, "
+            "which silently assumes stopping and restarting is free. INVERTED ON THE REAL "
+            "CHINESE CRUSH MARGIN: the rule stops at −39 CNY/t and restarts at +43, which "
+            "implies a round trip of about 143 CNY/t of beans crushed. The reader does not "
+            "have to accept the model, only compare one number to their own."
         ),
-        pivot="La bande d'hystérésis [M_off, M_on] — la vraie frontière d'exercice",
+        pivot="The implied round-trip switching cost, in CNY per tonne of beans crushed",
         mail_question=(
-            "Votre règle d'arrêt est-elle un seuil de marge, ou est-ce que le coût de "
-            "redémarrage la déplace explicitement ?"
+            "Is your shutdown rule a margin threshold, or does the restart cost move it "
+            "explicitly? Does 143 CNY/t look like your order of magnitude?"
         ),
-        targets="Niveau senior, direction de desk, corporate development",
+        targets="Desk management, corporate development, crushing and smelting operators",
         data_gate=GATE_NONE,
-        data_fallback="La marge réelle échoue le test de stationnarité -> calibration OU affichée comme indicative (strict=False), jamais comme frontière ferme",
+        data_fallback=(
+            "Shutdown, restart and idling costs are not public anywhere — they are the "
+            "page's sliders, and the inversion is what makes that acceptable."
+        ),
         status=STATUS_READY,
         dashboard_page="pages/8_T2_5_Usine_Option.py",
         chain_module="agri.chains.plant_option",
@@ -230,36 +237,36 @@ PROJECTS: list[Project] = [
         id="oil_substitution",
         code="T2-6",
         tier=TIER_2,
-        title="La borne de substitution palme-soja n'existe pas",
+        title="The palm–soy substitution bound does not exist",
         thesis=(
-            "Testé dans la seule fenêtre où le change ne contamine rien — les sept ans de "
-            "parité fixe du ringgit — l'hypothèse ressort INVERSÉE : les écarts étroits "
-            "reviennent en 12 jours, les larges ne reviennent pas du tout."
+            "Tested in the one window where the exchange rate contaminates nothing — the "
+            "seven years of the ringgit peg — the hypothesis comes out INVERTED: narrow gaps "
+            "revert in 12 days, wide ones do not revert at all."
         ),
         disagreement=(
-            "Tension inférée. Il me semble que les triturateurs tiennent l'élasticité "
-            "palme/soja pour forte et les formulateurs pour collante — reformuler une "
-            "recette prend des mois. MESURÉ SUR BURSA + CBOT RÉELS : la palme cote en "
-            "ringgits et l'export n'a aucun USDMYR, donc le spread n'est calculable QUE sur "
-            "la parité fixe 1998-2005, où le change est une constante décrétée. Sur cette "
-            "fenêtre propre, aucune borne de substitution — et le test naïf qui semble en "
-            "trouver une sélectionne en réalité l'ère 2004-2005."
+            "Inferred tension. It seems to me crushers hold palm/soy elasticity to be strong "
+            "and formulators hold it to be sticky — reformulating a recipe takes months. "
+            "MEASURED ON REAL BURSA + CBOT: palm quotes in ringgit and the export has no "
+            "USDMYR, so the spread is computable ONLY over the 1998–2005 peg, where the "
+            "exchange rate is a constant fixed by decree. On that clean window there is no "
+            "substitution bound — and the naive test that appears to find one is in fact "
+            "selecting the 2004–05 era."
         ),
         pivot=(
-            "L'absence de retour à la moyenne au-delà de 54 USD/t d'écart — donc : fader un "
-            "spread palme-soja large n'a aucun support empirique"
+            "The absence of mean reversion beyond 54 USD/t of deviation — therefore: fading "
+            "a wide palm–soy spread has no empirical support"
         ),
         mail_question=(
-            "À partir de quel écart palme-soja votre téléphone sonne réellement pour un "
-            "changement de recette aujourd'hui ? Ma fenêtre propre s'arrête en 2005, avant "
-            "le biodiesel, et la borne a très bien pu bouger depuis."
+            "At what palm–soy gap does your phone actually ring for a recipe change today? "
+            "My clean window stops in 2005, before biodiesel, and the bound may well have "
+            "moved since."
         ),
-        targets="Triturateurs et raffineurs d'huiles (Wilmar, Musim Mas, Golden Agri, Bunge, Cargill), formulateurs agroalimentaires",
+        targets="Vegetable oil crushers and refiners (Wilmar, Musim Mas, Golden Agri, Bunge, Cargill), food formulators",
         data_gate=GATE_NONE,
         data_fallback=(
-            "USDMYR absent de l'export (GRATUIT, un seul ticker) -> le test se limite aux "
-            "sept ans de parité fixe. Le récupérer débloquerait trente ans d'historique au "
-            "lieu de sept : c'est la donnée la plus rentable du portefeuille."
+            "USDMYR is absent from the export (FREE, a single ticker) so the test is limited "
+            "to the seven peg years. Fetching it would unlock thirty years instead of seven: "
+            "the highest-value missing series in the portfolio."
         ),
         status=STATUS_READY,
         dashboard_page="pages/9_T2_6_Substitution_Huiles.py",
@@ -268,45 +275,43 @@ PROJECTS: list[Project] = [
         n_tests=32,
     ),
     # ======================================================================
-    # TIER 3 — désaccords ouverts. Ne jamais prendre parti : quantifier la bascule.
+    # TIER 3 — disagreements still open
     # ======================================================================
     Project(
         id="feedstock_lcfs",
         code="T3-1",
         tier=TIER_3,
-        title="Deux subventions qui se contredisent",
+        title="Two subsidies that contradict each other",
         thesis=(
-            "Les deux camps argumentent sur le prix du crédit LCFS, qui ne peut pas "
-            "trancher : sur toute l'amplitude réalisée du programme, il ne déplace la "
-            "décote exigée de l'UCO importé que de 3,2 c/lb. Ce qui décide, c'est le "
-            "spread de prix UCO-soyoil."
+            "Both camps argue about the LCFS credit price, which cannot settle it: across "
+            "the programme's entire realised range it moves the discount imported UCO must "
+            "hold by only 3.2 c/lb. What decides is the UCO–soyoil price spread."
         ),
         disagreement=(
-            "Trois quarts de la capacité de renewable diesel a été construite sur les "
-            "côtes, sitée pour tourner sur du feedstock importé. Puis 45Z exclut du "
-            "crédit tout feedstock non nord-américain, pendant que le LCFS californien "
-            "continue de payer le faible CI sans regarder l'origine — une politique "
-            "pénalise exactement ce que l'autre récompense. Camp A (usines côtières) : "
-            "la prime LCFS suffit, les imports tiennent. Camp B (complexe soja) : elle "
-            "ne suffit pas, le soyoil rafle la part."
+            "Three quarters of US renewable diesel capacity was built on the coasts, sited to "
+            "run on imported feedstock. Then 45Z excludes non-North-American feedstock from "
+            "the credit while California's LCFS keeps paying for low carbon intensity "
+            "regardless of origin — one policy penalises exactly what the other rewards. "
+            "Camp A (coastal plants): the LCFS premium suffices, imports hold. Camp B (the "
+            "soy complex): it does not, and soyoil takes the share."
         ),
         pivot=(
-            "La décote en c/lb que l'UCO importé doit tenir sous le soyoil — un acheteur "
-            "de feedstock la confirme ou la dément sur son propre book en dix secondes"
+            "The discount in c/lb that imported UCO must hold under soyoil — a feedstock "
+            "buyer confirms or denies it against their own book in ten seconds"
         ),
         mail_question=(
-            "À 75 $/t CO2e sur le LCFS, je trouve que l'UCO importé doit se vendre ~4,5 "
-            "c/lb sous le soyoil juste pour compenser le 45Z qu'il ne peut pas réclamer, "
-            "et que sur toute l'histoire du programme ce nombre n'a pu varier que de 3,2 "
-            "c/lb. Est-ce que la décote que vous voyez rendu USGC est de cet ordre ? Et "
-            "en dessous de quel prix collecté cessez-vous simplement de charger ?"
+            "At 75 USD/t CO2e on the LCFS, I find imported UCO must sell about 4.5 c/lb "
+            "under soyoil purely to offset a tax credit it cannot claim, and that across the "
+            "programme's whole history that number can only have varied by 3.2 c/lb. Is the "
+            "discount you see delivered USGC of that order? And below what collected price "
+            "do you simply stop loading?"
         ),
-        targets="Bunge, ADM, LDC, Cargill, CHS + desks bio de Vitol, Gunvor, Freepoint, Trafigura — le plus grand vivier du portefeuille",
+        targets="Bunge, ADM, LDC, Cargill, CHS plus the bio desks at Vitol, Gunvor, Freepoint, Trafigura — the portfolio's largest target pool",
         data_gate=GATE_MEDIUM,
         data_fallback=(
-            "Prix UCO indisponibles (Platts/PGA) — la page est construite pour ne jamais "
-            "en avoir besoin : le livrable est une décote relative, pas un prix absolu. "
-            "Crédit LCFS absent de l'export (publié par CARB) : traité comme un axe."
+            "UCO prices are unavailable (Platts/PGA) — the page is built never to need them: "
+            "the deliverable is a relative discount, not an absolute price. The LCFS credit "
+            "is absent from the export (published by CARB) and is treated as an axis."
         ),
         status=STATUS_READY,
         dashboard_page="pages/10_T3_1_Feedstock_LCFS.py",
@@ -318,36 +323,35 @@ PROJECTS: list[Project] = [
         id="sugar_mix",
         code="T3-2",
         tier=TIER_3,
-        title="Le « plancher de coût brésilien » est une série de change",
+        title="The \"Brazilian cost floor\" is an exchange rate in disguise",
         thesis=(
-            "Un coût de production se libelle en réaux. Traduit en cents par livre pour un "
-            "lecteur new-yorkais, un coût CONSTANT produit un plancher qui varie de 20,8 "
-            "c/lb — plus que la fourchette du marché lui-même — uniquement via l'USDBRL."
+            "A production cost is denominated in reais. Translated into cents per pound for "
+            "a New York reader, a CONSTANT cost produces a floor that varies by 20.8 c/lb — "
+            "more than the market's own range — purely through USDBRL."
         ),
         disagreement=(
-            "Hedgepoint (févr. 2026) : le mix devrait tomber vers 46 % pour réduire "
-            "l'excédent, mais les limites d'usine et le sucre déjà vendu à terme l'en "
-            "empêchent. Czarnikow (juin 2026) : les mills entrent beaucoup moins couverts "
-            "que les quatre saisons précédentes, et le pricing 2026/27 est resté sous "
-            "BRL 2 000/t, sous le coût de production. VÉRIFIÉ SUR NY11 + USDBRL RÉELS : "
-            "l'affirmation de Czarnikow tient — le sucre vaut 1 843 BRL/t au dernier cours, "
-            "et plus de 80 % de 2026 s'est traité sous ce seuil."
+            "Hedgepoint (Feb 2026): the mix should fall towards 46 % to cut the surplus, but "
+            "mill limits and sugar already sold forward prevent it. Czarnikow (Jun 2026): "
+            "mills enter far less hedged than the previous four seasons, and 2026/27 pricing "
+            "stayed below BRL 2 000/t, below the cost of production. VERIFIED ON REAL NY11 + "
+            "USDBRL: Czarnikow's claim holds — sugar is worth 1 843 BRL/t at the last print, "
+            "and more than 80 % of 2026 traded below that threshold."
         ),
         pivot=(
-            "Le plancher NY11 impliqué par un coût constant en réaux — une série, pas un "
-            "niveau, et sa corrélation de rang avec l'inverse du change vaut exactement 1"
+            "The NY11 floor implied by a constant cost in reais — a series, not a level, and "
+            "its rank correlation with the inverse exchange rate is exactly 1"
         ),
         mail_question=(
-            "Est-ce que votre équipe raisonne sur un plancher de coût brésilien en cents/lb, "
-            "ou est-ce qu'elle le recalcule à chaque mouvement du real ? Et sur 2026/27, à "
-            "quel taux de couverture d'entrée de saison vos moulins sont-ils entrés ?"
+            "Does your team reason on a Brazilian cost floor in cents per pound, or recompute "
+            "it on every move in the real? And for 2026/27, at what entry hedge ratio did "
+            "your mills actually start the season?"
         ),
-        targets="Sucden, Czarnikow, Alvean, Wilmar, LDC Sugar, ED&F Man, Copersucar, BP Bioenergy",
+        targets="Sugar desks at Sucden, Czarnikow, Alvean, Wilmar, LDC Sugar, ED&F Man, Copersucar, BP Bioenergy",
         data_gate=GATE_MEDIUM,
         data_fallback=(
-            "Mix UNICA et éthanol CEPEA absents de l'export (tous deux GRATUITS) -> "
-            "l'élasticité conditionnelle reste non estimée et la spécification est affichée "
-            "telle quelle plutôt que simulée. Le reste tourne sur NY11 + USDBRL réels."
+            "UNICA mix and CEPEA ethanol are absent from the export (both FREE) so the "
+            "conditional elasticity is left unestimated and its specification shown as-is "
+            "rather than simulated. Everything else runs on real NY11 + USDBRL."
         ),
         status=STATUS_READY,
         dashboard_page="pages/11_T3_2_Sucre_Mix.py",
@@ -359,38 +363,37 @@ PROJECTS: list[Project] = [
         id="china_soy",
         code="T3-4",
         tier=TIER_3,
-        title="Les fenêtres où aucune origine ne fonctionne",
+        title="The windows in which no origin works",
         thesis=(
-            "Plutôt que de tester une signature politique — ce qui demande des données "
-            "d'enchères que personne ne publie —, on date les périodes où le budget "
-            "d'origination est NÉGATIF : une fève gratuite, transportée gratuitement, ne "
-            "rendrait pas le crush rentable. Toute cargaison arrivée là est non commerciale "
-            "par construction arithmétique."
+            "Rather than testing for a political signature — which needs auction data nobody "
+            "publishes — date the periods when the origination budget is NEGATIVE: a free "
+            "bean, freighted free, would still not make the crush pay. Any cargo arriving "
+            "then is non-commercial by arithmetic."
         ),
         disagreement=(
-            "Sinograin a vendu environ la moitié des 504 000 t proposées à sa plus grosse "
-            "enchère depuis janvier ; des traders cités par Reuters y voient de la place "
-            "faite pour des cargaisons US (août 2026). En face, ADM relève ses perspectives "
-            "2026 en pariant que la Chine continue d'acheter du soja US. MESURÉ SUR CBOT + "
-            "DCE + USDCNY RÉELS : 2,0 % des séances depuis 2018 affichent un budget "
-            "d'origination négatif, toutes concentrées en 2023, dont une fenêtre de 29 jours "
-            "du 7 juin au 5 juillet."
+            "Sinograin sold about half of the 504 000 t offered at its largest auction since "
+            "January; traders quoted by Reuters read it as making room for US cargoes "
+            "(Aug 2026). Against that, ADM raised its 2026 outlook betting China keeps buying "
+            "US beans. MEASURED ON REAL CBOT + DCE + USDCNY: 2.0 % of sessions since 2018 "
+            "show a negative origination budget, all concentrated in 2023, including a "
+            "29-day window from 7 June to 5 July."
         ),
         pivot=(
-            "Le calendrier daté des fenêtres impossibles — des dates confrontables à un "
-            "carnet d'arrivées, pas un coefficient"
+            "The dated calendar of impossible windows — dates that can be checked against an "
+            "arrival book, not a coefficient"
         ),
         mail_question=(
-            "Avez-vous fixé des cargaisons Chine pendant les fenêtres de juin-juillet 2023 "
-            "où le budget basis + fret était négatif ? Et si oui, la marge de crush "
-            "était-elle vraiment la contrainte, ou un autre maillon portait-il le résultat ?"
+            "Did you fix China cargoes during the June–July 2023 windows when the basis plus "
+            "freight budget was negative? And if so, was the crush margin really the "
+            "constraint, or was another link in the chain carrying the result?"
         ),
-        targets="Origination oléagineux (COFCO, Sinograin, Bunge, LDC, Cargill), desks soja Chine",
+        targets="Oilseed origination (COFCO, Sinograin, Bunge, LDC, Cargill), China soy desks",
         data_gate=GATE_MEDIUM,
         data_fallback=(
-            "Enchères Sinograin et douanes GACC absentes -> le test de signature logit n'est "
-            "pas passé. Le budget d'origination le remplace et ne dépend NI du basis NI du "
-            "fret, les deux séries manquantes : elles sortent du calcul au lieu d'y entrer."
+            "Sinograin auctions and GACC customs are absent, so the logit signature test is "
+            "not run. The origination budget replaces it and depends on NEITHER the basis NOR "
+            "the freight — the two missing series drop out of the calculation instead of "
+            "entering it."
         ),
         status=STATUS_READY,
         dashboard_page="pages/12_T3_4_Chine_Soja.py",
@@ -398,34 +401,47 @@ PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=22,
     ),
-    # ======================================================================
-    # DONNEES REELLES — nes de l'export Bloomberg de l'utilisateur, pas du cadre
-    # T1/T2/T3 sourcé/inféré/ouvert. Deux defauts de donnee trouves en les construisant :
-    # voir jet_crack (convention d'unite instable sur jet_swap_m1) et le piege d'unite
-    # double de lng_netback (energie + rendement de liquefaction).
-    # ======================================================================
 ]
 
 
 def by_tier() -> dict[str, list[Project]]:
-    """Groupe les projets par tier, dans l'ordre d'apparition des tiers."""
     grouped: dict[str, list[Project]] = {}
     for project in PROJECTS:
         grouped.setdefault(project.tier, []).append(project)
     return grouped
 
 
-def get(project_id: str) -> Project:
-    for project in PROJECTS:
-        if project.id == project_id:
-            return project
-    raise KeyError(f"projet inconnu : {project_id!r} (connus : {[p.id for p in PROJECTS]})")
-
-
 def ready_projects() -> list[Project]:
     return [p for p in PROJECTS if p.status == STATUS_READY]
 
 
-def projects_at_gate(level: str) -> list[Project]:
-    """Les projets dont l'accès aux données porte un risque donné — pilote l'ordre des gates."""
-    return [p for p in PROJECTS if p.data_gate == level]
+def total_tests() -> int:
+    return sum(p.n_tests or 0 for p in PROJECTS)
+
+
+def get(project_id: str) -> Project:
+    for project in PROJECTS:
+        if project.id == project_id:
+            return project
+    raise KeyError(f"unknown project id: {project_id!r}")
+
+
+__all__ = [
+    "DATA_HYBRID",
+    "DATA_REAL",
+    "DATA_SYNTHETIC",
+    "GATE_HIGH",
+    "GATE_MEDIUM",
+    "GATE_NONE",
+    "PROJECTS",
+    "Project",
+    "STATUS_PLANNED",
+    "STATUS_READY",
+    "TIER_1",
+    "TIER_2",
+    "TIER_3",
+    "by_tier",
+    "get",
+    "ready_projects",
+    "total_tests",
+]
