@@ -68,7 +68,7 @@ def test_impossible_yields_are_rejected():
 
 def test_negative_yield_is_rejected():
     index = pd.to_datetime(["2024-01-01"])
-    with pytest.raises(ct.CrushError, match="plage physique"):
+    with pytest.raises(ct.CrushError, match="physical range"):
         ct.plant_crush_usd_bu(
             pd.Series([13.0], index=index),
             pd.Series([400.0], index=index),
@@ -126,15 +126,15 @@ def test_the_yield_mismatch_term_is_not_a_basis(crush_frame):
     basis sont nuls. Sur ce jeu, sa dispersion dépasse celle du basis fève.
     """
     components = ct.decompose_tracking_error(crush_frame)
-    assert components["rendement_huile"].std() > components["basis_feve"].std()
-    assert components["rendement_huile"].abs().mean() > 0
+    assert components["oil_yield"].std() > components["bean_basis"].std()
+    assert components["oil_yield"].abs().mean() > 0
 
 
 def test_meal_basis_dominates_the_variability(crush_frame):
     """Le mécanisme que décrivent les gens d'usine : c'est le basis tourteau qui casse le
     hedge, pas la fève."""
     contributions = ct.basis_contributions(crush_frame)
-    assert contributions.loc[0, "terme"] == "basis_tourteau"
+    assert contributions.loc[0, "term"] == "meal_basis"
     assert contributions.loc[0, "share"] > 0.5
     assert contributions["share"].sum() == pytest.approx(1.0)
 
@@ -142,7 +142,7 @@ def test_meal_basis_dominates_the_variability(crush_frame):
 def test_opex_moves_the_level_but_not_the_variability(crush_frame):
     """Distinction qui compte pour une couverture : un coût fixe décale, il ne fait pas
     trembler."""
-    contributions = ct.basis_contributions(crush_frame).set_index("terme")
+    contributions = ct.basis_contributions(crush_frame).set_index("term")
     assert contributions.loc["opex", "std_usd_bu"] == pytest.approx(0.0)
     assert contributions.loc["opex", "mean_usd_bu"] == pytest.approx(0.42)
 
@@ -191,8 +191,8 @@ def test_fair_value_refining_hand_computed():
     """
     index = pd.to_datetime(["2024-01-01"])
     costs = wp.fair_value_refining_usd_t(pd.Series([20.0], index=index))
-    assert costs["perte_rendement"].iloc[0] == pytest.approx(8.818490, abs=1e-6)
-    assert costs["financement"].iloc[0] == pytest.approx(3.031356, abs=1e-6)
+    assert costs["yield_loss"].iloc[0] == pytest.approx(8.818490, abs=1e-6)
+    assert costs["financing"].iloc[0] == pytest.approx(3.031356, abs=1e-6)
     assert costs["total"].iloc[0] == pytest.approx(69.849846, abs=1e-6)
 
 
@@ -234,7 +234,7 @@ def test_richness_summary_produces_the_headline():
     assert 0.0 < summary.share_rich < 1.0
     assert len(summary.rich_episodes) > 0
     assert len(summary.cheap_episodes) > 0
-    assert "disponibilité physique" in summary.headline
+    assert "physical availability" in summary.headline
 
 
 # ===========================================================================
@@ -279,7 +279,7 @@ def test_real_energy_cost_tracks_henry_hub_not_a_constant():
 
     energy_leg = fair_value_refining_usd_t(
         frame["no11"], energy_usd_t=(load_bloomberg("henry_hub") * 8.0).reindex(frame.index)
-    )["energie"]
+    )["energy"]
     assert energy_leg.std() > 0.5
     assert energy_leg.nunique() > 100
 
@@ -289,7 +289,7 @@ def test_real_richness_summary_and_headline_run_on_real_data():
     frame = wp.load_real_richness_frame()
     summary = wp.summarise_richness(frame)
     assert 0.0 < summary.share_rich < 1.0
-    assert "disponibilité physique" in summary.headline
+    assert "physical availability" in summary.headline
     assert frame.attrs["energy_source"] == "henry_hub_real"
 
 
@@ -322,7 +322,7 @@ def test_calibration_refuses_a_random_walk():
         np.cumsum(rng.normal(size=400)),
         index=pd.date_range("2020-01-01", periods=400, freq="B"),
     )
-    with pytest.raises(po.PlantOptionError, match="stationnaire"):
+    with pytest.raises(po.PlantOptionError, match="stationary"):
         po.calibrate_ou(walk)
 
 
@@ -356,7 +356,7 @@ def test_the_frontier_is_a_band_not_a_threshold(band):
     """
     assert band.m_off < 0.0 < band.m_on
     assert band.width > 0.0
-    assert "hystérésis" in band.headline
+    assert "hysteresis" in band.headline
 
 
 def test_higher_switching_costs_widen_the_band(ou_params):
@@ -386,11 +386,11 @@ def test_heuristic_rule_shuts_down_more_often_than_the_frontier(band):
     margin = tier2.plant_margin()
     comparison = po.compare_to_heuristic(margin, band, threshold=0.0, consecutive_periods=4)
     assert comparison.n_shutdowns_heuristic >= comparison.n_shutdowns_optimal
-    assert "arrêts" in comparison.headline
+    assert "shutdowns" in comparison.headline
 
 
 def test_negative_switching_costs_are_rejected(ou_params):
-    with pytest.raises(po.PlantOptionError, match="coûts"):
+    with pytest.raises(po.PlantOptionError, match="costs"):
         po.solve_hysteresis(ou_params, cost_restart=-1.0, cost_shutdown=60.0, cost_idle=0.5)
 
 
@@ -425,7 +425,7 @@ def test_real_margin_fails_stationarity_and_that_is_the_finding():
     margin = po.real_board_crush_margin()
     diagnostic = po.diagnose_real_margin_stationarity(margin)
     assert diagnostic.stationarity.verdict != "stationary"
-    assert "pas comme un OU homogène" in diagnostic.headline
+    assert "does not behave like a homogeneous OU" in diagnostic.headline
     assert diagnostic.n_obs == len(margin)
 
 
@@ -452,9 +452,9 @@ def spreads() -> pd.DataFrame:
 
 def test_spreads_are_built_once_per_pair(spreads):
     assert set(spreads.columns) == {
-        "colza_moins_palme",
-        "colza_moins_soja",
-        "palme_moins_soja",
+        "canola_minus_palm",
+        "canola_minus_soy",
+        "palm_minus_soy",
     }
 
 
@@ -471,15 +471,15 @@ def test_substitution_bound_finds_the_regime_split(spreads):
     page affirme.
     """
     bound = os_.substitution_bound(
-        spreads["palme_moins_soja"],
-        pair="palme-soja",
+        spreads["palm_minus_soy"],
+        pair="palm-soy",
         threshold_usd_t=tier2.SUBSTITUTION_THRESHOLD_USD_T,
     )
     assert bound.narrow.is_mean_reverting
     assert bound.wide.is_mean_reverting
     assert bound.wide.half_life_days < bound.narrow.half_life_days
     assert bound.substitution_kicks_in
-    assert "borne de substitution" in bound.headline
+    assert "substitution bound" in bound.headline
 
 
 def test_lags_are_computed_before_the_regime_filter(spreads):
@@ -490,7 +490,7 @@ def test_lags_are_computed_before_the_regime_filter(spreads):
     moyenne-réversion : deux points distants de trois semaines paraissent avoir convergé
     en un pas. Sur ce jeu, l'erreur ramenait une demi-vie de 173 jours à 10.
     """
-    series = spreads["palme_moins_soja"]
+    series = spreads["palm_minus_soy"]
     mask = (series.shift(1).abs() < 20.0)
 
     correct = os_.estimate_half_life(series, mask=mask)
@@ -507,10 +507,10 @@ def test_screen_flags_non_stationary_pairs(spreads):
     trois « bornes de substitution » dont deux n'existent pas.
     """
     table = os_.screen_all_pairs(spreads).set_index("pair")
-    assert table.loc["palme_moins_soja", "stationarity"] == "stationary"
-    assert table.loc["palme_moins_soja", "substitution_kicks_in"]
-    assert table.loc["colza_moins_soja", "stationarity"] != "stationary"
-    assert "ne pas lire" in table.loc["colza_moins_soja", "note"]
+    assert table.loc["palm_minus_soy", "stationarity"] == "stationary"
+    assert table.loc["palm_minus_soy", "substitution_kicks_in"]
+    assert table.loc["canola_minus_soy", "stationarity"] != "stationary"
+    assert "do not read" in table.loc["canola_minus_soy", "note"]
 
 
 def test_a_pure_random_walk_has_no_half_life():
@@ -521,13 +521,13 @@ def test_a_pure_random_walk_has_no_half_life():
     )
     out = os_.estimate_half_life(walk)
     assert not out.is_mean_reverting
-    assert "pas de retour à la moyenne" in out.summary
+    assert "no detectable mean reversion" in out.summary
 
 
 def test_too_few_oils_is_rejected():
     index = pd.date_range("2024-01-01", periods=100, freq="B")
-    with pytest.raises(os_.SubstitutionError, match="deux huiles"):
-        os_.build_spreads({"palme": pd.Series(900.0, index=index)})
+    with pytest.raises(os_.SubstitutionError, match="two oils"):
+        os_.build_spreads({"palm": pd.Series(900.0, index=index)})
 
 
 # ===========================================================================
@@ -559,17 +559,17 @@ def test_tier2_modules_frame_the_tension_as_inferred(module):
 
     doc = module.__doc__ or ""
     lowered = doc.lower()
-    assert "INFÉRÉE" in doc, f"{module.__name__} ne marque pas sa tension comme inférée"
-    assert "il me semble" in lowered, f"{module.__name__} n'emploie pas la formule prudente"
+    assert "INFERRED" in doc, f"{module.__name__} does not mark its tension as inferred"
+    assert "it seems to me" in lowered, f"{module.__name__} does not use the cautious phrasing"
 
-    # « j'ai lu que » n'est acceptable que précédé de « jamais » — c'est-à-dire cité
-    # comme la formule à NE PAS employer. Toute autre occurrence est une affirmation
-    # présentée comme sourcée alors qu'elle ne l'est pas.
-    for match in re.finditer(r"j'ai lu que", lowered):
+    # "I read that" is acceptable only when preceded by "never" — i.e. cited as the
+    # phrasing to NOT use. Any other occurrence is a claim presented as sourced when
+    # it is not.
+    for match in re.finditer(r"i read that", lowered):
         preceding = lowered[max(0, match.start() - 30) : match.start()]
-        assert "jamais" in preceding, (
-            f"{module.__name__} emploie « j'ai lu que » hors de la mise en garde : "
-            "une tension inférée présentée comme une citation se fait démonter en une ligne"
+        assert "never" in preceding, (
+            f"{module.__name__} uses \"I read that\" outside the disclaimer: "
+            "an inferred tension presented as a citation falls apart in one line"
         )
 
 
@@ -584,15 +584,15 @@ def test_plant_option_rests_on_a_rule_it_can_point_at_not_an_inferred_tension():
     doc = po.__doc__ or ""
     lowered = doc.lower()
 
-    assert "consecutive_below" in lowered, "la règle visée n'est pas nommée"
-    assert "zinc" in lowered and "lithium" in lowered, "les pages visées ne sont pas nommées"
-    assert "inverse la question" in lowered or "inverser la question" in lowered
-    assert "contrefactuel" in lowered, "le contrefactuel jamais-d'arrêt n'est pas annoncé"
+    assert "consecutive_below" in lowered, "the targeted rule is not named"
+    assert "zinc" in lowered and "lithium" in lowered, "the targeted pages are not named"
+    assert "inverting the question" in lowered
+    assert "counterfactual" in lowered, "the never-stop counterfactual is not announced"
 
-    # Meme regle que pour les modules a tension inferee : aucune affirmation sourcee
-    # qui ne le soit pas.
+    # Same rule as for the inferred-tension modules: no claim presented as sourced
+    # that is not.
     import re
 
-    for match in re.finditer(r"j'ai lu que", lowered):
+    for match in re.finditer(r"i read that", lowered):
         preceding = lowered[max(0, match.start() - 30) : match.start()]
-        assert "jamais" in preceding
+        assert "never" in preceding

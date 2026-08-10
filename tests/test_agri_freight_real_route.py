@@ -82,7 +82,7 @@ def test_the_gap_is_large_enough_to_be_the_whole_argument(spread):
     """L'écart médian entre les deux lectures dépasse 30 000 USD/jour — du même ordre que
     le TCE lui-même. Ce n'est pas un raffinement de modèle, c'est la question."""
     assert spread.spread.median() > 25_000
-    assert "dans l'unité du département fret" in spread.headline
+    assert "in the freight department's unit" in spread.headline
 
 
 # ===========================================================================
@@ -137,7 +137,7 @@ def test_market_implied_ballast_share_recovers_a_known_input():
         vessel=PANAMAX, route=SANTOS_QINGDAO, params=VoyageParams(),
     )
     assert result.implied_share == pytest.approx(known_share, abs=1e-6)
-    assert "du repositionnement à vide" in result.headline
+    assert "ballast repositioning" in result.headline
 
 
 def test_a_rate_above_the_model_range_names_the_binding_end():
@@ -150,8 +150,8 @@ def test_a_rate_above_the_model_range_names_the_binding_end():
         vessel=PANAMAX, route=SANTOS_QINGDAO, params=VoyageParams(),
     )
     assert result.implied_share is None
-    assert "100 %" in result.reason
-    assert "trop bas" in result.reason
+    assert "100%" in result.reason
+    assert "too low" in result.reason
 
 
 def test_a_rate_below_the_model_range_names_the_other_end():
@@ -160,8 +160,8 @@ def test_a_rate_below_the_model_range_names_the_other_end():
         vessel=PANAMAX, route=SANTOS_QINGDAO, params=VoyageParams(),
     )
     assert result.implied_share is None
-    assert "aucun ballast" in result.reason
-    assert "trop élevé" in result.reason
+    assert "no ballast" in result.reason
+    assert "too high" in result.reason
 
 
 def test_implied_share_is_monotone_in_the_published_rate():
@@ -181,7 +181,7 @@ def test_implied_share_is_monotone_in_the_published_rate():
 def test_disjoint_calendars_raise():
     a = pd.Series([50.0], index=pd.to_datetime(["2024-01-01"]))
     b = pd.Series([500.0], index=pd.to_datetime(["2030-01-01"]))
-    with pytest.raises(FreightCfError, match="aucune date commune"):
+    with pytest.raises(FreightCfError, match="no common date"):
         implied_tce_by_convention(
             a, b, b, vessel=PANAMAX, route=SANTOS_QINGDAO, params=VoyageParams()
         )

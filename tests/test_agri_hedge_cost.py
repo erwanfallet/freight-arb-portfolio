@@ -104,7 +104,7 @@ def test_im_proxy_calibration_recovers_a_known_k():
 
 def test_negative_k_is_rejected():
     index = pd.date_range("2024-01-01", periods=40, freq="B")
-    with pytest.raises(HedgeCostError, match="k doit"):
+    with pytest.raises(HedgeCostError, match="k must"):
         initial_margin_proxy(pd.Series(1_000.0, index=index), k=-1.0)
 
 
@@ -194,7 +194,7 @@ def test_a_rate_series_starting_late_is_rejected():
     """
     index = pd.date_range("2024-01-01", periods=3, freq="D")
     rate = pd.Series([0.05], index=index[-1:])
-    with pytest.raises(HedgeCostError, match="taux de financement"):
+    with pytest.raises(HedgeCostError, match="financing rate"):
         simulate_hedge(
             pd.Series(1_000.0, index=index),
             pd.Series(990.0, index=index),
@@ -208,7 +208,7 @@ def test_a_rate_series_starting_late_is_rejected():
 def test_simulation_rejects_disjoint_calendars():
     a = pd.Series(1_000.0, index=pd.date_range("2024-01-01", periods=3, freq="D"))
     b = pd.Series(990.0, index=pd.date_range("2025-01-01", periods=3, freq="D"))
-    with pytest.raises(HedgeCostError, match="aucune date commune"):
+    with pytest.raises(HedgeCostError, match="no common date"):
         simulate_hedge(a, b, b, 0.05, pd.DatetimeIndex([]), params=HedgeParams())
 
 
@@ -272,7 +272,7 @@ def test_margin_breakeven_floors_at_zero_when_the_line_is_exhausted():
 
 
 def test_zero_credit_line_is_rejected(tiny_simulation):
-    with pytest.raises(HedgeCostError, match="ligne de crédit"):
+    with pytest.raises(HedgeCostError, match="credit line"):
         hedge_capacity(tiny_simulation, credit_line_usd=0.0, book_size_t=1_000.0)
 
 
@@ -325,7 +325,7 @@ def test_the_credit_line_binds_on_the_2024_book(full):
     )
     assert capacity.is_binding
     assert capacity.min_capacity_t < params.book_size_t
-    assert "contraignante" in capacity.headline
+    assert "binding" in capacity.headline
 
 
 def test_both_sides_are_punished_in_their_own_window(full):
@@ -348,8 +348,8 @@ def test_both_sides_are_punished_in_their_own_window(full):
     rise = table[table["window"].str.startswith("hausse")].set_index("side")
     fall = table[table["window"].str.startswith("baisse")].set_index("side")
 
-    assert rise.loc["short (négociant)", "peak_cash_usd"] > rise.loc["long (industriel)", "peak_cash_usd"]
-    assert fall.loc["long (industriel)", "peak_cash_usd"] > fall.loc["short (négociant)", "peak_cash_usd"]
+    assert rise.loc["short (trader)", "peak_cash_usd"] > rise.loc["long (manufacturer)", "peak_cash_usd"]
+    assert fall.loc["long (manufacturer)", "peak_cash_usd"] > fall.loc["short (trader)", "peak_cash_usd"]
 
 
 def test_fixture_imposes_backwardation_around_the_peak(full):

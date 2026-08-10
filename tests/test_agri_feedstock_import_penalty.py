@@ -92,7 +92,7 @@ def test_above_the_neutral_price_imports_can_pay_a_premium():
     penalty = import_penalty(lcfs_neutral_price() + 100.0)
     assert penalty.discount_required_usd_lb < 0
     assert penalty.imports_win_outright
-    assert "prime" in penalty.headline
+    assert "premium" in penalty.headline
 
 
 def test_the_discount_decreases_monotonically_in_the_lcfs_price():
@@ -130,7 +130,7 @@ def test_the_whole_lcfs_range_moves_the_answer_by_only_a_few_cents():
 
 
 def test_bounds_reject_an_inverted_range():
-    with pytest.raises(FeedstockError, match="borne haute"):
+    with pytest.raises(FeedstockError, match="high bound"):
         penalty_bounds(lcfs_low_usd_t=200.0, lcfs_high_usd_t=50.0)
 
 
@@ -143,7 +143,7 @@ def test_a_richer_ci_gap_lowers_the_neutral_price():
 
 def test_a_non_positive_ci_gap_raises_rather_than_returning_a_sign_flip():
     dirty = Feedstock("UCO plus carboné", 40.0, north_american=False)
-    with pytest.raises(FeedstockError, match="deux tableaux"):
+    with pytest.raises(FeedstockError, match="both counts"):
         import_penalty(75.0, imported=dirty)
 
 
@@ -154,7 +154,7 @@ def test_discount_burden_rejects_a_series_quoted_in_cents():
     """Le piège d'unité du module, transformé en erreur : le soyoil CBOT cote en cents par
     livre, et un facteur 100 oublié produirait un pourcentage plausible et faux."""
     cents = pd.Series([45.0, 50.0, 55.0], index=pd.date_range("2024-01-01", periods=3))
-    with pytest.raises(FeedstockError, match="cents par livre"):
+    with pytest.raises(FeedstockError, match="cents per pound"):
         discount_burden(cents, lcfs_usd_t=75.0)
 
 
@@ -168,7 +168,7 @@ def test_discount_burden_is_countercyclical_to_the_oil_price():
 
 
 def test_discount_burden_rejects_an_empty_series():
-    with pytest.raises(FeedstockError, match="vide"):
+    with pytest.raises(FeedstockError, match="empty"):
         discount_burden(pd.Series(dtype=float), lcfs_usd_t=75.0)
 
 
@@ -195,7 +195,7 @@ def test_structural_exit_counts_the_crossings():
 
 
 def test_structural_exit_rejects_a_non_positive_floor():
-    with pytest.raises(FeedstockError, match="plancher"):
+    with pytest.raises(FeedstockError, match="floor"):
         structural_exit(uco_floor_usd_lb=0.0, lcfs_usd_t=75.0)
 
 
@@ -210,7 +210,7 @@ def test_crush_from_soyoil_lb_arithmetic():
 
 
 def test_crush_from_soyoil_lb_rejects_a_non_positive_capacity():
-    with pytest.raises(FeedstockError, match="capacité"):
+    with pytest.raises(FeedstockError, match="capacity"):
         crush_from_soyoil_lb(1e9, installed_capacity_bu_day=0.0)
 
 

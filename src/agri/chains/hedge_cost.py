@@ -1,65 +1,64 @@
-"""T1-2 — Le coût complet de la couverture : cacao et café, cycle entier.
+"""T1-2 — The full cost of hedging: cocoa and coffee, full cycle.
 
-THÈSE
------
-La contrainte contraignante n'est pas le prix, c'est le **collatéral**. Une maison sans
-lignes de crédit suffisantes ne peut pas couvrir, donc elle réduit ses achats physiques —
-et c'est le mécanisme par lequel une crise financière de trading devient un problème de
-paiement au bord-champ. La procyclicité est l'insulte finale : le coût de la couverture
-explose précisément au moment où elle est le plus nécessaire.
+THESIS
+------
+The binding constraint is not price, it is **collateral**. A house without enough credit
+lines cannot hedge, so it cuts its physical buying — and that is the mechanism by which a
+trading-desk liquidity crisis becomes a payment problem at the farm gate. Procyclicality is
+the final insult: the cost of hedging spikes precisely when hedging is most needed.
 
     hedge_capacity(B) = max { Q : max_t cash_t(Q) <= B }
 
-`cash_t` étant linéaire en Q, la résolution est immédiate : `Q* = B / max_t cash_t(1 t)`.
-C'est la traduction quantitative de la citation Montesanto : leur contrainte n'était pas
-la vue de marché, c'était le bilan.
+Since `cash_t` is linear in Q, the solve is immediate: `Q* = B / max_t cash_t(1 t)`. That
+is the quantitative translation of the Montesanto quote: their constraint was not the
+market view, it was the balance sheet.
 
-ORIGINE DU DÉSACCORD (sourcé)
-------------------------------
-- Barry Callebaut, S1 2024/25 : exigences de marge initiale multipliées par neuf par
-  rapport aux niveaux normaux ; coût de la backwardation 60 % plus cher au pic.
-- Cacao 2024 : les longs physiques rechignent à vendre du futures dans un marché haussier
-  à cause de la taille des appels de marge, ce qui crée des problèmes de liquidité ; les
-  industriels se retrouvent dans la position qui était celle des agriculteurs.
-- Café, nov. 2025 : ~7 Md USD d'appels de marge sur un seul mois ; chez Montesanto Tavares,
-  le coût de maintien des couvertures passe de 74 % des créances clients en mai à 158 % en
-  novembre, rendant la structure de trésorerie court terme insoutenable selon leurs avocats.
+WHERE THE DISAGREEMENT COMES FROM (sourced)
+-----------------------------------------------
+- Barry Callebaut, H1 2024/25: initial margin requirements up ninefold against normal
+  levels; backwardation cost 60% dearer at the peak.
+- Cocoa 2024: physical longs are reluctant to sell futures in a rising market because of
+  the size of margin calls, which creates liquidity problems; manufacturers end up in the
+  position that used to belong to farmers.
+- Coffee, Nov 2025: roughly 7 bn USD of margin calls in a single month; at Montesanto
+  Tavares, the cost of carrying hedges goes from 74% of trade receivables in May to 158% in
+  November, making short-term treasury structure unsustainable according to their lawyers.
 
-CE QUI REND LE PROJET NEUF — LE RETOURNEMENT DE 2026
------------------------------------------------------
-Le cacao a chuté depuis le pic de décembre 2024. Mais les manufacturiers couvrent 12 à
-24 mois à l'avance : les coûts verrouillés au sommet traversent encore les budgets 2026.
-**La couverture a donc puni les deux camps, à quatorze mois d'intervalle** — à la hausse
-elle étranglait la trésorerie des vendeurs de futures, à la baisse elle immobilise les
-acheteurs à des niveaux morts. Aucun modèle statique de hedge ne capture ça.
+WHAT MAKES THE PROJECT NEW — THE 2026 REVERSAL
+--------------------------------------------------
+Cocoa has fallen from its December 2024 peak. But manufacturers hedge 12 to 24 months
+ahead: costs locked in at the top are still running through 2026 budgets. **Hedging has
+therefore punished both sides, fourteen months apart** — on the way up it strangled the
+liquidity of futures sellers, on the way down it locks buyers into dead levels. No static
+hedging model captures this.
 
-ATTENTION — LE SIGNE DU ROLL
------------------------------
-En **backwardation** (F_near > F_deferred), un **short** qui roll se retrouve court à un
-prix plus bas ; quand ce contrat converge vers le spot, il **perd**. Le long gagne. C'est
-l'inverse en contango.
+WARNING — THE SIGN OF THE ROLL
+--------------------------------
+In **backwardation** (F_near > F_deferred), a **short** who rolls ends up short at a lower
+price; when that contract converges to spot, it **loses**. The long gains. It is the
+reverse in contango.
 
-    roll_pnl = -s x Q x (F_deferred - F_near)      avec s = +1 short, -1 long
+    roll_pnl = -s x Q x (F_deferred - F_near)      with s = +1 short, -1 long
 
-Vérification de cohérence avec la source : Barry Callebaut était short futures contre du
-physique long, et rapporte la backwardation comme un **coût**. C'est bien ce que donne la
-formule. (La note d'annexe de la spec de cadrage énonce le signe inverse ; elle est
-contredite par sa propre identité et par la source, et n'a pas été suivie.)
+Consistency check against the source: Barry Callebaut was short futures against long
+physical, and reports backwardation as a **cost**. That is exactly what the formula gives.
+(The scoping spec's appendix note states the opposite sign; it is contradicted by its own
+identity and by the source, and was not followed.)
 
-HYPOTHÈSES
-----------
-H-H1  `side` = +1 pour un négociant long physique / short futures, -1 pour un
-      manufacturier acheteur long futures. Les deux sont simulés en miroir.
-H-H2  Le barème de marge initiale, quand il n'est pas disponible, est approché par
-      `IM = k x sigma_20j x F`. `k` est calibré sur des points publiés — l'ancrage
-      « x9 » de Barry Callebaut est utilisable. Le proxy est **annoncé comme tel** dans
-      le panneau de diagnostics, jamais présenté comme le barème.
-H-H3  Le cash mobilisé est `IM + pertes cumulées non compensées`. On ne modélise pas les
-      appels de marge intrajournaliers, ni les haircuts sur collatéral non-cash : les deux
-      **sous-estiment** le besoin de trésorerie. Biais contre la thèse, donc dans le bon sens.
-H-H4  Le coût de liquidité est `Q x spread` à chaque roll seulement. Ignorer le slippage
-      hors roll sous-estime encore le coût.
-H-H5  Base 360 pour le financement, convention de marché monétaire.
+ASSUMPTIONS
+-----------
+H-H1  `side` = +1 for a trader long physical / short futures, -1 for a manufacturer buyer
+      long futures. Both are simulated as mirror images.
+H-H2  The initial-margin schedule, when unavailable, is approximated by
+      `IM = k x sigma_20d x F`. `k` is calibrated against published data points — Barry
+      Callebaut's "x9" anchor is usable. The proxy is **flagged as such** in the
+      diagnostics panel, never presented as the real schedule.
+H-H3  Cash mobilised is `IM + uncompensated cumulative losses`. Intraday margin calls and
+      haircuts on non-cash collateral are not modelled: both **understate** the cash
+      needed. Bias runs against the thesis, hence in the right direction.
+H-H4  The liquidity cost is `Q x spread` on roll dates only. Ignoring slippage outside a
+      roll further understates the cost.
+H-H5  360-day basis for financing, money-market convention.
 """
 from __future__ import annotations
 
@@ -70,31 +69,31 @@ import pandas as pd
 
 from agri.data.snapshot import cached
 
-SHORT_HEDGE = 1      # négociant long physique, short futures
-LONG_HEDGE = -1      # manufacturier acheteur, long futures
+SHORT_HEDGE = 1      # trader long physical, short futures
+LONG_HEDGE = -1      # manufacturer buyer, long futures
 
-DEFAULT_LOT_SIZE_T = 10.0        # ICE cacao Londres : 10 t
-DEFAULT_IM_PROXY_K = 2.33        # ~99e centile d'une normale : ancrage usuel des chambres
+DEFAULT_LOT_SIZE_T = 10.0        # ICE London cocoa: 10 t
+DEFAULT_IM_PROXY_K = 2.33        # ~99th percentile of a normal: usual clearing-house anchor
 
 
 class HedgeCostError(ValueError):
-    """Simulation mal spécifiée."""
+    """Mis-specified simulation."""
 
 
 # ===========================================================================
-# Marge initiale
+# Initial margin
 # ===========================================================================
 def initial_margin_proxy(
     price: pd.Series, *, window: int = 20, k: float = DEFAULT_IM_PROXY_K
 ) -> pd.Series:
-    """Proxy de marge initiale `IM = k x sigma_20j x F`, en USD par tonne (H-H2).
+    """Initial-margin proxy `IM = k x sigma_20d x F`, in USD per tonne (H-H2).
 
-    À n'utiliser que si le barème historique de la chambre est indisponible, et à
-    afficher comme proxy. La volatilité est réalisée sur `window` jours, annualisée non :
-    la chambre couvre un horizon de un à deux jours, pas un an.
+    Use only when the clearing house's historical schedule is unavailable, and label it
+    as a proxy. Volatility is realised over `window` days, not annualised: the clearing
+    house covers a one- to two-day horizon, not a year.
     """
     if k <= 0:
-        raise HedgeCostError(f"k doit être > 0, reçu {k}")
+        raise HedgeCostError(f"k must be > 0, got {k}")
     returns = np.log(price).diff()
     vol = returns.rolling(window, min_periods=window).std()
     return (k * vol * price).rename("im_usd_t")
@@ -103,65 +102,66 @@ def initial_margin_proxy(
 def calibrate_im_k(
     price: pd.Series, observed_im_usd_t: pd.Series, *, window: int = 20
 ) -> float:
-    """Calibre `k` pour reproduire des niveaux de marge publiés (H-H2).
+    """Calibrates `k` to reproduce published margin levels (H-H2).
 
-    Moindres carrés sans constante sur `IM_observée = k x sigma x F` : on force le passage
-    par zéro, parce qu'une marge initiale nulle à volatilité nulle est la seule valeur
-    défendable.
+    Least squares with no constant on `observed_IM = k x sigma x F`: forcing the fit
+    through zero, because a zero initial margin at zero volatility is the only
+    defensible value.
     """
     returns = np.log(price).diff()
     vol = returns.rolling(window, min_periods=window).std()
     frame = pd.concat({"x": vol * price, "y": observed_im_usd_t}, axis=1).dropna()
     if len(frame) < 5:
-        raise HedgeCostError(f"pas assez de points de calibration : n={len(frame)}")
+        raise HedgeCostError(f"not enough calibration points: n={len(frame)}")
     x = frame["x"].to_numpy()
     y = frame["y"].to_numpy()
     denominator = float(x @ x)
     if denominator == 0:
-        raise HedgeCostError("volatilité identiquement nulle — calibration impossible")
+        raise HedgeCostError("volatility identically zero — calibration impossible")
     return float(x @ y) / denominator
 
 
 # ===========================================================================
-# Le roll — et son signe
+# The roll — and its sign
 # ===========================================================================
 def roll_pnl_usd_t(
     front_price: float, deferred_price: float, *, side: int
 ) -> float:
-    """P&L de roll par tonne.
+    """Roll P&L per tonne.
 
         roll_pnl = s x (F_deferred - F_near)      s = +1 short, -1 long
 
-    Dérivation, pour ne pas avoir à retenir le signe. Un short qui roll rachète le front
-    et revend le déféré : il se retrouve court **au prix du déféré**. Le contrat qu'il
-    porte converge ensuite vers le spot.
-        contango (F_def > F_near)      : il est court plus haut, le prix descend -> il gagne
-        backwardation (F_def < F_near) : il est court plus bas, le prix monte  -> il perd
-    Et l'inverse pour un long.
+    Derived, so the sign never has to be memorised. A short who rolls buys back the
+    front month and sells the deferred one: they end up short **at the deferred
+    price**. The contract they now carry then converges towards spot.
+        contango (F_def > F_near)      : short higher, price falls -> gain
+        backwardation (F_def < F_near) : short lower, price rises  -> loss
+    And the reverse for a long.
 
-    Contrôle contre la source : Barry Callebaut était short futures contre du physique
-    long, et rapporte la backwardation comme un **coût**. C'est bien ce que donne la
-    formule.
+    Checked against the source: Barry Callebaut was short futures against long
+    physical, and reports backwardation as a **cost**. That is exactly what the formula
+    gives.
     """
     if side not in (SHORT_HEDGE, LONG_HEDGE):
-        raise HedgeCostError(f"side doit valoir +1 (short) ou -1 (long), reçu {side}")
+        raise HedgeCostError(f"side must be +1 (short) or -1 (long), got {side}")
     return side * (deferred_price - front_price)
 
 
 def roll_cost_usd_t(front_price: float, deferred_price: float, *, side: int) -> float:
-    """Le même roll, exprimé en **coût** (positif = ça coûte).
+    """The same roll, expressed as a **cost** (positive = it costs money).
 
         roll_cost = s x (F_near - F_deferred)
 
-    C'est l'identité de la spec de cadrage. Deux fonctions explicites plutôt qu'un signe à
-    retenir : c'est l'erreur la plus fréquente du sujet, et elle est silencieuse — un roll
-    mal signé transforme un coût de couverture en revenu de couverture sans rien casser.
+    This is the scoping spec's identity. Two explicit functions rather than a sign to
+    remember: it is the most common mistake on this topic, and it is silent — a
+    mis-signed roll turns a hedging cost into hedging income without anything visibly
+    breaking.
     """
     return -roll_pnl_usd_t(front_price, deferred_price, side=side)
 
 
 # ===========================================================================
-# La simulation complète
+# The full simulation
 # ===========================================================================
 @dataclass(frozen=True)
 class HedgeParams:
@@ -174,11 +174,11 @@ class HedgeParams:
 
     def __post_init__(self) -> None:
         if self.side not in (SHORT_HEDGE, LONG_HEDGE):
-            raise HedgeCostError(f"side doit valoir +1 ou -1, reçu {self.side}")
+            raise HedgeCostError(f"side must be +1 or -1, got {self.side}")
         if self.book_size_t <= 0:
-            raise HedgeCostError("book_size_t doit être > 0")
+            raise HedgeCostError("book_size_t must be > 0")
         if self.lot_size_t <= 0:
-            raise HedgeCostError("lot_size_t doit être > 0")
+            raise HedgeCostError("lot_size_t must be > 0")
 
 
 def simulate_hedge(
@@ -190,33 +190,33 @@ def simulate_hedge(
     *,
     params: HedgeParams,
 ) -> pd.DataFrame:
-    """Simule une couverture roulante et décompose son coût complet.
+    """Simulates a rolling hedge and decomposes its full cost.
 
-    Colonnes renvoyées, toutes en USD sauf mention :
-        vm_usd              variation margin du jour (signe de P&L)
-        cum_loss_usd        pertes cumulées non compensées (>= 0)
-        im_usd              marge initiale exigée
-        cash_usd            trésorerie mobilisée = IM + pertes cumulées
-        financing_usd       coût de portage de cette trésorerie
-        roll_usd            coût de roll aux dates de roll (positif = coût)
-        liquidity_usd       spread payé à chaque roll
-        hedge_cost_cum_usd  somme cumulée financement + roll + liquidité
+    Columns returned, all in USD unless noted:
+        vm_usd              the day's variation margin (P&L sign)
+        cum_loss_usd        uncompensated cumulative losses (>= 0)
+        im_usd              initial margin required
+        cash_usd            cash mobilised = IM + cumulative losses
+        financing_usd       carrying cost of that cash
+        roll_usd            roll cost on roll dates (positive = cost)
+        liquidity_usd       spread paid on each roll
+        hedge_cost_cum_usd  cumulative sum of financing + roll + liquidity
 
-    Le coût cumulé n'inclut **pas** la variation margin elle-même : la VM est un
-    transfert, pas un coût. Ce qui coûte, c'est de la financer.
+    The cumulative cost does **not** include variation margin itself: VM is a transfer,
+    not a cost. What costs money is financing it.
     """
     aligned = pd.concat(
         {"front": front, "deferred": deferred, "im_usd_t": im_usd_t}, axis=1
     ).dropna()
     if aligned.empty:
-        raise HedgeCostError("aucune date commune aux prix et à la marge initiale")
+        raise HedgeCostError("no common date across prices and initial margin")
 
     if isinstance(rate, (int, float)):
         rate_series = pd.Series(float(rate), index=aligned.index)
     else:
         rate_series = pd.Series(rate).reindex(aligned.index).ffill()
         if rate_series.isna().any():
-            raise HedgeCostError("le taux de financement ne couvre pas toute la période")
+            raise HedgeCostError("the financing rate does not cover the full period")
 
     q = params.book_size_t
     side = params.side
@@ -226,19 +226,19 @@ def simulate_hedge(
     out["front"] = aligned["front"]
     out["deferred"] = aligned["deferred"]
 
-    # variation margin : -s x Q x dF. Un short perd quand le prix monte.
+    # variation margin: -s x Q x dF. A short loses when the price rises.
     out["vm_usd"] = -side * q * aligned["front"].diff().fillna(0.0)
     cumulative = out["vm_usd"].cumsum()
     out["cum_loss_usd"] = (-cumulative).clip(lower=0.0)
 
-    # marge initiale : en lots entiers, comme une chambre la calcule
+    # initial margin: in whole lots, the way a clearing house computes it
     n_lots = np.ceil(q / params.lot_size_t)
     out["im_usd"] = aligned["im_usd_t"] * params.lot_size_t * n_lots
 
     out["cash_usd"] = out["im_usd"] + out["cum_loss_usd"]
     out["financing_usd"] = out["cash_usd"] * all_in_rate / 360.0
 
-    # roll et liquidité, aux dates de roll seulement
+    # roll and liquidity, on roll dates only
     out["roll_usd"] = 0.0
     out["liquidity_usd"] = 0.0
     valid_rolls = pd.DatetimeIndex(roll_dates).intersection(out.index)
@@ -252,18 +252,18 @@ def simulate_hedge(
     out["hedge_cost_cum_usd"] = out["hedge_cost_usd"].cumsum()
     out["hedge_cost_cum_usd_t"] = out["hedge_cost_cum_usd"] / q
 
-    out.attrs["side"] = "short (négociant)" if side == SHORT_HEDGE else "long (industriel)"
+    out.attrs["side"] = "short (trader)" if side == SHORT_HEDGE else "long (manufacturer)"
     out.attrs["book_size_t"] = q
     out.attrs["n_rolls"] = len(valid_rolls)
     return out
 
 
 # ===========================================================================
-# Le cœur du projet — la capacité de couverture
+# The core of the project — hedging capacity
 # ===========================================================================
 @dataclass(frozen=True)
 class HedgeCapacity:
-    """Combien de tonnes une maison peut couvrir avec ses lignes, dans le temps."""
+    """How many tonnes a house can hedge with its lines, over time."""
 
     capacity_t: pd.Series
     credit_line_usd: float
@@ -277,16 +277,16 @@ class HedgeCapacity:
 
     @property
     def is_binding(self) -> bool:
-        """La ligne de crédit contraint-elle le book à un moment de l'échantillon ?"""
+        """Does the credit line constrain the book at any point in the sample?"""
         return self.min_capacity_t < self.book_size_t
 
     def contraction_over(self, months: int = 4) -> float:
-        """Contraction de la capacité sur les `months` mois qui précèdent le pic de cash.
+        """Contraction of capacity over the `months` before the cash peak.
 
-        C'est la mesure de la spec — « tombée de Y % en quatre mois, au pic exact de la
-        valeur du physique ». Le maximum absolu de la série est un mauvais point de
-        départ : il tombe dans une période calme où la marge initiale est minuscule, ce
-        qui produit mécaniquement une contraction proche de 100 % et ne dit rien.
+        This is the spec's measure — "down Y% in four months, at the exact peak of
+        physical value". The series' absolute maximum is a bad starting point: it
+        falls in a calm period where initial margin is tiny, which mechanically
+        produces a contraction near 100% and says nothing.
         """
         window_start = self.peak_cash_date - pd.DateOffset(months=months)
         window = self.capacity_t.loc[window_start : self.peak_cash_date]
@@ -297,39 +297,39 @@ class HedgeCapacity:
     @property
     def headline(self) -> str:
         verdict = (
-            f"la ligne devient contraignante : la capacité tombe à "
-            f"{self.min_capacity_t:,.0f} t contre un book de {self.book_size_t:,.0f} t"
+            f"the line becomes binding: capacity falls to "
+            f"{self.min_capacity_t:,.0f} t against a book of {self.book_size_t:,.0f} t"
             if self.is_binding
-            else "la ligne reste au-dessus du book sur tout l'échantillon"
+            else "the line stays above the book across the whole sample"
         )
         return (
-            f"Au pic du {self.peak_cash_date:%d/%m/%Y}, le book mobilisait "
-            f"{self.peak_cash_usd / 1e6:,.0f} M USD de trésorerie. Avec "
-            f"{self.credit_line_usd / 1e6:,.0f} M USD de lignes, {verdict} — la capacité "
-            f"a reculé de {self.contraction_over(4):.0%} sur les quatre mois qui précèdent "
-            "ce pic, au moment exact où le physique valait le plus cher."
+            f"At the peak on {self.peak_cash_date:%d %b %Y}, the book mobilised "
+            f"{self.peak_cash_usd / 1e6:,.0f} M USD of cash. With "
+            f"{self.credit_line_usd / 1e6:,.0f} M USD of lines, {verdict} — capacity "
+            f"fell {self.contraction_over(4):.0%} over the four months before this "
+            "peak, at the exact moment the physical was worth the most."
         )
 
 
 def hedge_capacity(
     simulation: pd.DataFrame, *, credit_line_usd: float, book_size_t: float
 ) -> HedgeCapacity:
-    """`Q*(t) = B / cash_t(1 tonne)` — le graphe qui fait le mail.
+    """`Q*(t) = B / cash_t(1 tonne)` — the chart that makes the email.
 
-    Le book maximal couvrable se contracte exactement au moment où le physique vaut le
-    plus cher. C'est la procyclicité, rendue visible en tonnes plutôt qu'en pourcentage
-    de marge : un desk lit des tonnes.
+    The maximum hedgeable book contracts exactly when the physical is worth the most.
+    That is procyclicality, made visible in tonnes rather than in percent of margin: a
+    desk reads tonnes.
     """
     if credit_line_usd <= 0:
-        raise HedgeCostError("la ligne de crédit doit être > 0")
+        raise HedgeCostError("the credit line must be > 0")
     if book_size_t <= 0:
-        raise HedgeCostError("le book doit être > 0")
+        raise HedgeCostError("the book must be > 0")
 
     cash_per_tonne = simulation["cash_usd"] / book_size_t
     if (cash_per_tonne <= 0).any():
         raise HedgeCostError(
-            "trésorerie mobilisée nulle ou négative sur certaines dates — "
-            "vérifier la marge initiale avant d'en déduire une capacité"
+            "cash mobilised is zero or negative on some dates — "
+            "check initial margin before deriving a capacity from it"
         )
     capacity = (credit_line_usd / cash_per_tonne).rename("capacity_t")
     peak_date = simulation["cash_usd"].idxmax()
@@ -345,14 +345,14 @@ def hedge_capacity(
 def margin_breakeven_im_usd_t(
     *, credit_line_usd: float, book_size_t: float, cumulative_loss_usd: float = 0.0
 ) -> float:
-    """`IM*` : la marge initiale à laquelle la capacité tombe sous le book physique.
+    """`IM*`: the initial margin at which capacity falls below the physical book.
 
-    C'est le second point de bascule de la page, et le meilleur des deux : au-delà de ce
-    niveau, la maison **doit** réduire ses achats physiques. C'est le mécanisme de
-    transmission vers le producteur.
+    This is the page's second tipping point, and the better of the two: beyond this
+    level the house **must** cut its physical buying. This is the transmission
+    mechanism into a stop in farm-gate buying.
     """
     if book_size_t <= 0:
-        raise HedgeCostError("le book doit être > 0")
+        raise HedgeCostError("the book must be > 0")
     available = credit_line_usd - cumulative_loss_usd
     if available <= 0:
         return 0.0
@@ -360,7 +360,7 @@ def margin_breakeven_im_usd_t(
 
 
 # ===========================================================================
-# S6 — les deux côtés en miroir
+# S6 — the two sides, mirrored
 # ===========================================================================
 def compare_sides(
     front: pd.Series,
@@ -372,15 +372,15 @@ def compare_sides(
     params: HedgeParams,
     windows: dict[str, tuple[str, str]],
 ) -> pd.DataFrame:
-    """Coût par tonne des deux côtés, sur des fenêtres nommées.
+    """Cost per tonne on both sides, over named windows.
 
-    Le graphe du mail : coût par tonne du short hedge sur la hausse, coût par tonne du
-    long hedge sur la baisse. Même graphe, deux barres, quatorze mois d'écart — et la
-    démonstration que la couverture a puni les deux camps.
+    The email chart: cost per tonne of the short hedge on the way up, cost per tonne of
+    the long hedge on the way down. Same chart, two bars, fourteen months apart — the
+    demonstration that hedging punished both camps.
     """
     rows = []
     for label, (start, end) in windows.items():
-        for side, side_label in ((SHORT_HEDGE, "short (négociant)"), (LONG_HEDGE, "long (industriel)")):
+        for side, side_label in ((SHORT_HEDGE, "short (trader)"), (LONG_HEDGE, "long (manufacturer)")):
             local = HedgeParams(
                 side=side,
                 book_size_t=params.book_size_t,
@@ -426,19 +426,19 @@ def load_real_hedge_frame(
     start: str = "2018-04-02",
     params: HedgeParams | None = None,
 ) -> pd.DataFrame:
-    """Simulation de couverture sur prix ICE **réels** (export Bloomberg de l'utilisateur).
+    """Hedge simulation on **real** ICE prices (the user's Bloomberg export).
 
-    LIMITE DE DONNÉE, DOCUMENTÉE PLUTÔT QUE CONTOURNÉE : l'export ne contient que le
-    contrat front-month générique (M1) — aucune échéance différée. Le coût de roll ne
-    peut donc pas être calculé sur donnée réelle : `deferred` est posé égal à `front`,
-    ce qui annule mécaniquement le terme (`roll_cost_usd_t(x, x, ...) = 0`) plutôt que
-    d'inventer une structure par terme. Financement (SOFR réel) et marge initiale (proxy
-    calibré sur la vraie volatilité réalisée) restent, eux, entièrement réels — ce sont
-    les deux composantes que Barry Callebaut cite explicitement (marge x9, coût de
-    portage), donc la thèse reste testable même sans le roll.
+    DATA LIMIT, DOCUMENTED RATHER THAN WORKED AROUND: the export only contains the
+    generic front-month contract (M1) — no deferred maturity. Roll cost therefore
+    cannot be computed on real data: `deferred` is set equal to `front`, which
+    mechanically zeroes the term (`roll_cost_usd_t(x, x, ...) = 0`) rather than
+    inventing a term structure. Financing (real SOFR) and initial margin (a proxy
+    calibrated on real realised volatility) remain, however, entirely real — these are
+    the two components Barry Callebaut cites explicitly (x9 margin, carrying cost), so
+    the thesis stays testable even without the roll.
 
-    `start` est calé sur le début de la couverture SOFR (2018-04-02) : au-delà, le taux
-    de financement réel ne couvre pas la période et `simulate_hedge` lèverait.
+    `start` is pinned to the beginning of SOFR coverage (2018-04-02): before that, the
+    real financing rate does not cover the period and `simulate_hedge` would raise.
     """
     from agri.data.bloomberg_loader import load as load_bloomberg
 
@@ -446,7 +446,7 @@ def load_real_hedge_frame(
     front_full = load_bloomberg(key)
     front = front_full.loc[start:]
     if front.empty:
-        raise HedgeCostError(f"aucune donnée pour {commodity!r} après {start}")
+        raise HedgeCostError(f"no data for {commodity!r} after {start}")
 
     im = initial_margin_proxy(front_full).loc[start:]
     rate = load_bloomberg("sofr")
@@ -459,14 +459,14 @@ def load_real_hedge_frame(
 
 
 # ===========================================================================
-# LE LIVRABLE — le prix auquel le bilan force la sortie
+# THE DELIVERABLE — the price at which the balance sheet forces an exit
 # ===========================================================================
 def implied_margin_rate(simulation: pd.DataFrame, *, book_size_t: float) -> float:
-    """Marge initiale exprimée en fraction du prix, mesurée sur la simulation.
+    """Initial margin expressed as a fraction of price, measured on the simulation.
 
-    On la mesure plutôt que de la poser : le proxy `k x sigma x F` la rend
-    proportionnelle au prix par construction, mais le coefficient effectif dépend de la
-    volatilité réalisée de la période et n'a pas de raison d'être celui d'un barème.
+    Measured rather than assumed: the `k x sigma x F` proxy makes it proportional to
+    price by construction, but the effective coefficient depends on the period's
+    realised volatility and has no reason to match a real schedule's.
     """
     im_per_tonne = simulation["im_usd"] / book_size_t
     return float((im_per_tonne / simulation["front"]).median())
@@ -474,21 +474,21 @@ def implied_margin_rate(simulation: pd.DataFrame, *, book_size_t: float) -> floa
 
 @dataclass(frozen=True)
 class ForcedExit:
-    """Le prix auquel la ligne de crédit est saturée, pour une couverture donnée.
+    """The price at which the credit line saturates, for a given hedge.
 
-    DÉRIVATION (forme fermée, short hedge ouvert à `inception_price`) :
+    DERIVATION (closed form, short hedge opened at `inception_price`):
 
-        perte mark-to-market  = Q x (P - P0)          un short perd quand le prix monte
-        marge initiale        = Q x im_rate x P       proportionnelle au prix
-        trésorerie mobilisée  = Q x (im_rate x P + P - P0)
+        mark-to-market loss   = Q x (P - P0)          a short loses when price rises
+        initial margin        = Q x im_rate x P       proportional to price
+        cash mobilised        = Q x (im_rate x P + P - P0)
 
-        saturation quand      Q x (im_rate x P + P - P0) = B
-        d'où                  P* = (B/Q + P0) / (1 + im_rate)
+        saturates when         Q x (im_rate x P + P - P0) = B
+        so                     P* = (B/Q + P0) / (1 + im_rate)
 
-    Au-delà de `P*`, la maison ne peut plus financer sa couverture. Elle ne peut donc
-    plus couvrir de physique supplémentaire — et comme personne n'achète du physique non
-    couvert à ce niveau de volatilité, elle **cesse d'acheter**. C'est le point de
-    bascule qui relie une crise de trésorerie de trading à un arrêt des achats au bord-champ.
+    Beyond `P*`, the house can no longer finance its hedge. It can therefore no longer
+    hedge additional physical — and since nobody buys unhedged physical at this level
+    of volatility, it **stops buying**. This is the tipping point that links a trading
+    liquidity crisis to a stop in farm-gate buying.
     """
 
     inception_date: pd.Timestamp
@@ -502,24 +502,25 @@ class ForcedExit:
 
     @property
     def headroom_pct(self) -> float:
-        """Combien le prix peut monter, en %, avant que la ligne ne soit saturée."""
+        """How far the price can rise, in %, before the line saturates."""
         return self.exit_price / self.inception_price - 1.0
 
     @property
     def headline(self) -> str:
         if self.crossed_on is None:
             return (
-                f"Couverture ouverte le {self.inception_date:%d/%m/%Y} à "
-                f"{self.inception_price:,.0f} : avec {self.credit_line_usd/1e6:,.0f} M USD "
-                f"de lignes sur {self.book_size_t/1000:,.0f} kt, la sortie forcée est à "
-                f"{self.exit_price:,.0f} USD/t (+{self.headroom_pct:.0%}). Le marché n'y "
-                "est jamais allé sur l'échantillon."
+                f"Hedge opened on {self.inception_date:%d %b %Y} at "
+                f"{self.inception_price:,.0f}: with {self.credit_line_usd/1e6:,.0f} M "
+                f"USD of lines on {self.book_size_t/1000:,.0f} kt, forced exit sits at "
+                f"{self.exit_price:,.0f} USD/t (+{self.headroom_pct:.0%}). The market "
+                "never got there over the sample."
             )
         return (
-            f"Couverture ouverte le {self.inception_date:%d/%m/%Y} à "
-            f"{self.inception_price:,.0f} : la ligne sature à {self.exit_price:,.0f} USD/t "
-            f"(+{self.headroom_pct:.0%}), franchi le {self.crossed_on:%d/%m/%Y} — soit "
-            f"{self.days_of_protection} jours de protection."
+            f"Hedge opened on {self.inception_date:%d %b %Y} at "
+            f"{self.inception_price:,.0f}: the line saturates at "
+            f"{self.exit_price:,.0f} USD/t (+{self.headroom_pct:.0%}), crossed on "
+            f"{self.crossed_on:%d %b %Y} — {self.days_of_protection} days of "
+            "protection."
         )
 
 
@@ -531,21 +532,21 @@ def forced_exit_price(
     credit_line_usd: float,
     im_rate: float,
 ) -> ForcedExit:
-    """`P*` en forme fermée, et la date à laquelle le marché l'a franchi.
+    """`P*` in closed form, and the date the market crossed it.
 
-    La forme fermée est préférée à un solveur parce qu'elle montre **de quoi le seuil
-    dépend** : linéairement de la ligne rapportée à la taille du book, du prix d'entrée,
-    et à peine du taux de marge. Un desk peut refaire le calcul de tête.
+    The closed form is preferred to a solver because it shows **what the threshold
+    depends on**: linearly on the line relative to book size, on the entry price, and
+    barely on the margin rate. A desk can redo this calculation in their head.
     """
     if book_size_t <= 0 or credit_line_usd <= 0:
-        raise HedgeCostError("book et ligne de crédit doivent être > 0")
+        raise HedgeCostError("book and credit line must be > 0")
     if im_rate < 0:
-        raise HedgeCostError("le taux de marge ne peut pas être négatif")
+        raise HedgeCostError("the margin rate cannot be negative")
 
     clean = pd.Series(price).dropna().astype(float)
     forward = clean.loc[pd.Timestamp(inception) :]
     if forward.empty:
-        raise HedgeCostError(f"aucun prix après {inception}")
+        raise HedgeCostError(f"no price after {inception}")
 
     inception_date = forward.index[0]
     inception_price = float(forward.iloc[0])
@@ -575,13 +576,12 @@ def forced_exit_schedule(
     credit_line_usd: float,
     im_rate: float,
 ) -> pd.DataFrame:
-    """Le même seuil pour plusieurs dates d'ouverture — le tableau qui porte la thèse.
+    """The same threshold for several opening dates — the table that carries the thesis.
 
-    Ce qu'il montre sur le cacao 2024 : les dates de sortie forcée se resserrent sur
-    quelques semaines quel que soit le moment où la couverture a été ouverte. Le
-    mouvement de prix a été assez violent pour écraser la dispersion des points d'entrée
-    — ce qui explique que tant de maisons aient heurté la contrainte en même temps,
-    plutôt que chacune à son tour.
+    What it shows on 2024 cocoa: forced-exit dates bunch into a few weeks regardless of
+    when the hedge was opened. The price move was violent enough to crush the spread of
+    entry points — which is why so many houses hit the constraint at the same time,
+    rather than each in their own turn.
     """
     rows = []
     for inception in inceptions:
@@ -594,12 +594,12 @@ def forced_exit_schedule(
             continue
         rows.append(
             {
-                "ouverture": result.inception_date,
-                "prix d'entrée": result.inception_price,
-                "sortie forcée": result.exit_price,
-                "marge de manœuvre": result.headroom_pct,
-                "franchi le": result.crossed_on,
-                "jours de protection": result.days_of_protection,
+                "opened": result.inception_date,
+                "entry price": result.inception_price,
+                "forced exit": result.exit_price,
+                "headroom": result.headroom_pct,
+                "crossed on": result.crossed_on,
+                "days of protection": result.days_of_protection,
             }
         )
     return pd.DataFrame(rows)
@@ -607,13 +607,13 @@ def forced_exit_schedule(
 
 @dataclass(frozen=True)
 class HedgingIntensity:
-    """Trésorerie mobilisée rapportée à la valeur du book physique qu'elle protège.
+    """Cash mobilised relative to the value of the physical book it protects.
 
-    C'est la grandeur que les avocats de Montesanto Tavares ont chiffrée : le coût de
-    maintien des couvertures est passé de **74 % des créances clients en mai 2025 à
-    158 % en novembre**, et ils l'ont qualifiée d'insoutenable. La même mesure, calculée
-    ici sur des prix ICE réels, dit à quel moment une structure de trésorerie cesse de
-    tenir — sans avoir besoin du bilan de qui que ce soit.
+    This is the quantity Montesanto Tavares's lawyers put a number on: the cost of
+    carrying hedges went from **74% of trade receivables in May 2025 to 158% in
+    November**, and they called it unsustainable. The same measure, computed here on
+    real ICE prices, tells you the moment a treasury structure stops holding — without
+    needing anyone's balance sheet.
     """
 
     ratio: pd.Series
@@ -625,19 +625,18 @@ class HedgingIntensity:
     @property
     def headline(self) -> str:
         return (
-            f"La trésorerie immobilisée pour tenir la couverture passe de "
-            f"{self.calm_median:.0%} de la valeur du book en régime calme à "
-            f"{self.peak_ratio:.0%} au pic du {self.peak_date:%d/%m/%Y}. À ce niveau, "
-            "financer la couverture coûte presque autant que financer le stock qu'elle "
-            "protège — c'est la mesure que les avocats de Montesanto Tavares ont "
-            "qualifiée d'insoutenable à 158 %."
+            f"Cash tied up to hold the hedge goes from {self.calm_median:.0%} of book "
+            f"value in a calm regime to {self.peak_ratio:.0%} at the peak on "
+            f"{self.peak_date:%d %b %Y}. At that level, financing the hedge costs "
+            "almost as much as financing the stock it protects — this is the measure "
+            "Montesanto Tavares's lawyers called unsustainable at 158%."
         )
 
 
 def hedging_intensity(
     simulation: pd.DataFrame, *, book_size_t: float, calm_window: tuple[str, str] | None = None
 ) -> HedgingIntensity:
-    """Ratio trésorerie mobilisée / valeur du book physique, dans le temps."""
+    """Ratio of cash mobilised to physical book value, over time."""
     book_value = book_size_t * simulation["front"]
     ratio = (simulation["cash_usd"] / book_value).rename("hedging_intensity")
 
@@ -656,14 +655,14 @@ def hedging_intensity(
 
 
 def procyclicality(simulation: pd.DataFrame) -> dict[str, float]:
-    """Corrélation entre variations de marge initiale et variations de prix.
+    """Correlation between changes in initial margin and changes in price.
 
-    Sur données différenciées, pas en niveau : deux séries en niveau non stationnaires
-    produisent une corrélation flatteuse qui ne veut rien dire.
+    On differenced data, not levels: two non-stationary level series produce a
+    flattering correlation that means nothing.
     """
     changes = simulation[["im_usd", "front"]].diff().dropna()
     if len(changes) < 3:
-        raise HedgeCostError("pas assez d'observations")
+        raise HedgeCostError("not enough observations")
     return {
         "corr_delta_im_delta_price": float(changes["im_usd"].corr(changes["front"])),
         "n_obs": len(changes),
@@ -671,9 +670,9 @@ def procyclicality(simulation: pd.DataFrame) -> dict[str, float]:
 
 
 IM_PROXY_WARNING = (
-    "La marge initiale affichée est un proxy `k x sigma_20j x F`, pas le barème de la "
-    "chambre (H-H2). Les sauts de barème réels ne sont pas datés ici : vérifier les "
-    "notices ICE avant de lire un pic comme de la volatilité."
+    "The initial margin shown is a `k x sigma_20d x F` proxy, not the clearing house's "
+    "real schedule (H-H2). Real schedule step changes are not dated here: check ICE "
+    "notices before reading a spike as volatility."
 )
 
 __all__ = [

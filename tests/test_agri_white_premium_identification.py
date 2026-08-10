@@ -96,7 +96,7 @@ def test_implied_pol_sits_just_above_the_plausible_band():
     implied = implied_pol_adjust(start=START)
     assert not implied.within_plausible
     assert POL_PLAUSIBLE_HI < implied.pol_star < POL_PLAUSIBLE_HI + 0.02
-    assert "ne permet pas de trancher" in implied.headline
+    assert "cannot settle it" in implied.headline
 
 
 def test_implied_pol_stays_inside_the_guarded_range():
@@ -111,7 +111,7 @@ def test_a_range_with_no_root_raises_rather_than_returning_a_bound():
     pol* — et le moteur le dit au lieu de renvoyer une borne comme si c'était une solution.
     Au-delà de 1,10 la richness médiane est négative partout : aucun ajustement de
     polarisation ne l'annule dans cette fenêtre."""
-    with pytest.raises(WhitePremiumError, match="aucun pol_adjust"):
+    with pytest.raises(WhitePremiumError, match="no pol_adjust"):
         implied_pol_adjust(start=START, search_lo=1.10, search_hi=1.1999)
 
 
@@ -136,12 +136,12 @@ def test_the_market_pays_a_plausible_order_of_magnitude_for_refining():
 # Garde-fous
 # ===========================================================================
 def test_identification_check_rejects_a_reference_outside_the_bounds():
-    with pytest.raises(WhitePremiumError, match="strictement entre"):
+    with pytest.raises(WhitePremiumError, match="strictly between"):
         identification_check(start=START, pol_ref=1.15)
 
 
 def test_identification_check_rejects_a_window_too_short_to_compare_years():
-    with pytest.raises(WhitePremiumError, match="année"):
+    with pytest.raises(WhitePremiumError, match="year"):
         identification_check(start="2025-06-01")
 
 

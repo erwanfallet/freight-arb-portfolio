@@ -80,7 +80,7 @@ PROJECTS: list[Project] = [
             "freight term alone and says so explicitly."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/4_T1_1_Fret_CF.py",
+        dashboard_page="pages/4_T1_1_Freight_CF.py",
         chain_module="agri.chains.freight_cf",
         n_tests=74,
         data_mode=DATA_HYBRID,
@@ -112,7 +112,7 @@ PROJECTS: list[Project] = [
             "(deferred = front) and shown as a limitation rather than estimated."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/5_T1_2_Cout_Hedge.py",
+        dashboard_page="pages/5_T1_2_Hedge_Cost.py",
         chain_module="agri.chains.hedge_cost",
         n_tests=43,
         data_mode=DATA_HYBRID,
@@ -228,7 +228,7 @@ PROJECTS: list[Project] = [
             "page's sliders, and the inversion is what makes that acceptable."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/8_T2_5_Usine_Option.py",
+        dashboard_page="pages/8_T2_5_Plant_Option.py",
         chain_module="agri.chains.plant_option",
         n_tests=36,
         data_mode=DATA_HYBRID,
@@ -269,7 +269,7 @@ PROJECTS: list[Project] = [
             "the highest-value missing series in the portfolio."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/9_T2_6_Substitution_Huiles.py",
+        dashboard_page="pages/9_T2_6_Oil_Substitution.py",
         chain_module="agri.chains.oil_substitution",
         data_mode=DATA_REAL,
         n_tests=32,
@@ -354,7 +354,7 @@ PROJECTS: list[Project] = [
             "rather than simulated. Everything else runs on real NY11 + USDBRL."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/11_T3_2_Sucre_Mix.py",
+        dashboard_page="pages/11_T3_2_Sugar_Mix.py",
         chain_module="agri.chains.sugar_mix",
         data_mode=DATA_HYBRID,
         n_tests=22,
@@ -396,7 +396,7 @@ PROJECTS: list[Project] = [
             "entering it."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/12_T3_4_Chine_Soja.py",
+        dashboard_page="pages/12_T3_4_China_Soy.py",
         chain_module="agri.chains.china_soy",
         data_mode=DATA_REAL,
         n_tests=22,

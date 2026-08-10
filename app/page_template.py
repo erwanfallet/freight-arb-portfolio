@@ -1,26 +1,25 @@
-"""Structure de page, calquee sur les quatre pages metaux (Cu / Al / Zn / Li).
+"""Page structure, modelled on the four metals pages (Cu / Al / Zn / Li).
 
-Ce qui fait tenir ces pages n'est pas la mise en forme, c'est l'ordre dans lequel
-l'information arrive :
+What makes these pages hold together is not the formatting, it is the order in which
+information arrives:
 
-    1. Un sous-titre qui dit exactement ce que la page calcule, en une ligne.
-    2. Une BOITE DE PERIMETRE **avant tout graphe** : le piege d'unite qui gouverne la
-       page, ce qui est hors perimetre et pourquoi, ce qui est un proxy plutot qu'une
-       vraie serie, la frequence reelle des donnees, et les avertissements de conversion.
-       C'est ce qui empeche un lecteur de mal lire les chiffres qui suivent.
-    3. Un bandeau de KPI : l'etat du monde aujourd'hui, en cinq nombres.
-    4. Des sections numerotees S2..Sn. Chacune : une prose DENSE et causale (pas des
-       puces), la formule en police code, un graphe a regimes ombres, et quand il y a
-       lieu un nombre de tete.
-    5. Les caveats la ou ils s'appliquent, specifiques, jamais en bloc generique a la fin.
+    1. A one-line subtitle that says exactly what the page computes.
+    2. A SCOPE BOX **before any chart**: the unit trap that governs the page, what is
+       out of scope and why, what is a proxy rather than a real series, the actual
+       data frequency, and the conversion warnings. This is what stops a reader from
+       misreading the numbers that follow.
+    3. A KPI banner: the state of the world today, in five numbers.
+    4. Numbered sections S2..Sn. Each: DENSE, causal prose (not bullets), the formula
+       in a code font, a shaded-regime chart, and a headline number where relevant.
+    5. Caveats where they apply, specific, never as a generic block at the end.
 
-Deux regles de fond, reprises telles quelles :
+Two standing rules, carried through unchanged:
 
-  - **Un print impossible est un diagnostic de donnee, pas un signal de marche.** Un fret
-    negatif, une marge qui saute d'un facteur cent : on nomme la cause, on borne la
-    fenetre, on montre ce que devient la serie une fois la fenetre exclue.
-  - **Le parametre qui porte le signe est expose avec son breakeven.** Pas « voici une
-    sensibilite » mais « il faut 376 $/t de credit acide pour equilibrer ».
+  - **An impossible print is a data diagnosis, not a market signal.** Negative
+    freight, a margin that jumps by a factor of a hundred: name the cause, bound the
+    window, show what the series becomes once the window is excluded.
+  - **The parameter that carries the sign is exposed with its breakeven.** Not "here
+    is a sensitivity" but "it takes 376 USD/t of acid credit to break even".
 """
 from __future__ import annotations
 
@@ -32,23 +31,23 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Couleurs de regime, communes a toutes les pages : vert = le trade est ouvert /
-# l'economie fonctionne, saumon = ferme / sous l'eau.
+# Regime colours, shared across every page: green = the trade is open / the economics
+# work, salmon = shut / underwater.
 OPEN_COLOR = "rgba(46, 160, 67, 0.18)"
 SHUT_COLOR = "rgba(248, 113, 113, 0.20)"
 ALT_COLOR = "rgba(147, 112, 219, 0.18)"
 
 
 # ===========================================================================
-# 1-2. En-tete et boite de perimetre
+# 1-2. Header and scope box
 # ===========================================================================
 @dataclass
 class Scope:
-    """La boite qui passe AVANT le premier graphe.
+    """The box that runs BEFORE the first chart.
 
-    Chaque champ existe parce qu'il manquait quelque part et que son absence rendait un
-    chiffre mal lisible. `unit_trap` est le seul obligatoire : une page sans piege
-    d'unite explicite est une page dont le lecteur ne peut pas verifier les unites.
+    Every field exists because something was missing somewhere and its absence made a
+    number hard to read correctly. `unit_trap` is the only required one: a page with no
+    explicit unit trap is a page whose reader cannot verify the units.
     """
 
     unit_trap: str
@@ -60,90 +59,54 @@ class Scope:
 
 
 def page_header(*, code: str, title: str, subtitle: str, scope: Scope) -> None:
-    """Titre, sous-titre d'une ligne, puis la boite de perimetre — dans cet ordre."""
+    """Title, one-line subtitle, then the scope box — in that order."""
     st.title(f"{code} — {title}")
     st.markdown(f"**{_escape_dollars(subtitle)}**")
 
     with st.container(border=True):
-        st.markdown(f"**Piège d'unité** — {_escape_dollars(scope.unit_trap)}")
+        st.markdown(f"**Unit trap** — {_escape_dollars(scope.unit_trap)}")
         if scope.conversion:
             st.code(scope.conversion, language="text")
         if scope.proxies:
-            st.markdown("**Proxy, pas une vraie série** — " + " · ".join(_prose(p) for p in scope.proxies))
+            st.markdown("**Proxy, not a real series** — " + " · ".join(_prose(p) for p in scope.proxies))
         if scope.out_of_scope:
-            st.markdown("**Hors périmètre** — " + " · ".join(_prose(o) for o in scope.out_of_scope))
+            st.markdown("**Out of scope** — " + " · ".join(_prose(o) for o in scope.out_of_scope))
         if scope.frequency_note:
-            st.markdown(f"**Fréquence** — {_prose(scope.frequency_note)}")
+            st.markdown(f"**Frequency** — {_prose(scope.frequency_note)}")
         if scope.data_warnings:
             st.warning(
-                f"⚠ {len(scope.data_warnings)} avertissement(s) de données\n\n"
+                f"⚠ {len(scope.data_warnings)} data warning(s)\n\n"
                 + "\n\n".join(f"- {_prose(w)}" for w in scope.data_warnings)
             )
 
 
 def kpi_banner(metrics: dict[str, str]) -> None:
-    """L'etat du monde aujourd'hui, en cinq nombres maximum. Au-dela on ne lit plus."""
+    """The state of the world today, in five numbers at most. Past that, nobody reads."""
     columns = st.columns(min(len(metrics), 6))
     for column, (label, value) in zip(columns, metrics.items()):
-        column.metric(label, _localise_numbers(str(value)))
+        column.metric(label, str(value))
 
 
-_INLINE_CODE = re.compile(r"`[^`]*`")
 _UNESCAPED_DOLLAR = re.compile(r"(?<!\\)\$")
-_DECIMAL_POINT = re.compile(r"(?<=\d)\.(?=\d)")
-_THOUSANDS_COMMA = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
-THIN_NBSP = " "
-
-
-def _localise_numbers(text: str) -> str:
-    """Convertit les nombres de la convention anglo-saxonne vers la francaise.
-
-    Python formate en `1,843.5`. Sur une page redigee en francais, un lecteur lit « 1,843 »
-    comme mille huit cent quarante-trois **virgule** cinq : un facteur mille d'erreur sur un
-    prix. Ce n'est pas une question de style, c'est une erreur de lecture — et sur un
-    portefeuille dont tout l'argument tient a des unites correctement traitees, la laisser
-    passer serait cocasse.
-
-    Applique a la prose seulement, jamais aux blocs `st.code` : les formules et les
-    identites restent en convention code, ou le point decimal est la norme. Les portions
-    entre accents graves sont protegees pour la meme raison — `estimate_half_life(x, 0.7)`
-    est du code, pas du texte.
-    """
-    protected: list[str] = []
-
-    def _stash(match: re.Match[str]) -> str:
-        protected.append(match.group(0))
-        return f"\x00{len(protected) - 1}\x00"
-
-    text = _INLINE_CODE.sub(_stash, text)
-    text = _THOUSANDS_COMMA.sub(THIN_NBSP, text)
-    text = _DECIMAL_POINT.sub(",", text)
-    for index, original in enumerate(protected):
-        text = text.replace(f"\x00{index}\x00", original)
-    return text
 
 
 def _prose(text: str) -> str:
-    r"""Le traitement applique a tout texte de prose de la page.
+    r"""The one correction Streamlit forces on every piece of page prose: `$` escaping.
 
-    Deux corrections que Streamlit et Python imposent, reunies en un seul endroit pour
-    qu'aucune page n'ait a y penser :
+    Streamlit reads `$...$` as a math formula. A sentence with two amounts written with
+    a literal dollar sign — "55 USD/t" and "21,000 USD/day" — would have everything
+    between the two signs swallowed and rendered in math italics. On pages where every
+    number carries a currency unit, that is systematic.
 
-    1. **Les `$` sont echappes.** Streamlit interprete `$...$` comme une formule
-       mathematique : une phrase contenant deux montants — « 55 $/t » et « 21 000 $/jour » —
-       voit tout ce qui est entre les deux dollars avale et rendu en italique. Sur des pages
-       ou chaque chiffre porte une unite monetaire, c'est systematique.
-    2. **Les nombres sont localises**, cf. `_localise_numbers`.
-
-    Le traitement est **idempotent** : l'appliquer deux fois donne le meme resultat. La
-    version naive (`.replace("$", r"\$")`) ne l'etait pas — elle produisait `\\$` au second
-    passage, donc un antislash visible dans la page. Ce n'est pas theorique : il suffit
-    qu'une page compose deux helpers du template pour declencher le cas.
+    The substitution is **idempotent**: applying it twice gives the same result as once.
+    A naive `.replace("$", r"\$")` is not — it produces `\\$` on the second pass, a
+    visible backslash on the page. Not theoretical: it only takes one page composing two
+    template helpers to trigger the case.
     """
-    return _UNESCAPED_DOLLAR.sub(r"\\$", _localise_numbers(text))
+    return _UNESCAPED_DOLLAR.sub(r"\\$", text)
 
 
-# Conserve sous son ancien nom : plusieurs pages l'importent directement.
+# Kept under its old name: several pages import it directly.
 _escape_dollars = _prose
 
 
@@ -172,11 +135,11 @@ def snapshot_banner() -> bool:
 
 
 def section(number: str, title: str, prose: str, *, formula: str = "") -> None:
-    """Une section numerotee : titre, prose dense et causale, formule.
+    """A numbered section: title, dense causal prose, formula.
 
-    La prose est volontairement en paragraphe plein et non en puces — une chaine causale
-    (« X pousse Y, donc Z, ce qui renforce X au lieu de le fermer ») ne se decoupe pas en
-    puces sans perdre justement ce qui la rend interessante.
+    The prose is deliberately a full paragraph rather than bullets — a causal chain
+    ("X pushes Y, so Z, which reinforces X instead of closing it") does not survive
+    being cut into bullets without losing exactly what makes it worth reading.
     """
     st.markdown(f"## {number} — {title}")
     st.markdown(_escape_dollars(prose))
@@ -185,22 +148,22 @@ def section(number: str, title: str, prose: str, *, formula: str = "") -> None:
 
 
 def finding(text: str) -> None:
-    """Le nombre de tete d'une section : ce qu'on retient si on ne lit rien d'autre."""
+    """The headline number of a section: what a reader keeps if they read nothing else."""
     st.info(f"**{_escape_dollars(text)}**")
 
 
 def diagnostic_note(text: str) -> None:
-    """Un print impossible, sa cause, et ce que devient la serie une fois la cause ecartee."""
-    st.warning(f"**Diagnostic de donnée** — {_escape_dollars(text)}")
+    """An impossible print, its cause, and what the series becomes once it is excluded."""
+    st.warning(f"**Data diagnostic** — {_escape_dollars(text)}")
 
 
 def scope_note(text: str) -> None:
-    """« Cette section est purement informative » et pourquoi — plutot qu'une omission."""
+    """"This section is purely informative" and why — rather than a silent omission."""
     st.caption(f"↳ {_escape_dollars(text)}")
 
 
 # ===========================================================================
-# Graphes
+# Charts
 # ===========================================================================
 def regime_chart(
     frame: pd.DataFrame,
@@ -214,12 +177,11 @@ def regime_chart(
     reference_lines: dict[str, float] | None = None,
     annotations: dict[str, str] | None = None,
 ) -> go.Figure:
-    """Serie avec fond ombre sur un regime booleen, et annotations datees.
+    """A series with a shaded background on a boolean regime, plus dated annotations.
 
-    `annotations` prend {date_iso: libelle} : c'est la ou vont les dates de regle
-    (elimination du rebate TVA, palier de tarif Section 232, inception d'un indice).
-    Une rupture de regle annotee sur le graphe evite de lire un saut reglementaire
-    comme un mouvement de marche.
+    `annotations` takes {iso_date: label}: this is where rule dates go (a VAT rebate
+    removed, a Section 232 tariff step, an index's inception). A rule break annotated on
+    the chart stops a regulatory jump from being read as a market move.
     """
     fig = go.Figure()
     fig.add_trace(
@@ -265,10 +227,10 @@ def stacked_components_chart(
     y_title: str = "",
     underwater_color: str = SHUT_COLOR,
 ) -> go.Figure:
-    """Composantes empilees + ligne nette, ombree la ou le net passe sous zero.
+    """Stacked components plus a net line, shaded where the net goes below zero.
 
-    C'est la lecture qui montre *quelle* composante porte la marge a chaque instant,
-    plutot qu'une marge nette dont on ne sait pas d'ou elle vient.
+    This is the view that shows *which* component is carrying the margin at any given
+    moment, rather than a net margin whose source is invisible.
     """
     fig = go.Figure()
     for column in components.columns:
@@ -309,10 +271,10 @@ def waterfall_chart(
     title: str = "",
     y_title: str = "",
 ) -> go.Figure:
-    """Waterfall sur une date choisie : de la recette au net, poste par poste.
+    """A waterfall on one chosen date: from revenue to net, line item by line item.
 
-    Le waterfall est ce qui rend une identite comptable *contestable* : un praticien peut
-    pointer la ligne dont il conteste le niveau, au lieu de contester un resultat global.
+    The waterfall is what makes an accounting identity *contestable*: a practitioner can
+    point at the line whose level they dispute, instead of disputing an overall result.
     """
     labels = list(components) + [total_label]
     values = list(components.values()) + [sum(components.values())]
@@ -343,10 +305,10 @@ def sensitivity_heatmap(
     y_title: str = "",
     breakeven_note: str = "",
 ) -> go.Figure:
-    """Heatmap 2D d'une marge sur une grille de deux parametres, avec le contour zero.
+    """A 2D heatmap of a margin over a grid of two parameters, with the zero contour.
 
-    Le contour zero est le produit : il montre la frontiere ou le SIGNE bascule, donc
-    quelle combinaison d'hypotheses suffit a retourner la conclusion.
+    The zero contour is the product: it shows the boundary where the SIGN flips, i.e.
+    which combination of assumptions is enough to reverse the conclusion.
     """
     pivot = grid.pivot(index=y_col, columns=x_col, values=z_col)
     fig = go.Figure(
@@ -384,9 +346,9 @@ def dual_axis_chart(
     left_title: str = "",
     right_title: str = "",
 ) -> go.Figure:
-    """Deux series d'ordres de grandeur differents sur deux axes — un prix et un stock,
-    une marge et un taux de change. A n'utiliser que quand les deux unites different
-    reellement : deux axes sur la meme unite fabriquent une correlation visuelle fausse.
+    """Two series of different orders of magnitude on two axes — a price and a stock,
+    a margin and an exchange rate. Use only when the two units genuinely differ: two axes
+    on the same unit manufacture a false visual correlation.
     """
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=frame.index, y=frame[left_col], name=left_col, mode="lines"))
@@ -408,24 +370,23 @@ def ccf_panel(
     band: float,
     *,
     title: str = "",
-    lag_unit: str = "mois",
+    lag_unit: str = "months",
     n_eff: float | None = None,
 ) -> go.Figure:
-    """Cross-correlation avec sa bande de significativite tracee.
+    """Cross-correlation with its significance band drawn in.
 
-    La bande est le produit, pas le pic : une correlation dans la bande doit se voir
-    comme telle sur le graphe, pour qu'un pic non significatif ne se lise pas comme un
-    resultat.
+    The band is the product, not the peak: a correlation inside the band has to read as
+    such on the chart, so an insignificant peak does not get read as a result.
     """
     fig = go.Figure()
     fig.add_trace(go.Bar(x=lags, y=values, name="CCF"))
     fig.add_hline(y=band, line_dash="dot", line_color="crimson")
     fig.add_hline(y=-band, line_dash="dot", line_color="crimson",
-                  annotation_text=f"bande ±{band:.3f}", annotation_position="bottom right")
+                  annotation_text=f"band ±{band:.3f}", annotation_position="bottom right")
     fig.add_hline(y=0, line_color="gray")
     subtitle = f"  (n_eff = {n_eff:.0f})" if n_eff else ""
     fig.update_layout(
-        title=title + subtitle, xaxis_title=f"lag ({lag_unit})", yaxis_title="corrélation",
+        title=title + subtitle, xaxis_title=f"lag ({lag_unit})", yaxis_title="correlation",
         height=340, margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
     )
     return fig
@@ -436,10 +397,10 @@ def show(fig: go.Figure) -> None:
 
 
 # ===========================================================================
-# Bas de page
+# Page footer
 # ===========================================================================
 def mail_question(question: str, targets: str) -> None:
-    """La question du mail : une seule, a laquelle seul un insider peut repondre."""
+    """The question for the email: one only, the kind only an insider can answer."""
     st.markdown("---")
-    st.markdown(f"### La question\n{_escape_dollars(question)}")
-    st.caption(f"Cible : {_prose(targets)}")
+    st.markdown(f"### The question\n{_escape_dollars(question)}")
+    st.caption(f"Target: {_prose(targets)}")

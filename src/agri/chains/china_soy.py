@@ -1,63 +1,61 @@
-"""T3-4 — Chine soja : politique ou commercial ?
+"""T3-4 — China soy: political or commercial?
 
-THÈSE
------
-Les achats de réserve d'État se concentrent là où le commercial **ne peut pas** acheter.
-Si les achats se groupent dans les quintiles de marge de crush les plus bas, ce sont des
-achats que l'économie du crush interdit — signature politique. S'ils se groupent dans les
-quintiles hauts, c'est de la rotation de stock opportuniste — signature commerciale.
-
-Le test est binaire, et le signe d'un seul coefficient le tranche.
-
-LE DÉSACCORD (ouvert, sourcé)
--------------------------------
-Sinograin a vendu environ la moitié des 504 000 t de soja importé proposées à sa plus
-grosse enchère depuis janvier ; des traders cités par Reuters soutiennent que ces enchères
-servent à faire de la place pour l'arrivée de nouvelles cargaisons américaines
-(août 2026). En face, ADM a relevé ses perspectives 2026 pour la deuxième fois, invoquant
-un environnement biocarburants constructif et l'attente que la Chine continue d'acheter du
-soja US.
-
-LE PIÈGE D'UNITÉ, ET IL Y EN A TROIS EMPILÉS
-----------------------------------------------
-1. Le CBOT cote en **USD/boisseau** (soja, 60 lb), la DCE en **CNY/tonne**.
-2. Les prix chinois sont **TTC** ; la marge de crush se calcule HT. Et la TVA sur les
-   oléagineux importés n'est pas celle des produits transformés — vérifier le taux
-   applicable au produit **et à la date**, ils bougent.
-3. Les droits de douane s'appliquent à la valeur CNF, pas au prix FOB.
-
-Une seule de ces trois erreurs déplace la marge de plusieurs dizaines de CNY/t et inverse
-le signe du test.
-
-MODÈLE
+THESIS
 ------
-    bean_cnf_usd_t = (CBOT_usd_bu + basis_c_bu/100) x 36,7437 + freight_usd_t
-    crush_margin   = (0,785 x meal_dce + 0,185 x oil_dce) / (1 + TVA)
-                     - bean_cnf_cny_t x (1 + droit) - processing
+State reserve purchases concentrate where commercial buyers **cannot** buy. If purchases
+cluster in the lowest crush-margin quintiles, these are purchases the crush economics rule
+out — a political signature. If they cluster in the high quintiles, it is opportunistic
+stock rotation — a commercial signature.
 
-    reserve_flow = imports_douanes - crush_observe - usage_direct
+The test is binary, and the sign of a single coefficient settles it.
 
-Test discriminant, en logit :
+THE DISAGREEMENT (open, sourced)
+------------------------------------
+Sinograin sold roughly half of the 504,000 t of imported soybeans offered at its largest
+auction since January; traders quoted by Reuters argue these auctions are making room for
+incoming US cargoes (August 2026). On the other side, ADM raised its 2026 outlook for the
+second time, citing a constructive biofuels environment and the expectation that China
+keeps buying US soybeans.
 
-    logit(1{achat_reserve}) = a + b1 crush_margin_{t-1} + b2 stock_days_{t-1}
-                                + b3 price_level_{t-1}
+THE UNIT TRAP, AND THERE ARE THREE STACKED
+-----------------------------------------------
+1. CBOT quotes in **USD/bushel** (soybean, 60 lb), DCE in **CNY/tonne**.
+2. Chinese prices are **VAT-inclusive**; the crush margin is computed ex-VAT. And the
+   VAT on imported oilseeds is not the same as on processed products — check the rate
+   applicable to the product **and** the date, they move.
+3. Import duty applies to the CNF value, not the FOB price.
 
-    b1 < 0 significatif  ->  signature POLITIQUE
-    b1 > 0 significatif  ->  signature COMMERCIALE
+Any single one of these three mistakes shifts the margin by tens of CNY/t and flips the
+sign of the test.
 
-HYPOTHÈSES
-----------
-N-H1  Rendements de trituration chinois : 0,785 t de tourteau et 0,185 t d'huile par tonne
-      de fève. Paramétrés.
-N-H2  La marge est retardée d'une période dans le logit. Un achat décidé aujourd'hui
-      répond à la marge d'hier, pas à celle qu'il contribue à créer — sans ce décalage, le
-      test souffre d'une simultanéité qui peut inverser le signe.
-N-H3  L'usage direct (alimentation animale non triturée, semences) est un forfait
-      saisonnier. C'est le terme le plus faible du résidu de réserve, et il est affiché
-      comme tel.
-N-H4  Les séries de réserve d'État ne sont pas publiées. Le repli — et c'est le mode
-      normal de fonctionnement — reconstruit le flux par résidu douanes moins crush
-      implicite, ce qui accumule les erreurs de mesure des deux séries.
+MODEL
+-----
+    bean_cnf_usd_t = (CBOT_usd_bu + basis_c_bu/100) x 36.7437 + freight_usd_t
+    crush_margin   = (0.785 x meal_dce + 0.185 x oil_dce) / (1 + VAT)
+                     - bean_cnf_cny_t x (1 + duty) - processing
+
+    reserve_flow = customs_imports - observed_crush - direct_use
+
+Discriminating test, in logit form:
+
+    logit(1{reserve_purchase}) = a + b1 crush_margin_{t-1} + b2 stock_days_{t-1}
+                                    + b3 price_level_{t-1}
+
+    b1 < 0 significant  ->  POLITICAL signature
+    b1 > 0 significant  ->  COMMERCIAL signature
+
+ASSUMPTIONS
+-----------
+N-H1  Chinese crushing yields: 0.785 t of meal and 0.185 t of oil per tonne of bean.
+      Parameterised.
+N-H2  The margin is lagged by one period in the logit. A purchase decided today
+      responds to yesterday's margin, not the one it helps create — without this lag,
+      the test suffers from a simultaneity that can flip the sign.
+N-H3  Direct use (unprocessed animal feed, seed) is a seasonal flat rate. It is the
+      weakest term of the reserve residual, and is shown as such.
+N-H4  State reserve series are not published. The fallback — and this is the normal
+      mode of operation — reconstructs the flow as the residual of customs minus
+      implied crush, which accumulates the measurement error of both series.
 """
 from __future__ import annotations
 
@@ -68,7 +66,7 @@ import pandas as pd
 
 from agri.data.snapshot import cached
 
-from agri.core.fmt import fr, fr_pct
+from agri.core.fmt import fmt_num, fmt_pct
 from agri.core.stats import regime_runs
 from agri.core.units import bushels_per_tonne, strip_vat
 
@@ -77,33 +75,33 @@ DEFAULT_MEAL_YIELD = 0.785
 DEFAULT_OIL_YIELD = 0.185
 DEFAULT_PROCESSING_CNY_T = 120.0
 
-# Taux à vérifier à la date d'usage — ils bougent (piège d'unité n°2)
+# Rates to re-verify at time of use — they move (unit trap #2)
 DEFAULT_VAT_PROCESSED = 0.09
 DEFAULT_IMPORT_DUTY = 0.03
 
-BUSHELS_PER_TONNE_SOYBEAN = bushels_per_tonne("soybean")   # 36,7437
+BUSHELS_PER_TONNE_SOYBEAN = bushels_per_tonne("soybean")   # 36.7437
 
 
 class ChinaSoyError(ValueError):
-    """Modèle mal spécifié."""
+    """Mis-specified model."""
 
 
 # ===========================================================================
-# La marge de crush
+# The crush margin
 # ===========================================================================
 def bean_cnf_usd_t(
     cbot_usd_bu: pd.Series, basis_cents_bu: pd.Series, freight_usd_t: pd.Series
 ) -> pd.Series:
-    """Coût rendu Chine, en USD/t. Le boisseau devient tonne **avant** l'ajout du fret.
+    """Cost delivered to China, in USD/t. The bushel becomes a tonne **before** freight is added.
 
-    Ajouter un fret en USD/t à un prix en USD/boisseau est l'erreur silencieuse classique :
-    le résultat reste un nombre plausible et se trompe d'un facteur 36.
+    Adding a USD/t freight rate to a USD/bushel price is the classic silent mistake:
+    the result stays a plausible number and is wrong by a factor of 36.
     """
     frame = pd.concat(
         {"cbot": cbot_usd_bu, "basis": basis_cents_bu, "freight": freight_usd_t}, axis=1, sort=True
     ).dropna()
     if frame.empty:
-        raise ChinaSoyError("aucune date commune au CBOT, au basis et au fret")
+        raise ChinaSoyError("no common date across CBOT, basis and freight")
     fob_usd_bu = frame["cbot"] + frame["basis"] / 100.0
     return (fob_usd_bu * BUSHELS_PER_TONNE_SOYBEAN + frame["freight"]).rename("bean_cnf_usd_t")
 
@@ -120,14 +118,13 @@ def crush_margin_cny_t(
     import_duty: float = DEFAULT_IMPORT_DUTY,
     processing_cny_t: float = DEFAULT_PROCESSING_CNY_T,
 ) -> pd.DataFrame:
-    """Marge de trituration chinoise, en CNY/t de fève, TVA et droits traités séparément.
+    """Chinese crushing margin, in CNY/t of bean, VAT and duty handled separately.
 
-    Colonnes : revenue_gross, revenue_ex_vat, bean_cost, margin.
+    Columns: revenue_gross, revenue_ex_vat, bean_cost, margin.
     """
     if meal_yield + oil_yield > 1.0:
         raise ChinaSoyError(
-            f"les rendements somment à {meal_yield + oil_yield:.3f} : plus de produits que "
-            "de fève entrante"
+            f"yields sum to {meal_yield + oil_yield:.3f}: more product than incoming bean"
         )
     frame = pd.concat(
         {
@@ -140,9 +137,9 @@ def crush_margin_cny_t(
         sort=True,
     ).dropna()
     if frame.empty:
-        raise ChinaSoyError("aucune date commune aux quatre séries")
+        raise ChinaSoyError("no common date across the four series")
     if (frame["fx"] <= 0).any():
-        raise ChinaSoyError("USDCNY doit être > 0 — vérifier le sens de cotation")
+        raise ChinaSoyError("USDCNY must be > 0 — check the quoting direction")
 
     out = pd.DataFrame(index=frame.index)
     out["revenue_gross"] = meal_yield * frame["meal"] + oil_yield * frame["oil"]
@@ -155,7 +152,7 @@ def crush_margin_cny_t(
 
 
 # ===========================================================================
-# Le flux de réserve, par résidu (N-H4)
+# The reserve flow, by residual (N-H4)
 # ===========================================================================
 def reserve_flow(
     imports_t: pd.Series,
@@ -163,15 +160,15 @@ def reserve_flow(
     *,
     direct_use_t: pd.Series | float = 0.0,
 ) -> pd.DataFrame:
-    """`réserve = imports - crush - usage direct`, avec l'accumulation d'erreur assumée.
+    """`reserve = imports - crush - direct use`, with the error accumulation acknowledged.
 
-    Les deux séries d'entrée portent chacune leur erreur de mesure, et le résidu les
-    additionne. Un résidu de faible amplitude n'est donc pas interprétable ; seuls les
-    mouvements larges le sont. La colonne `is_large` marque le seuil retenu.
+    Both input series carry their own measurement error, and the residual adds them
+    up. A small-amplitude residual is therefore not interpretable; only large moves
+    are. The `is_large` column flags the chosen threshold.
     """
     frame = pd.concat({"imports": imports_t, "crush": crush_observed_t}, axis=1, sort=True).dropna()
     if frame.empty:
-        raise ChinaSoyError("aucune date commune aux imports et au crush")
+        raise ChinaSoyError("no common date across imports and crush")
     direct = (
         pd.Series(float(direct_use_t), index=frame.index)
         if isinstance(direct_use_t, (int, float))
@@ -187,11 +184,11 @@ def reserve_flow(
 
 
 # ===========================================================================
-# LE TEST DISCRIMINANT
+# THE DISCRIMINATING TEST
 # ===========================================================================
 @dataclass(frozen=True)
 class SignatureTest:
-    """Le signe de b1 tranche entre politique et commercial."""
+    """The sign of b1 decides between political and commercial."""
 
     beta_margin: float
     pvalue_margin: float
@@ -208,29 +205,30 @@ class SignatureTest:
     @property
     def signature(self) -> str:
         if not self.is_significant:
-            return "indéterminée"
-        return "politique" if self.beta_margin < 0 else "commerciale"
+            return "undetermined"
+        return "political" if self.beta_margin < 0 else "commercial"
 
     @property
     def headline(self) -> str:
         if not self.is_significant:
             return (
-                f"Le lien entre marge de crush et achat de réserve n'est pas significatif "
-                f"(b1 = {self.beta_margin:+.5f}, p = {self.pvalue_margin:.3f}, "
-                f"n = {self.n_obs} dont {self.n_purchases} achats). Sur cet échantillon, "
-                "je ne peux pas distinguer une signature politique d'une rotation de stock."
+                f"The link between crush margin and reserve purchases is not "
+                f"significant (b1 = {self.beta_margin:+.5f}, p = {self.pvalue_margin:.3f}, "
+                f"n = {self.n_obs} of which {self.n_purchases} purchases). On this "
+                "sample, a political signature cannot be distinguished from stock "
+                "rotation."
             )
         if self.beta_margin < 0:
             return (
-                f"Les achats de réserve se concentrent dans les quintiles de marge de crush "
-                f"les plus bas (b1 = {self.beta_margin:+.5f}, p = {self.pvalue_margin:.3f}) : "
-                "ce sont des achats que le commercial ne peut pas faire, pas des achats "
-                "qu'il refuse."
+                f"Reserve purchases concentrate in the lowest crush-margin quintiles "
+                f"(b1 = {self.beta_margin:+.5f}, p = {self.pvalue_margin:.3f}): these "
+                "are purchases the commercial sector cannot make, not purchases it "
+                "refuses to make."
             )
         return (
-            f"Les achats de réserve suivent la marge de crush (b1 = {self.beta_margin:+.5f}, "
-            f"p = {self.pvalue_margin:.3f}) : la signature est commerciale, pas politique. "
-            "L'État achète quand c'est économique, comme tout le monde."
+            f"Reserve purchases track the crush margin (b1 = {self.beta_margin:+.5f}, "
+            f"p = {self.pvalue_margin:.3f}): the signature is commercial, not "
+            "political. The state buys when it is economic, like everyone else."
         )
 
 
@@ -242,11 +240,11 @@ def signature_test(
     *,
     lag: int = 1,
 ) -> SignatureTest:
-    """Logit de l'achat de réserve sur la marge de crush retardée (N-H2).
+    """Logit of the reserve purchase on the lagged crush margin (N-H2).
 
-    Les trois régresseurs sont **standardisés** avant estimation. Sans ça, la marge en
-    CNY/t (des centaines) et les jours de stock (des dizaines) produisent des coefficients
-    d'ordres de grandeur incomparables, et le logit converge mal.
+    The three regressors are **standardised** before estimation. Without that, the
+    margin in CNY/t (hundreds) and stock days (tens) produce coefficients of
+    incomparable orders of magnitude, and the logit converges poorly.
     """
     import statsmodels.api as sm
 
@@ -261,12 +259,13 @@ def signature_test(
         sort=True,
     ).dropna()
     if len(frame) < 40:
-        raise ChinaSoyError(f"échantillon trop court pour un logit : n={len(frame)}")
+        raise ChinaSoyError(f"sample too short for a logit: n={len(frame)}")
     n_purchases = int(frame["y"].sum())
     if n_purchases < 5 or n_purchases > len(frame) - 5:
         raise ChinaSoyError(
-            f"trop peu de variation à expliquer : {n_purchases} achats sur {len(frame)} "
-            "observations. Un logit ne dit rien sur une variable quasi constante."
+            f"too little variation to explain: {n_purchases} purchases out of "
+            f"{len(frame)} observations. A logit says nothing about a near-constant "
+            "variable."
         )
 
     design = frame[["margin", "stock", "price"]]
@@ -288,14 +287,14 @@ def signature_test(
 def purchases_by_margin_quintile(
     purchases: pd.Series, margin: pd.Series, *, lag: int = 1
 ) -> pd.DataFrame:
-    """Taux d'achat par quintile de marge — la lecture qui précède le logit.
+    """Purchase rate by margin quintile — the reading that precedes the logit.
 
-    Un tableau à cinq lignes convainc un desk plus vite qu'un coefficient, et il montre
-    tout de suite si la relation est monotone ou concentrée dans une seule queue.
+    A five-row table convinces a desk faster than a coefficient, and it immediately
+    shows whether the relationship is monotone or concentrated in a single tail.
     """
     frame = pd.concat({"y": purchases, "margin": margin.shift(lag)}, axis=1, sort=True).dropna()
     if len(frame) < 20:
-        raise ChinaSoyError(f"échantillon trop court pour des quintiles : n={len(frame)}")
+        raise ChinaSoyError(f"sample too short for quintiles: n={len(frame)}")
     frame["quintile"] = pd.qcut(frame["margin"], 5, labels=[1, 2, 3, 4, 5])
     grouped = frame.groupby("quintile", observed=True).agg(
         n_obs=("y", "size"),
@@ -306,10 +305,10 @@ def purchases_by_margin_quintile(
     return grouped.reset_index()
 
 
-# Ordres de grandeur documentes pour la basis et le fret US Gulf -> Chine (constantes
-# parametrees, PAS des donnees reelles) : ni l'un ni l'autre n'est dans l'export
-# Bloomberg. Meme traitement que le roll omis de T1-2 ou l'energie constante de T2-4 —
-# affiche comme limite, pas cache.
+# Documented orders of magnitude for US Gulf -> China basis and freight (parameterised
+# constants, NOT real data): neither is in the Bloomberg export. Same treatment as the
+# omitted roll in T1-2 or the constant energy rate in T2-4 — shown as a limitation, not
+# hidden.
 DEFAULT_BASIS_CENTS_BU = 70.0
 DEFAULT_FREIGHT_USD_T = 45.0
 
@@ -322,19 +321,19 @@ def load_real_crush_frame(
     freight_usd_t: float = DEFAULT_FREIGHT_USD_T,
     **margin_kwargs,
 ) -> pd.DataFrame:
-    """Marge de crush chinoise sur CBOT soja, DCE tourteau/huile et USDCNY **réels**.
+    """Chinese crush margin on **real** CBOT soybean, DCE meal/oil and USDCNY.
 
-    LIMITE DE DONNÉE, DOCUMENTÉE : le basis FOB US Gulf et le fret Chine ne sont pas dans
-    l'export Bloomberg — ils restent des forfaits paramétrés (mêmes valeurs que le repli
-    du fixture synthétique), appliqués sur un prix CBOT réel. Trois jambes sur quatre
-    (soja CBOT, tourteau DCE, huile DCE, change USDCNY) sont entièrement réelles ; seule
-    la conversion FOB->CNF porte un terme constant.
+    DATA LIMIT, DOCUMENTED: US Gulf FOB basis and China freight are not in the
+    Bloomberg export — they remain parameterised flat rates (same values as the
+    synthetic fixture's fallback), applied on a real CBOT price. Three of four legs
+    (CBOT soybean, DCE meal, DCE oil, USDCNY) are entirely real; only the FOB->CNF
+    conversion carries a constant term.
 
-    Renvoie le DataFrame complet de `crush_margin_cny_t` (revenue_gross, revenue_ex_vat,
-    bean_cost, margin) — pas seulement la marge — pour que la page puisse tracer le
-    waterfall terme à terme. Ne calcule pas le test de signature politique/commerciale,
-    qui exige un signal d'achat de réserve (`purchases`) qu'aucune source publique
-    gratuite ne fournit en série temporelle : ce volet reste illustratif sur synthétique.
+    Returns the full `crush_margin_cny_t` DataFrame (revenue_gross, revenue_ex_vat,
+    bean_cost, margin) — not just the margin — so the page can chart the waterfall
+    term by term. Does not compute the political/commercial signature test, which
+    needs a reserve-purchase signal (`purchases`) that no free public source
+    provides as a time series: that part remains illustrative on synthetic data.
     """
     from agri.data.bloomberg_loader import load as load_bloomberg
 
@@ -356,26 +355,26 @@ def load_real_crush_frame(
 
 
 # ===========================================================================
-# LE TEST QUI NE DEMANDE PAS LES DONNÉES D'ENCHÈRES
+# THE TEST THAT DOES NOT NEED AUCTION DATA
 # ===========================================================================
-# Le test de signature ci-dessus est binaire et propre, mais il exige une série d'achats de
-# réserve que l'export ne contient pas — et que Sinograin ne publie pas en série temporelle.
-# On le remplace par un argument qui ne demande aucune donnée de flux, seulement des prix.
+# The signature test above is binary and clean, but it needs a reserve-purchase series the
+# export does not contain — and that Sinograin does not publish as a time series. It is
+# replaced by an argument that needs no flow data at all, only prices.
 #
-# L'idée : la marge de crush chinoise borne par le haut ce qu'un triturateur peut payer pour
-# une tonne de fève rendue. Retranchée du CBOT converti à la tonne, cette borne devient un
-# **budget pour le basis d'origine et le fret** — ce dont dispose un originateur pour aller
-# chercher la fève, où que ce soit. Quand ce budget passe sous zéro, aucune origine ne
-# fonctionne : même une fève gratuite, transportée gratuitement, ne rend pas le crush
-# rentable. Des cargaisons qui arrivent dans ces fenêtres ne sont pas commerciales **par
-# construction arithmétique**, sans qu'aucun test statistique ait à être passé.
+# The idea: the Chinese crush margin bounds from above what a crusher can pay for a tonne
+# of bean delivered. Subtracting the CBOT converted to a tonne basis, this bound becomes a
+# **budget for origin basis and freight** — what an originator has available to go source
+# the bean, wherever from. When this budget falls below zero, no origin works at all: even
+# a free bean, shipped for free, would not make the crush pay. Cargoes arriving in those
+# windows are non-commercial **by arithmetic construction**, with no statistical test
+# needed.
 @dataclass(frozen=True)
 class OriginationBudget:
-    """Ce qu'un originateur peut dépenser en basis + fret, et quand il ne peut plus rien.
+    """What an originator can spend on basis + freight, and when they can spend nothing.
 
-    `frame` porte le budget jour par jour ; les propriétés en donnent les régimes. Le
-    livrable est le **calendrier** des fenêtres impossibles, pas un niveau moyen : c'est un
-    objet qu'un insider confronte à ses propres arrivées.
+    `frame` carries the budget day by day; the properties give its regimes. The
+    deliverable is the **calendar** of impossible windows, not an average level: an
+    object an insider checks against their own arrivals.
     """
 
     frame: pd.DataFrame
@@ -391,24 +390,25 @@ class OriginationBudget:
 
     @property
     def share_impossible(self) -> float:
-        """Part des séances où AUCUNE origine ne fonctionne, fret et basis nuls compris."""
+        """Share of sessions where NO origin works, zero freight and basis included."""
         return float((self.frame["budget_usd_t"] < 0).mean())
 
     @property
     def share_below_freight(self) -> float:
-        """Part des séances où le fret seul consomme tout le budget, ne laissant rien pour
-        le basis d'origine — il faudrait acheter la fève SOUS le CBOT."""
+        """Share of sessions where freight alone consumes the whole budget, leaving
+        nothing for origin basis — the bean would have to be bought BELOW the CBOT price."""
         return float((self.frame["budget_usd_t"] < self.freight_reference_usd_t).mean())
 
     @property
     def headline(self) -> str:
         return (
-            f"Le crush chinois peut financer {fr(self.median_budget, 0)} USD/t de basis et "
-            f"de fret en médiane, et {fr(self.last_budget, 0)} au dernier cours. Mais "
-            f"{fr_pct(self.share_impossible, 1)} des séances affichent un budget "
-            f"**négatif** — une fève gratuite, transportée gratuitement, ne rendrait pas le "
-            f"crush rentable — et {fr_pct(self.share_below_freight)} le placent sous le "
-            f"seul coût du fret ({fr(self.freight_reference_usd_t, 0)} USD/t)."
+            f"The Chinese crush can fund {fmt_num(self.median_budget, 0)} USD/t of "
+            f"basis and freight at the median, and {fmt_num(self.last_budget, 0)} at "
+            f"the last print. But {fmt_pct(self.share_impossible, 1)} of sessions "
+            f"show a **negative** budget — a free bean, shipped for free, would not "
+            f"make the crush pay — and {fmt_pct(self.share_below_freight)} put it "
+            f"below the cost of freight alone "
+            f"({fmt_num(self.freight_reference_usd_t, 0)} USD/t)."
         )
 
 
@@ -421,16 +421,17 @@ def affordable_origination_budget(
     import_duty: float = DEFAULT_IMPORT_DUTY,
     **margin_kwargs,
 ) -> OriginationBudget:
-    """Le budget basis + fret que la marge de crush chinoise autorise, en USD/tonne.
+    """The basis + freight budget the Chinese crush margin allows, in USD/tonne.
 
-        recette_HT     = (0,785 x tourteau_DCE + 0,185 x huile_DCE) / (1 + TVA)
-        CNF_max_CNY_t  = (recette_HT - transformation) / (1 + droit)
-        CNF_max_USD_t  = CNF_max_CNY_t / USDCNY
-        budget         = CNF_max_USD_t - CBOT_usd_bu x 36,7437
+        revenue_ex_vat = (0.785 x meal_DCE + 0.185 x oil_DCE) / (1 + VAT)
+        cnf_max_cny_t  = (revenue_ex_vat - processing) / (1 + duty)
+        cnf_max_usd_t  = cnf_max_cny_t / USDCNY
+        budget         = cnf_max_usd_t - CBOT_usd_bu x 36.7437
 
-    Le budget est ce qui reste pour aller chercher la fève. Il ne dépend d'**aucune**
-    hypothèse de basis ni de fret — c'est précisément ce qui le rend utile : les deux termes
-    que l'export ne contient pas sortent du calcul au lieu d'y entrer.
+    The budget is what is left over to go source the bean. It depends on **no**
+    assumption of basis or freight — which is precisely what makes it useful: the
+    two terms the export does not contain drop out of the calculation instead of
+    entering it.
     """
     from agri.data.bloomberg_loader import load
 
@@ -446,9 +447,9 @@ def affordable_origination_budget(
     ).dropna()
     aligned = aligned[aligned.index >= pd.Timestamp(start)]
     if aligned.empty:
-        raise ChinaSoyError(f"aucune date commune aux jambes du crush chinois après {start}")
+        raise ChinaSoyError(f"no common date across the Chinese crush legs after {start}")
     if (aligned["usdcny"] <= 0).any():
-        raise ChinaSoyError("USDCNY nul ou négatif — vérifier le sens de cotation")
+        raise ChinaSoyError("USDCNY zero or negative — check the quoting direction")
 
     cnf_max_cny = (aligned["revenue_ex_vat"] - processing_cny_t) / (1.0 + import_duty)
     aligned["cnf_max_usd_t"] = cnf_max_cny / aligned["usdcny"]
@@ -465,11 +466,11 @@ def affordable_origination_budget(
 def impossible_windows(
     budget: OriginationBudget, *, threshold_usd_t: float = 0.0, min_obs: int = 3
 ) -> pd.DataFrame:
-    """Le calendrier des fenêtres où le budget d'origination passe sous un seuil.
+    """The calendar of windows where the origination budget falls below a threshold.
 
-    C'est le livrable de la page : des dates, pas un coefficient. Un originateur les
-    confronte à ses propres arrivées, et la question « avez-vous chargé pendant celles-là ? »
-    se répond par oui ou par non.
+    This is the page's deliverable: dates, not a coefficient. An originator checks
+    them against their own arrivals, and the question "did you load during those?"
+    gets answered yes or no.
     """
     return regime_runs(
         budget.frame["budget_usd_t"] < threshold_usd_t,

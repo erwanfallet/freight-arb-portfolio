@@ -114,8 +114,8 @@ def test_the_wide_regime_coefficient_is_not_merely_small(frame):
 
 def test_the_headline_states_the_negative_result_plainly(frame):
     verdict = substitution_verdict(frame["spread"])
-    assert "contraire à la thèse" in verdict.headline
-    assert "aucun retour à la moyenne" in verdict.headline
+    assert "contrary to the thesis" in verdict.headline
+    assert "no mean reversion" in verdict.headline
 
 
 # ===========================================================================
@@ -182,7 +182,7 @@ def test_the_two_tails_are_separated_in_time(frame):
 # Garde-fous
 # ===========================================================================
 def test_rolling_deviation_refuses_a_degenerate_window(frame):
-    with pytest.raises(SubstitutionError, match="trop courte"):
+    with pytest.raises(SubstitutionError, match="too short"):
         rolling_deviation(frame["spread"], window=5)
 
 

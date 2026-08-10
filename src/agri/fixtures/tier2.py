@@ -182,4 +182,4 @@ def oil_prices(*, periods: int = 2_500, seed: int = 5) -> dict[str, pd.Series]:
         index=index,
         name="SYNTH_RAPEOIL_USD_T",
     )
-    return {"palme": palm, "soja": soy, "colza": rape}
+    return {"palm": palm, "soy": soy, "canola": rape}

@@ -106,7 +106,7 @@ def test_production_cost_check_rejects_a_frame_without_the_brl_leg(frame):
 
 
 def test_a_non_positive_cost_is_rejected(frame):
-    with pytest.raises(SugarMixError, match="coût de production"):
+    with pytest.raises(SugarMixError, match="cost of production"):
         moving_floor(frame, cost_brl_t=0.0)
 
 
@@ -148,7 +148,7 @@ def test_the_indifference_price_hand_computed():
 
 def test_a_negative_exchange_rate_is_rejected():
     index = pd.date_range("2024-01-01", periods=2)
-    with pytest.raises(SugarMixError, match="sens de cotation"):
+    with pytest.raises(SugarMixError, match="quoting direction"):
         indifference_hydrous_brl_l(
             pd.Series([20.0, 21.0], index=index), pd.Series([-5.0, 5.0], index=index)
         )
@@ -169,7 +169,7 @@ def test_the_exchange_rate_partially_cushions_the_price_but_not_the_floor(frame)
 
 
 def test_the_decomposition_refuses_a_short_sample(frame):
-    with pytest.raises(SugarMixError, match="trop court"):
+    with pytest.raises(SugarMixError, match="too short"):
         floor_variance_decomposition(frame.head(10))
 
 
@@ -184,7 +184,7 @@ def test_load_real_parity_frame_shape(frame):
 
 
 def test_an_impossible_start_date_raises():
-    with pytest.raises(SugarMixError, match="aucune date commune"):
+    with pytest.raises(SugarMixError, match="no common date"):
         load_real_parity_frame("2099-01-01")
 
 

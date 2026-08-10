@@ -224,14 +224,14 @@ def test_headline_names_the_threshold_and_the_distance():
     )
     headline = out.headline
     assert "$/t CO2e" in headline
-    assert "écart-type" in headline
-    assert "le soja rafle la part" in headline
+    assert "standard deviations" in headline
+    assert "soy takes the share" in headline
 
 
 def test_an_import_dirtier_than_the_domestic_has_no_threshold():
     """S'il perd sur les deux tableaux, il n'y a pas de seuil — et l'erreur doit le dire."""
     dirty_import = Feedstock("UCO importé sale", 35.0, north_american=False)
-    with pytest.raises(FeedstockError, match="pas de seuil"):
+    with pytest.raises(FeedstockError, match="no threshold"):
         lcfs_breakeven(
             imported=dirty_import,
             price_domestic_usd_lb=0.50,
@@ -256,7 +256,7 @@ def test_numeric_solver_reports_no_crossing_in_range():
 # ===========================================================================
 def test_winner_grid_has_both_zones():
     grid = winner_grid()
-    assert set(grid["winner"].unique()) == {"UCO importé", "soyoil domestique"}
+    assert set(grid["winner"].unique()) == {"imported UCO", "domestic soyoil"}
 
 
 def test_imports_win_at_high_lcfs_and_low_ci():
@@ -267,8 +267,8 @@ def test_imports_win_at_high_lcfs_and_low_ci():
         price_imported_usd_lb=0.50,
     )
     low, high = grid.sort_values("lcfs_usd_t")["winner"].tolist()
-    assert low == "soyoil domestique"
-    assert high == "UCO importé"
+    assert low == "domestic soyoil"
+    assert high == "imported UCO"
 
 
 def test_advantage_is_monotonic_in_lcfs():
@@ -303,19 +303,19 @@ def test_crush_balance_when_capacity_is_sufficient():
         rvo_gallons=1e9, soyoil_share=0.20, installed_capacity_bu_day=2_500_000.0
     )
     assert not out.is_short
-    assert "de marge" in out.headline
+    assert "to spare" in out.headline
 
 
 def test_crush_headline_quantifies_the_shortfall():
     out = crush_balance(
         rvo_gallons=5e9, soyoil_share=0.40, installed_capacity_bu_day=2_500_000.0
     )
-    assert "il manque" in out.headline
-    assert "bu/jour" in out.headline
+    assert "short" in out.headline
+    assert "bu/day" in out.headline
 
 
 def test_soyoil_share_out_of_range_is_rejected():
-    with pytest.raises(FeedstockError, match="part_soyoil"):
+    with pytest.raises(FeedstockError, match="soyoil_share"):
         crush_balance(rvo_gallons=5e9, soyoil_share=1.4, installed_capacity_bu_day=2.5e6)
 
 
@@ -337,7 +337,7 @@ def test_chow_detects_the_policy_break(series):
     out = chow_break_test(series["soyoil"], series["brent"], RVO_BREAK_DATE)
     assert out.rejects_stability
     assert out.beta_after > out.beta_before
-    assert "rupture significative" in out.summary
+    assert "significant break" in out.summary
 
 
 def test_chow_finds_nothing_within_a_single_regime(series):
@@ -372,12 +372,12 @@ def test_a_split_that_straddles_the_real_break_also_fires(series):
 
 
 def test_chow_refuses_a_date_too_close_to_the_edge(series):
-    with pytest.raises(FeedstockError, match="trop courts"):
+    with pytest.raises(FeedstockError, match="too short"):
         chow_break_test(series["soyoil"], series["brent"], "2023-01-20")
 
 
 def test_rolling_beta_refuses_a_window_longer_than_the_sample(series):
-    with pytest.raises(FeedstockError, match="pas assez"):
+    with pytest.raises(FeedstockError, match="not enough"):
         rolling_energy_beta(series["soyoil"].head(50), series["brent"].head(50), window=120)
 
 

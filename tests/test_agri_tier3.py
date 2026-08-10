@@ -79,12 +79,12 @@ def test_mix_elasticity_headline_is_readable_at_small_magnitude():
     nombre absurde (des milliers de cents/lb). Le headline doit rester lisible."""
     out = estimate_mix_elasticity(tier3.sugar_panel())
     headline = out.headline()
-    assert "100 points d'écart de parité" in headline
+    assert "100 points of parity gap" in headline
     assert "point" in headline
 
 
 def test_missing_panel_columns_raise():
-    with pytest.raises(SugarMixError, match="colonnes manquantes"):
+    with pytest.raises(SugarMixError, match="missing columns"):
         estimate_mix_elasticity(pd.DataFrame({"region": ["A"], "d_mix": [0.1]}))
 
 
@@ -106,7 +106,7 @@ def test_bean_cnf_hand_computed():
 def test_crush_margin_yields_over_one_is_rejected():
     index = pd.to_datetime(["2024-01-01"])
     series = pd.Series([1.0], index=index)
-    with pytest.raises(ChinaSoyError, match="rendements"):
+    with pytest.raises(ChinaSoyError, match="yields"):
         crush_margin_cny_t(series, series, series, series, meal_yield=0.9, oil_yield=0.3)
 
 
@@ -117,7 +117,7 @@ def test_signature_test_detects_the_imposed_political_signature():
     out = signature_test(data["purchases"], data["margin"], data["stock_days"], data["cbot"])
     assert out.beta_margin < 0
     assert out.is_significant
-    assert out.signature == "politique"
+    assert out.signature == "political"
 
 
 def test_quintiles_are_monotonically_decreasing():
@@ -130,7 +130,7 @@ def test_signature_test_needs_enough_variation():
     index = pd.date_range("2020-01-01", periods=50, freq="ME")
     all_zero = pd.Series(0, index=index)
     margin = pd.Series(np.random.default_rng(0).normal(size=50), index=index)
-    with pytest.raises(ChinaSoyError, match="trop peu de variation"):
+    with pytest.raises(ChinaSoyError, match="too little variation"):
         signature_test(all_zero, margin, margin, margin)
 
 

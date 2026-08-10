@@ -95,15 +95,15 @@ def test_never_crossed_is_reported_as_such():
                                credit_line_usd=LINE_USD, im_rate=0.05)
     assert result.crossed_on is None
     assert result.days_of_protection is None
-    assert "jamais allé" in result.headline
+    assert "never got there" in result.headline
 
 
 def test_invalid_inputs_raise():
     price = pd.Series([2000.0], index=pd.to_datetime(["2023-01-03"]))
-    with pytest.raises(HedgeCostError, match="book et ligne"):
+    with pytest.raises(HedgeCostError, match="book and credit line"):
         forced_exit_price(price, inception="2023-01-03", book_size_t=0.0,
                           credit_line_usd=LINE_USD, im_rate=0.05)
-    with pytest.raises(HedgeCostError, match="aucun prix"):
+    with pytest.raises(HedgeCostError, match="no price"):
         forced_exit_price(price, inception="2030-01-01", book_size_t=BOOK_T,
                           credit_line_usd=LINE_USD, im_rate=0.05)
 
@@ -126,14 +126,14 @@ def test_hedging_six_years_early_bought_three_months(cocoa, margin_rate):
         book_size_t=BOOK_T, credit_line_usd=LINE_USD, im_rate=margin_rate,
     )
     assert len(schedule) == 5
-    assert schedule["franchi le"].notna().all()
+    assert schedule["crossed on"].notna().all()
 
-    span_days = (schedule["franchi le"].max() - schedule["franchi le"].min()).days
+    span_days = (schedule["crossed on"].max() - schedule["crossed on"].min()).days
     assert span_days < 100, f"les sorties forcées s'étalent sur {span_days} jours"
 
     # toutes tombent dans la fenetre nov. 2023 - fev. 2024
-    assert schedule["franchi le"].min() >= pd.Timestamp("2023-11-01")
-    assert schedule["franchi le"].max() <= pd.Timestamp("2024-03-31")
+    assert schedule["crossed on"].min() >= pd.Timestamp("2023-11-01")
+    assert schedule["crossed on"].max() <= pd.Timestamp("2024-03-31")
 
 
 def test_earlier_inception_still_buys_some_protection(cocoa, margin_rate):
@@ -143,9 +143,9 @@ def test_earlier_inception_still_buys_some_protection(cocoa, margin_rate):
     schedule = forced_exit_schedule(
         cocoa, ["2018-01-02", "2022-01-03", "2023-01-03", "2023-09-01", "2024-01-02"],
         book_size_t=BOOK_T, credit_line_usd=LINE_USD, im_rate=margin_rate,
-    ).sort_values("ouverture")
-    assert schedule["jours de protection"].is_monotonic_decreasing
-    assert schedule["franchi le"].is_monotonic_increasing
+    ).sort_values("opened")
+    assert schedule["days of protection"].is_monotonic_decreasing
+    assert schedule["crossed on"].is_monotonic_increasing
 
 
 def test_headroom_shrinks_as_the_market_runs(cocoa, margin_rate):
@@ -153,8 +153,8 @@ def test_headroom_shrinks_as_the_market_runs(cocoa, margin_rate):
     schedule = forced_exit_schedule(
         cocoa, ["2018-01-02", "2023-01-03", "2024-01-02"],
         book_size_t=BOOK_T, credit_line_usd=LINE_USD, im_rate=margin_rate,
-    ).sort_values("ouverture")
-    assert schedule["marge de manœuvre"].is_monotonic_decreasing
+    ).sort_values("opened")
+    assert schedule["headroom"].is_monotonic_decreasing
 
 
 # ===========================================================================

@@ -147,12 +147,12 @@ def test_a_negative_gap_flips_the_position(frame):
 
 
 def test_an_implausible_gap_is_rejected(frame):
-    with pytest.raises(CrushError, match="invraisemblable"):
+    with pytest.raises(CrushError, match="implausible"):
         yield_exposure(frame, meal_lb_gap=60.0, opex_usd_bu=0.55)
 
 
 def test_exposure_rejects_a_frame_missing_a_leg(frame):
-    with pytest.raises(CrushError, match="colonne manquante"):
+    with pytest.raises(CrushError, match="missing column"):
         yield_exposure(frame[["bean", "board"]], meal_lb_gap=1.0)
 
 
@@ -217,8 +217,8 @@ def test_the_identity_bias_is_small_and_the_page_says_so(frame):
     formulation de S5 serait à revoir — ce test le signalerait."""
     bias = hedge_ratio_identity_bias(frame, meal_lb_gap=1.0, opex_usd_bu=0.55)
     assert 0.0 < bias.bias < 0.05
-    assert "petit" in bias.headline or "seulement" in bias.headline
-    assert "rendement" in bias.headline
+    assert "only" in bias.headline
+    assert "yield" in bias.headline
 
 
 def test_a_zero_gap_leaves_no_bias_at_all(frame):
@@ -230,7 +230,7 @@ def test_a_zero_gap_leaves_no_bias_at_all(frame):
 
 
 def test_identity_bias_refuses_a_short_sample(frame):
-    with pytest.raises(CrushError, match="trop court"):
+    with pytest.raises(CrushError, match="too short"):
         hedge_ratio_identity_bias(frame.head(10), meal_lb_gap=1.0)
 
 
@@ -252,5 +252,5 @@ def test_the_board_coefficients_are_the_cbot_yields():
 
 
 def test_an_impossible_start_date_raises():
-    with pytest.raises(CrushError, match="aucune date commune"):
+    with pytest.raises(CrushError, match="no common date"):
         load_real_board_frame("2099-01-01")

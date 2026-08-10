@@ -1,69 +1,68 @@
-"""T3-2 — Sucre : pourquoi le mix ne suit pas la parité.
+"""T3-2 — Sugar: why the mix does not track parity.
 
-THÈSE
------
-L'élasticité du mix à la parité n'a de sens que **conditionnellement au niveau de
-couverture d'entrée de saison**. Le mix n'est pas un ratio de prix : c'est la solution d'un
-programme sous contraintes, et la contrainte qui mord change d'une région à l'autre et
-d'une saison à l'autre.
-
-LE DÉSACCORD, OUVERT ET CHIFFRÉ ENTRE DEUX MAISONS
-----------------------------------------------------
-- **Hedgepoint** (févr. 2026) : récolte CS 2026/27 à 630 Mt, production sucre stable
-  ~40,5 Mt, mix à ~48,6 % contre 50,6 % la saison précédente. Le mix devrait tomber vers
-  **46 %** pour réduire matériellement l'excédent, mais **les limites d'usine et le sucre
-  déjà vendu à terme** rendent la chose difficile. Excédent mondial élargi à 3,4 Mt.
-- **Czarnikow** (juin 2026) : les mills entrent **beaucoup moins couverts** que les quatre
-  saisons précédentes ; les opportunités de pricing 2026/27 sont restées sous BRL 2000/t,
-  sous le coût de production ; UNICA montre le mix au plus bas depuis 2022/23 ; production
-  révisée à 39,5 Mt.
-- Czarnikow (juil. 2026) : la parité éthanol/essence au plus bas de la décennie sans que la
-  demande réagisse assez ; l'éthanol de maïs ajoute structurellement de l'offre.
-
-Hedgepoint dit contraintes ; Czarnikow observe que le déblocage vient précisément d'un
-niveau de couverture inhabituellement bas. **Les deux s'accordent sur le fait que le degré
-de couverture préalable est le paramètre discriminant** — variable observable et rarement
-modélisée. C'est là que la page se place.
-
-POSTURE
--------
-On ne tranche pas entre les deux maisons. On mesure l'élasticité **conditionnelle**, et on
-laisse l'insider dire si la conditionnalité correspond à ce qu'il voit.
-
-LE PIÈGE D'UNITÉ
-----------------
-La parité exige d'empiler quatre conversions : des kg d'ATR par litre d'éthanol, des BRL
-par litre, des BRL par kg, puis des cents par livre via le taux de change **et** la
-livre-kilogramme. Une seule erreur dans la chaîne déplace la parité de plusieurs cents et
-inverse le signal. Et les coefficients Consecana sont **révisés** : les figer dans le code
-fausse tout l'historique (mode de défaillance connu).
-
-MODÈLE
+THESIS
 ------
-    sugar_eq_hydrous_brl_kg = P_hydrous_brl_l x (ATR_sucre / ATR_hydrate)
-    sugar_eq_hydrous_c_lb   = sugar_eq_hydrous_brl_kg x 100 / (USDBRL x 2,20462)
+The mix's elasticity to parity only makes sense **conditional on the entry-of-season hedge
+level**. The mix is not a price ratio: it is the solution to a constrained programme, and
+the constraint that binds changes from region to region and season to season.
+
+THE DISAGREEMENT, OPEN AND QUANTIFIED BETWEEN TWO HOUSES
+-------------------------------------------------------------
+- **Hedgepoint** (Feb 2026): CS 2026/27 crop at 630 Mt, sugar production stable at
+  ~40.5 Mt, mix at ~48.6% against 50.6% the previous season. The mix should fall towards
+  **46%** to materially cut the surplus, but **mill limits and sugar already sold
+  forward** make that hard. Global surplus widened to 3.4 Mt.
+- **Czarnikow** (Jun 2026): mills enter **far less hedged** than the previous four
+  seasons; 2026/27 pricing opportunities stayed below BRL 2000/t, below the cost of
+  production; UNICA shows the mix at its lowest since 2022/23; production revised to
+  39.5 Mt.
+- Czarnikow (Jul 2026): the ethanol/gasoline parity at its lowest in a decade without
+  demand reacting enough; corn ethanol structurally adds supply.
+
+Hedgepoint points to constraints; Czarnikow observes that the unlock comes precisely from
+an unusually low hedge level. **Both agree that the degree of prior hedging is the
+discriminating parameter** — an observable variable, rarely modelled. That is where this
+page sits.
+
+STANCE
+------
+No side is taken between the two houses. The **conditional** elasticity is measured, and
+the insider is left to say whether the conditionality matches what they see.
+
+THE UNIT TRAP
+-------------
+Parity requires stacking four conversions: kg of ATR per litre of ethanol, BRL per litre,
+BRL per kg, then cents per pound via the exchange rate **and** the pound-kilogram
+conversion. A single mistake in the chain shifts parity by several cents and flips the
+signal. And the Consecana coefficients are **revised**: freezing them in code corrupts the
+whole history (a known failure mode).
+
+MODEL
+-----
+    sugar_eq_hydrous_brl_kg = P_hydrous_brl_l x (ATR_sugar / ATR_hydrous)
+    sugar_eq_hydrous_c_lb   = sugar_eq_hydrous_brl_kg x 100 / (USDBRL x 2.20462)
     parity_gap_c_lb         = NY11_c_lb x pol_factor - sugar_eq_hydrous_c_lb
 
-Estimation en panel, par quinzaine UNICA x région :
+Panel estimation, by UNICA fortnight x region:
 
     dmix = a_r + b1 parity_gap_{t-1}
                 + b2 (parity_gap_{t-1} x hedge_ratio_entry_r)
                 + b3 cap_utilisation
                 + b4 (dist_port_r x parity_gap_{t-1}) + e
 
-**L'objet d'intérêt est b2**, pas b1.
+**The object of interest is b2**, not b1.
 
-HYPOTHÈSES
-----------
-G-H1  Coefficients Consecana paramétrés, jamais figés (ils sont révisés chaque saison).
-G-H2  `pol_factor` ajuste le NY11 (96° pol) vers la qualité VHP effectivement produite.
-G-H3  Le taux de couverture d'entrée de saison est constant sur la saison, par région.
-      Faux en toute rigueur — les mills continuent de pricer — mais c'est la variable telle
-      que les deux maisons la décrivent.
-G-H4  CEPEA cote parfois TTC, parfois HT selon la série. Le paramètre `strip_vat` existe
-      pour ça et doit être décidé série par série, pas par défaut.
-G-H5  L'année électorale brésilienne influence les prix à la pompe indépendamment du
-      marché. Traité comme variable de contrôle possible, jamais comme du bruit.
+ASSUMPTIONS
+-----------
+G-H1  Consecana coefficients parameterised, never frozen (they are revised each season).
+G-H2  `pol_factor` adjusts NY11 (96° pol) toward the VHP quality actually produced.
+G-H3  The entry-of-season hedge ratio is constant over the season, by region. Strictly
+      false — mills keep pricing — but this is the variable as both houses describe it.
+G-H4  CEPEA sometimes quotes VAT-inclusive, sometimes ex-VAT depending on the series. The
+      `strip_vat` parameter exists for this and must be decided series by series, not by
+      default.
+G-H5  Brazilian election years influence pump prices independently of the market. Treated
+      as a possible control variable, never as noise.
 """
 from __future__ import annotations
 
@@ -75,24 +74,24 @@ import pandas as pd
 from agri.data.snapshot import cached
 
 from agri.core.stats import HacRegression, hac_ols
-from agri.core.fmt import fr, fr_pct
+from agri.core.fmt import fmt_num, fmt_pct
 from agri.core.units import LB_PER_TONNE, strip_vat
 
-# G-H1 — barème Consecana, kg d'ATR par unité produite. À VÉRIFIER chaque saison.
+# G-H1 — Consecana schedule, kg of ATR per unit produced. VERIFY each season.
 ATR_SUGAR_VHP_PER_KG = 1.0495
 ATR_ETHANOL_ANHYDROUS_PER_L = 1.7651
 ATR_ETHANOL_HYDROUS_PER_L = 1.6913
 
-KG_PER_LB = LB_PER_TONNE / 1000.0        # 2,20462 lb par kg
+KG_PER_LB = LB_PER_TONNE / 1000.0        # 2.20462 lb per kg
 DEFAULT_POL_FACTOR = 0.98                # G-H2
 
 
 class SugarMixError(ValueError):
-    """Modèle mal spécifié."""
+    """Mis-specified model."""
 
 
 # ===========================================================================
-# La parité
+# Parity
 # ===========================================================================
 def hydrous_sugar_equivalent_cents_lb(
     hydrous_brl_l: pd.Series,
@@ -102,25 +101,24 @@ def hydrous_sugar_equivalent_cents_lb(
     atr_hydrous: float = ATR_ETHANOL_HYDROUS_PER_L,
     vat_rate: float | None = None,
 ) -> pd.Series:
-    """Prix de l'éthanol hydraté converti en équivalent sucre, en cents/lb.
+    """Hydrous ethanol price converted to sugar equivalent, in cents/lb.
 
-    Chaîne de conversion, à lire dans l'ordre parce que chaque étape peut être fausse
-    séparément :
-        BRL/litre  --(ATR_sucre / ATR_hydrate)-->  BRL/kg de sucre équivalent
+    Conversion chain, to be read in order because each step can be wrong on its own:
+        BRL/litre  --(ATR_sugar / ATR_hydrous)-->  BRL/kg of equivalent sugar
         BRL/kg     --(/ USDBRL)-->                 USD/kg
-        USD/kg     --(/ 2,20462)-->                USD/lb
+        USD/kg     --(/ 2.20462)-->                USD/lb
         USD/lb     --(x 100)-->                    cents/lb
 
-    `vat_rate` retire la TVA quand la série CEPEA est cotée TTC (G-H4). Laisser à None
-    quand elle est déjà HT — le module ne devine pas.
+    `vat_rate` strips VAT when the CEPEA series is VAT-inclusive (G-H4). Leave at
+    None when it is already ex-VAT — the module does not guess.
     """
     if atr_hydrous <= 0 or atr_sugar <= 0:
-        raise SugarMixError("les coefficients Consecana doivent être > 0")
+        raise SugarMixError("the Consecana coefficients must be > 0")
     aligned = pd.concat({"hydrous": hydrous_brl_l, "fx": usdbrl}, axis=1).dropna()
     if aligned.empty:
-        raise SugarMixError("aucune date commune à l'hydraté et au change")
+        raise SugarMixError("no common date between hydrous ethanol and FX")
     if (aligned["fx"] <= 0).any():
-        raise SugarMixError("USDBRL doit être > 0 — vérifier le sens de cotation")
+        raise SugarMixError("USDBRL must be > 0 — check the quoting direction")
 
     price = aligned["hydrous"]
     if vat_rate is not None:
@@ -138,16 +136,16 @@ def parity_gap_cents_lb(
     pol_factor: float = DEFAULT_POL_FACTOR,
     **conversion_kwargs,
 ) -> pd.DataFrame:
-    """Écart de parité sucre/éthanol, en cents/lb. Positif = le sucre paie mieux.
+    """Sugar/ethanol parity gap, in cents/lb. Positive = sugar pays better.
 
-    Colonnes : ny11, ny11_adjusted, sugar_eq_ethanol, parity_gap, sugar_favoured.
+    Columns: ny11, ny11_adjusted, sugar_eq_ethanol, parity_gap, sugar_favoured.
     """
     equivalent = hydrous_sugar_equivalent_cents_lb(
         hydrous_brl_l, usdbrl, **conversion_kwargs
     )
     frame = pd.concat({"ny11": ny11_cents_lb, "sugar_eq_ethanol": equivalent}, axis=1).dropna()
     if frame.empty:
-        raise SugarMixError("aucune date commune au NY11 et à l'équivalent éthanol")
+        raise SugarMixError("no common date between NY11 and the ethanol equivalent")
     frame["ny11_adjusted"] = frame["ny11"] * pol_factor
     frame["parity_gap"] = frame["ny11_adjusted"] - frame["sugar_eq_ethanol"]
     frame["sugar_favoured"] = frame["parity_gap"] > 0
@@ -162,10 +160,11 @@ def consecana_sensitivity(
     *,
     atr_sugar_values: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """G-H1 : ce qu'un changement de barème Consecana fait à la parité.
+    """G-H1: what a change in the Consecana schedule does to parity.
 
-    Section obligatoire. Les coefficients sont révisés ; figés dans le code, ils faussent
-    tout l'historique — et l'erreur est silencieuse, puisque la parité reste plausible.
+    A required section. The coefficients are revised; freezing them in code
+    corrupts the whole history — and the error is silent, since parity stays
+    plausible.
     """
     values = (
         np.array([1.0300, 1.0495, 1.0700])
@@ -188,50 +187,50 @@ def consecana_sensitivity(
 
 
 # ===========================================================================
-# Le mix sous contraintes
+# The mix under constraints
 # ===========================================================================
 @dataclass(frozen=True)
 class MillConstraints:
-    """Les trois contraintes du programme du mill, par région."""
+    """The mill's three programme constraints, by region."""
 
     region: str
-    crystallisation_cap: float       # mix maximal atteignable techniquement
-    presold_share: float             # mix minimal imposé par le sucre déjà vendu
-    logistics_cost_c_lb: float       # coût d'acheminement vers le port
-    hedge_ratio_entry: float         # taux de couverture d'entrée de saison
+    crystallisation_cap: float       # maximum technically achievable mix
+    presold_share: float             # minimum mix imposed by sugar already sold
+    logistics_cost_c_lb: float       # cost of getting sugar to port
+    hedge_ratio_entry: float         # entry-of-season hedge ratio
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.presold_share <= self.crystallisation_cap <= 1.0:
             raise SugarMixError(
-                f"{self.region} : contraintes incohérentes — il faut "
-                f"0 <= pré-vendu ({self.presold_share}) <= capacité "
+                f"{self.region}: inconsistent constraints — need "
+                f"0 <= presold ({self.presold_share}) <= capacity "
                 f"({self.crystallisation_cap}) <= 1"
             )
         if not 0.0 <= self.hedge_ratio_entry <= 1.0:
-            raise SugarMixError(f"{self.region} : taux de couverture hors [0, 1]")
+            raise SugarMixError(f"{self.region}: hedge ratio outside [0, 1]")
 
 
 def optimal_mix(parity_gap_c_lb: float, constraints: MillConstraints) -> dict:
-    """Programme du mill : maximiser le revenu sous les trois contraintes.
+    """The mill's programme: maximise revenue subject to the three constraints.
 
-    Le programme est linéaire en `mix`, donc la solution est **toujours à une borne** —
-    c'est précisément ce qui rend le mix insensible à la parité sur de larges plages, et
-    c'est l'argument de Hedgepoint. Le signal de prix ne déplace le mix que lorsqu'il
-    change la borne active.
+    The programme is linear in `mix`, so the solution is **always at a bound** —
+    this is precisely what makes the mix insensitive to parity over wide ranges,
+    and it is Hedgepoint's argument. The price signal only moves the mix when it
+    changes which bound is active.
 
-    Renvoie le mix retenu et **quelle contrainte est saturée**, qui est l'information que
-    la page cherche à afficher par région et par quinzaine.
+    Returns the chosen mix and **which constraint is binding**, which is the
+    information the page seeks to display by region and by fortnight.
     """
     net_gap = parity_gap_c_lb - constraints.logistics_cost_c_lb
     if net_gap > 0:
         return {
             "mix": constraints.crystallisation_cap,
-            "binding": "capacité de cristallisation",
+            "binding": "crystallisation capacity",
             "net_gap": net_gap,
         }
     return {
         "mix": constraints.presold_share,
-        "binding": "sucre déjà vendu",
+        "binding": "sugar already sold",
         "net_gap": net_gap,
     }
 
@@ -239,7 +238,7 @@ def optimal_mix(parity_gap_c_lb: float, constraints: MillConstraints) -> dict:
 def binding_constraint_panel(
     parity: pd.Series, regions: list[MillConstraints]
 ) -> pd.DataFrame:
-    """S5 — quelle contrainte est saturée, par quinzaine et par région."""
+    """S5 — which constraint binds, by fortnight and by region."""
     rows = []
     for date, gap in parity.dropna().items():
         for region in regions:
@@ -257,11 +256,11 @@ def binding_constraint_panel(
 
 
 # ===========================================================================
-# L'élasticité conditionnelle — le livrable
+# Conditional elasticity — the deliverable
 # ===========================================================================
 @dataclass(frozen=True)
 class MixElasticity:
-    """b1 et b2 : l'élasticité du mix à la parité, et sa conditionnalité au hedge."""
+    """b1 and b2: the mix's elasticity to parity, and its conditionality on the hedge."""
 
     regression: HacRegression
     beta_parity: float
@@ -271,11 +270,10 @@ class MixElasticity:
     n_regions: int
 
     def elasticity_at_hedge(self, hedge_ratio: float) -> float:
-        """Points de mix par point de parité, à un niveau de couverture donné.
+        """Points of mix per point of parity, at a given hedge level.
 
-        C'est la **courbe** qui est le livrable, pas un nombre : la spec le dit
-        explicitement, et une courbe est plus difficile à balayer d'un revers de main
-        qu'un point unique.
+        The **curve** is the deliverable, not a single number: the spec says so
+        explicitly, and a curve is harder to wave away than a single point.
         """
         return self.beta_parity + self.beta_interaction * hedge_ratio
 
@@ -288,35 +286,35 @@ class MixElasticity:
         at_high = self.elasticity_at_hedge(high)
         if not self.hedging_matters:
             return (
-                f"L'élasticité du mix à la parité vaut {self.beta_parity:+.4f} point de mix "
-                f"par cent/lb, et je ne trouve pas d'effet significatif du niveau de "
-                f"couverture d'entrée (p = {self.interaction_pvalue:.3f}). Sur cet "
-                "échantillon, la thèse de la conditionnalité au hedge ne tient pas."
+                f"The mix's elasticity to parity is {self.beta_parity:+.4f} points "
+                f"of mix per cent/lb, and no significant effect of the "
+                f"entry-of-season hedge level is found (p = {self.interaction_pvalue:.3f}). "
+                "On this sample, the hedge-conditionality thesis does not hold."
             )
         if abs(at_low) < 1e-12:
-            return "élasticité nulle à couverture basse — résultat non interprétable"
-        # points de mix par 100 pts de parité, plutôt que l'inverse (cents necessaires
-        # pour 1 pt de mix) : l'inverse explose en un nombre absurde quand l'élasticité
-        # est petite, alors que la pente elle-même reste lisible à n'importe quelle echelle
+            return "zero elasticity at low hedging — result not interpretable"
+        # points of mix per 100 pts of parity, rather than the inverse (cents needed
+        # for 1 pt of mix): the inverse blows up into an absurd number when the
+        # elasticity is small, while the slope itself stays readable at any scale
         ratio = abs(at_low) / abs(at_high) if at_high else float("inf")
         return (
-            f"100 points d'écart de parité déplacent le mix de {at_high * 100:+.2f} point "
-            f"quand les mills entrent couverts à {high:.0%}, contre {at_low * 100:+.2f} "
-            f"point quand ils entrent à {low:.0%} — {ratio:.1f}x plus sensible en dessous. "
-            "Le mix de 46 % que réclame le bilan mondial n'est atteignable cette saison "
-            "que parce que la couverture d'entrée est basse."
+            f"100 points of parity gap move the mix by {at_high * 100:+.2f} points "
+            f"when mills enter {high:.0%} hedged, against {at_low * 100:+.2f} points "
+            f"when they enter at {low:.0%} — {ratio:.1f}x more sensitive when "
+            "hedging is low. The 46% mix the global balance calls for is only "
+            "reachable this season because entry-of-season hedging is low."
         )
 
 
 def estimate_mix_elasticity(panel: pd.DataFrame) -> MixElasticity:
-    """Panel par quinzaine x région, effets fixes région, erreurs HAC.
+    """Fortnight x region panel, region fixed effects, HAC errors.
 
-    `panel` doit contenir : region, d_mix, parity_gap_lag, hedge_ratio_entry,
+    `panel` must contain: region, d_mix, parity_gap_lag, hedge_ratio_entry,
     cap_utilisation, dist_port.
 
-    Les effets fixes région sont introduits par indicatrices explicites plutôt que par
-    démeanage : sur une dizaine de régions, la lisibilité vaut plus que l'élégance, et on
-    voit les niveaux régionaux dans la sortie.
+    Region fixed effects are introduced via explicit dummies rather than
+    demeaning: over a dozen regions, readability is worth more than elegance, and
+    regional levels remain visible in the output.
     """
     required = {
         "region",
@@ -328,11 +326,11 @@ def estimate_mix_elasticity(panel: pd.DataFrame) -> MixElasticity:
     }
     missing = required - set(panel.columns)
     if missing:
-        raise SugarMixError(f"colonnes manquantes dans le panel : {sorted(missing)}")
+        raise SugarMixError(f"missing columns in the panel: {sorted(missing)}")
 
     clean = panel.dropna(subset=sorted(required - {"region"}))
     if len(clean) < 60:
-        raise SugarMixError(f"panel trop court : n={len(clean)}")
+        raise SugarMixError(f"panel too short: n={len(clean)}")
 
     design = pd.DataFrame(index=clean.index)
     design["parity"] = clean["parity_gap_lag"]
@@ -357,43 +355,43 @@ def estimate_mix_elasticity(panel: pd.DataFrame) -> MixElasticity:
 def mix_required_for_surplus(
     *, target_surplus_mt: float, current_surplus_mt: float, cane_mt: float, atr_yield_t_per_mt: float = 0.140
 ) -> float:
-    """Le déplacement de mix nécessaire pour ramener l'excédent mondial à une cible.
+    """The mix shift needed to bring the global surplus down to a target.
 
-    Répond directement à Hedgepoint : « il faudrait 46 % » devient « il faudrait retirer
-    X Mt, soit Y points de mix, et voici si les contraintes le permettent ».
+    Answers Hedgepoint directly: "it would take 46%" becomes "it would take
+    removing X Mt, i.e. Y points of mix, and here is whether the constraints allow it".
     """
     if cane_mt <= 0 or atr_yield_t_per_mt <= 0:
-        raise SugarMixError("le broyage et le rendement ATR doivent être > 0")
+        raise SugarMixError("cane crushed and ATR yield must be > 0")
     tonnes_to_remove = current_surplus_mt - target_surplus_mt
     sugar_capacity_mt = cane_mt * atr_yield_t_per_mt
     return tonnes_to_remove / sugar_capacity_mt
 
 
 # ===========================================================================
-# LE PLANCHER QUI N'EN EST PAS UN — sur NY11 et USDBRL réels
+# THE FLOOR THAT IS NOT ONE — on real NY11 and USDBRL
 # ===========================================================================
-# Ni le mix UNICA ni l'éthanol CEPEA ne sont dans l'export : la régression en panel
-# ci-dessus reste donc sur jeu synthétique. Mais les deux séries qui suffisent à trancher
-# une affirmation sourcée y sont, elles — le NY11 et l'USDBRL. C'est ce que fait cette
-# section, et elle produit le résultat le plus contre-intuitif de la page.
-CENTS_LB_TO_USD_T = LB_PER_TONNE / 100.0     # 22,0462
+# Neither the UNICA mix nor CEPEA ethanol is in the export: the panel regression above
+# therefore still runs on a synthetic set. But the two series sufficient to settle one
+# sourced claim ARE there — NY11 and USDBRL. This is what this section does, and it
+# produces the page's most counter-intuitive result.
+CENTS_LB_TO_USD_T = LB_PER_TONNE / 100.0     # 22.0462
 
-# Ancrage SOURCÉ : Czarnikow (juin 2026) note que les opportunités de pricing 2026/27 sont
-# restées « sous BRL 2000/t, sous le coût de production ». C'est un nombre publié, daté et
-# attribuable — pas une hypothèse de la page. Il est exposé en paramètre parce qu'il est
-# régional et évolutif, pas parce qu'il serait incertain.
+# SOURCED anchor: Czarnikow (Jun 2026) notes that 2026/27 pricing opportunities stayed
+# "below BRL 2000/t, below the cost of production". A published, dated, attributable
+# number — not a page assumption. It is exposed as a parameter because it is regional and
+# time-varying, not because it is uncertain.
 CZARNIKOW_COST_BRL_T = 2000.0
 
 
 @cached('t3_2_parity')
 def load_real_parity_frame(start: str | None = "2000-01-01") -> pd.DataFrame:
-    """NY11 et USDBRL réels, plus le sucre exprimé en BRL par tonne.
+    """Real NY11 and USDBRL, plus sugar expressed in BRL per tonne.
 
-    Colonnes : ny11 (c/lb), usdbrl, sugar_brl_t.
+    Columns: ny11 (c/lb), usdbrl, sugar_brl_t.
 
-    C'est la seule jambe de la parité que l'export permet de construire : le prix de
-    l'éthanol hydraté (CEPEA) n'y est pas. La page ne fait donc pas semblant de calculer un
-    parity gap — elle exploite ce que ces deux séries suffisent à établir.
+    This is the only leg of parity the export allows building: the hydrous
+    ethanol price (CEPEA) is not there. The page therefore does not pretend to
+    compute a parity gap — it exploits what these two series alone can establish.
     """
     from agri.data.bloomberg_loader import load
 
@@ -403,7 +401,7 @@ def load_real_parity_frame(start: str | None = "2000-01-01") -> pd.DataFrame:
     if start is not None:
         frame = frame[frame.index >= pd.Timestamp(start)]
     if frame.empty:
-        raise SugarMixError(f"aucune date commune au NY11 et à l'USDBRL après {start}")
+        raise SugarMixError(f"no common date between NY11 and USDBRL after {start}")
     frame["sugar_brl_t"] = frame["ny11"] * CENTS_LB_TO_USD_T * frame["usdbrl"]
     return frame
 
@@ -416,22 +414,22 @@ def indifference_hydrous_brl_l(
     atr_sugar: float = ATR_SUGAR_VHP_PER_KG,
     atr_hydrous: float = ATR_ETHANOL_HYDROUS_PER_L,
 ) -> pd.Series:
-    """Le prix de l'éthanol hydraté qui rend une usine indifférente, en BRL/litre.
+    """The hydrous ethanol price that makes a mill indifferent, in BRL/litre.
 
-    C'est `hydrous_sugar_equivalent_cents_lb` inversée : au lieu de partir d'un prix
-    d'éthanol pour le comparer au sucre, on part du sucre et on demande **à quel prix
-    d'éthanol le moulin arrête de faire du sucre**. Un nombre que toute salle de marché
-    brésilienne cote, et qui ne demande que les deux séries dont on dispose.
+    This is `hydrous_sugar_equivalent_cents_lb` inverted: instead of starting
+    from an ethanol price to compare it to sugar, it starts from sugar and asks
+    **at what ethanol price the mill stops making sugar**. A number any Brazilian
+    trading floor quotes, and one that needs only the two series available.
 
-        hydraté* = NY11 x pol_factor x USDBRL x 2,20462 x (ATR_hydraté / ATR_sucre) / 100
+        hydrous* = NY11 x pol_factor x USDBRL x 2.20462 x (ATR_hydrous / ATR_sugar) / 100
     """
     if atr_sugar <= 0 or atr_hydrous <= 0:
-        raise SugarMixError("les coefficients Consecana doivent être > 0")
+        raise SugarMixError("the Consecana coefficients must be > 0")
     aligned = pd.concat({"ny11": ny11_cents_lb, "fx": usdbrl}, axis=1, sort=True).dropna()
     if aligned.empty:
-        raise SugarMixError("aucune date commune au NY11 et à l'USDBRL")
+        raise SugarMixError("no common date between NY11 and USDBRL")
     if (aligned["fx"] <= 0).any():
-        raise SugarMixError("USDBRL doit être > 0 — vérifier le sens de cotation")
+        raise SugarMixError("USDBRL must be > 0 — check the quoting direction")
 
     return (
         aligned["ny11"]
@@ -445,10 +443,10 @@ def indifference_hydrous_brl_l(
 
 @dataclass(frozen=True)
 class ProductionCostCheck:
-    """L'affirmation de Czarnikow, confrontée aux prix.
+    """Czarnikow's claim, checked against prices.
 
-    Une maison publie « le pricing est resté sous le coût de production ». C'est une
-    affirmation vérifiable, et la vérifier vaut mieux que la citer.
+    A house publishes "pricing stayed below the cost of production". This is a
+    verifiable claim, and checking it beats quoting it.
     """
 
     frame: pd.DataFrame
@@ -469,23 +467,24 @@ class ProductionCostCheck:
 
     @property
     def headline(self) -> str:
-        verdict = "sous" if self.is_below_now else "au-dessus du"
+        verdict = "below" if self.is_below_now else "above"
         return (
-            f"Au dernier cours, le sucre vaut {fr(self.last_brl_t, 0)} BRL/t — {verdict} le "
-            f"coût de production de {fr(self.cost_brl_t, 0)} BRL/t que Czarnikow nomme en "
-            f"juin 2026. Depuis {self.start[:4]}, le prix a passé {fr_pct(self.share_below)} "
-            "du temps sous ce seuil."
+            f"At the last print, sugar is worth {fmt_num(self.last_brl_t, 0)} "
+            f"BRL/t — {verdict} the {fmt_num(self.cost_brl_t, 0)} BRL/t cost of "
+            f"production Czarnikow names in June 2026. Since {self.start[:4]}, the "
+            f"price has spent {fmt_pct(self.share_below)} of the time below this "
+            "threshold."
         )
 
 
 def production_cost_check(
     frame: pd.DataFrame, *, cost_brl_t: float = CZARNIKOW_COST_BRL_T
 ) -> ProductionCostCheck:
-    """Confronte le prix du sucre en BRL au coût de production publié."""
+    """Checks the sugar price in BRL against the published cost of production."""
     if "sugar_brl_t" not in frame.columns:
-        raise SugarMixError("le frame doit contenir 'sugar_brl_t' — voir load_real_parity_frame")
+        raise SugarMixError("the frame must contain 'sugar_brl_t' — see load_real_parity_frame")
     if cost_brl_t <= 0:
-        raise SugarMixError("le coût de production doit être > 0")
+        raise SugarMixError("the cost of production must be > 0")
     return ProductionCostCheck(
         frame=frame, cost_brl_t=float(cost_brl_t), start=str(frame.index.min().date())
     )
@@ -493,13 +492,14 @@ def production_cost_check(
 
 @dataclass(frozen=True)
 class MovingFloor:
-    """LE résultat : le « plancher de coût brésilien » coté en cents/lb n'est pas un plancher.
+    """THE result: the "Brazilian cost floor" quoted in c/lb is not a floor.
 
-    Un coût de production réel se libelle dans la monnaie où les charges sont payées, donc
-    en BRL. Traduit en cents/lb pour un lecteur new-yorkais, il devient une fonction du taux
-    de change — et se met à bouger de plusieurs cents sans qu'aucun coût brésilien n'ait
-    changé. Un trader qui voit « du support vers 18 cents parce que c'est le coût brésilien »
-    regarde une série de change déguisée en niveau structurel.
+    A real production cost is denominated in the currency costs are paid in,
+    i.e. BRL. Translated into c/lb for a New York reader, it becomes a function
+    of the exchange rate — and starts moving by several cents with no Brazilian
+    cost having changed at all. A trader seeing "support near 18 cents because
+    that's the Brazilian cost" is looking at an FX series disguised as a
+    structural level.
     """
 
     frame: pd.DataFrame
@@ -529,27 +529,29 @@ class MovingFloor:
     def headline(self) -> str:
         low, high = self.fx_range
         return (
-            f"Le même coût de {fr(self.cost_brl_t, 0)} BRL/t se traduit par un plancher NY11 "
-            f"allant de {fr(self.floor_min, 1)} à {fr(self.floor_max, 1)} c/lb sur la "
-            f"période — {fr(self.floor_range, 1)} cents d'amplitude, produits uniquement par "
-            f"un USDBRL passé de {fr(low, 2)} à {fr(high, 2)}. Aucun coût brésilien n'a "
-            f"bougé. Au dernier change, le plancher est à {fr(self.floor_last, 1)} c/lb."
+            f"The same {fmt_num(self.cost_brl_t, 0)} BRL/t cost translates into "
+            f"an NY11 floor ranging from {fmt_num(self.floor_min, 1)} to "
+            f"{fmt_num(self.floor_max, 1)} c/lb over the period — "
+            f"{fmt_num(self.floor_range, 1)} cents of amplitude, produced solely "
+            f"by a USDBRL that moved from {fmt_num(low, 2)} to {fmt_num(high, 2)}. "
+            f"No Brazilian cost moved. At the last exchange rate, the floor sits "
+            f"at {fmt_num(self.floor_last, 1)} c/lb."
         )
 
 
 def moving_floor(
     frame: pd.DataFrame, *, cost_brl_t: float = CZARNIKOW_COST_BRL_T
 ) -> MovingFloor:
-    """Le prix NY11 qui atteint exactement le coût de production, jour par jour.
+    """The NY11 price that exactly reaches the cost of production, day by day.
 
-        plancher_c_lb = coût_BRL_t / (22,0462 x USDBRL)
+        floor_c_lb = cost_BRL_t / (22.0462 x USDBRL)
 
-    Le résultat est une **série**, pas un niveau — et c'est tout le propos.
+    The result is a **series**, not a level — and that is the whole point.
     """
     if "usdbrl" not in frame.columns:
-        raise SugarMixError("le frame doit contenir 'usdbrl'")
+        raise SugarMixError("the frame must contain 'usdbrl'")
     if cost_brl_t <= 0:
-        raise SugarMixError("le coût de production doit être > 0")
+        raise SugarMixError("the cost of production must be > 0")
 
     out = frame.copy()
     out["floor_c_lb"] = cost_brl_t / (CENTS_LB_TO_USD_T * out["usdbrl"])
@@ -558,24 +560,24 @@ def moving_floor(
 
 
 def floor_variance_decomposition(frame: pd.DataFrame) -> pd.Series:
-    """Part du mouvement du plancher imputable au change plutôt qu'au sucre.
+    """Share of the floor's movement attributable to FX rather than to sugar.
 
-    Le plancher en cents/lb est **exactement** proportionnel à 1/USDBRL : sa variation est
-    donc entièrement du change, par construction. Ce qui mérite d'être décomposé, c'est
-    l'écart entre le prix et son plancher — c'est-à-dire ce qu'un moulin regarde vraiment.
+    The floor in c/lb is **exactly** proportional to 1/USDBRL: its variation is
+    therefore entirely FX, by construction. What is worth decomposing is the gap
+    between the price and its floor — what a mill actually watches.
 
-        ln(sucre_BRL) = ln(NY11) + ln(USDBRL) + const
+        ln(sugar_BRL) = ln(NY11) + ln(USDBRL) + const
     """
     changes = np.log(frame[["ny11", "usdbrl"]]).diff().dropna()
     if len(changes) < 30:
-        raise SugarMixError(f"échantillon trop court pour décomposer : n={len(changes)}")
+        raise SugarMixError(f"sample too short to decompose: n={len(changes)}")
 
     var_sugar = float(changes["ny11"].var())
     var_fx = float(changes["usdbrl"].var())
     covariance = float(changes["ny11"].cov(changes["usdbrl"]))
     total = var_sugar + var_fx + 2 * covariance
     if total <= 0:
-        raise SugarMixError("variance totale nulle ou négative — décomposition impossible")
+        raise SugarMixError("zero or negative total variance — decomposition impossible")
 
     return pd.Series(
         {

@@ -93,7 +93,7 @@ def test_a_material_share_of_sessions_admits_no_origin_at_all(budget):
     une fève gratuite, transportée gratuitement, ne rendrait pas le crush rentable."""
     assert budget.share_impossible > 0.005
     assert (budget.frame["budget_usd_t"] < 0).any()
-    assert "négatif" in budget.headline
+    assert "negative" in budget.headline
 
 
 def test_freight_alone_eats_the_whole_budget_far_more_often(budget):
@@ -153,7 +153,7 @@ def test_budget_frame_has_the_reading_flags(budget):
 
 
 def test_an_impossible_start_date_raises():
-    with pytest.raises(ChinaSoyError, match="aucune date commune"):
+    with pytest.raises(ChinaSoyError, match="no common date"):
         affordable_origination_budget(start="2099-01-01")
 
 

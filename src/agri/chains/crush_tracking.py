@@ -1,70 +1,70 @@
-"""T2-3 — Le board crush n'est pas un prix, c'est un rendement déguisé en prix.
+"""T2-3 — The board crush is not a price, it is a yield in disguise.
 
-L'HISTOIRE
-----------
-Le board crush s'écrit `0,022 x tourteau + 0,11 x huile - fève`. Ces deux coefficients
-ressemblent à des paramètres de conversion anodins. Ce sont en réalité des **rendements** :
-44 livres de tourteau et 11 livres d'huile par boisseau. Le CBOT les a figés une fois pour
-toutes, parce qu'un contrat a besoin d'une définition stable.
+THE STORY
+---------
+The board crush is written as `0.022 x meal + 0.11 x oil - bean`. Those two coefficients
+look like harmless conversion parameters. They are in fact **yields**: 44 pounds of meal
+and 11 pounds of oil per bushel. The CBOT froze them once and for all, because a contract
+needs a stable definition.
 
-Une usine, elle, n'a pas de rendement stable. Le tourteau qu'elle sort dépend de la teneur
-en protéines des fèves, qui dépend de l'origine, de la saison et du lot. Deux points de
-protéine déplacent le rendement de plusieurs livres au boisseau.
+A plant, on the other hand, has no stable yield. The meal it produces depends on the
+protein content of the beans, which depends on origin, season and lot. Two points of
+protein shift the yield by several pounds per bushel.
 
-Donc quand un triturateur se couvre au board crush, il ne se contente pas de couvrir : il
-**accepte silencieusement 44/11 comme son propre rendement**, et garde la différence en
-position nue. Cette position n'a jamais été décidée par personne — elle est le résidu d'une
-convention de contrat — et sa taille en dollars est fixée par le prix du tourteau, donc par
-le marché.
+So when a crusher hedges on the board crush, it is not just hedging: it **silently accepts
+44/11 as its own yield**, and keeps the difference as a naked position. Nobody ever decided
+this position — it is the residue of a contract convention — and its size in dollars is set
+by the meal price, i.e. by the market.
 
-LE LIVRABLE — L'INVERSION
---------------------------
-On ne mesure pas le tracking error (il faudrait des prix cash, absents de l'export). On
-demande l'inverse : **à quelle précision de rendement le board vous contraint-il ?**
+THE DELIVERABLE — THE INVERSION
+----------------------------------
+We do not measure the tracking error (that would need cash prices, absent from the
+export). We ask the reverse question: **what yield precision does the board silently
+demand of you?**
 
-    seuil_lb = (board_crush - opex) / (prix_tourteau / 2000)
+    threshold_lb = (board_crush - opex) / (meal_price / 2000)
 
-C'est l'écart de rendement qui consomme toute la marge nette, en livres par boisseau —
-l'unité qu'un exploitant manie tous les jours. Le résultat n'est pas un niveau moyen mais
-sa **dépendance au régime** : l'exigence s'effondre quand la marge se resserre, c'est-à-dire
-exactement quand la couverture devait servir.
+This is the yield gap that consumes the entire net margin, in pounds per bushel — the unit
+a crush operator works in every day. The result is not an average level but its
+**regime-dependence**: the requirement collapses exactly when the margin tightens, which
+is exactly when the hedge was supposed to matter.
 
-TENSION — INFÉRÉE, PAS SOURCÉE
--------------------------------
-**Il me semble que** le crush CBOT est traité comme un proxy hedgeable de l'économie
-réelle d'une usine, alors que le basis tourteau intérieur, le rendement réel et la
-logistique cassent le hedge exactement quand il faut. Aucune preuve documentaire qu'un
-desk précis s'engueule là-dessus : « il me semble », jamais « j'ai lu que ».
+TENSION — INFERRED, NOT SOURCED
+----------------------------------
+**It seems to me** the CBOT crush is treated as a hedgeable proxy for a plant's real
+economics, while domestic meal basis, real yields and logistics break the hedge exactly
+when it matters. No documentary evidence that a specific desk argues about this: "it seems
+to me", never "I read that".
 
-LE PIÈGE D'UNITÉ, ET IL EST LE CŒUR DU SUJET
----------------------------------------------
-Le board crush mélange **trois unités** dans une seule formule :
-    la fève en USD/boisseau, le tourteau en USD/**short ton**, l'huile en cents/lb.
-Traiter la short ton comme une tonne métrique fausse le tourteau de 10 % — soit, sur un
-crush typique, la moitié du crush lui-même. Voir `core/units.board_crush_usd_bu`, qui
-dérive les coefficients au lieu de les coder en dur.
+THE UNIT TRAP, AND IT IS THE HEART OF THE SUBJECT
+-----------------------------------------------------
+The board crush mixes **three units** into a single formula:
+    the bean in USD/bushel, the meal in USD/**short ton**, the oil in cents/lb.
+Treating the short ton as a metric tonne misprices meal by 10% — on a typical crush,
+half the crush itself. See `core/units.board_crush_usd_bu`, which derives the
+coefficients instead of hardcoding them.
 
-IDENTITÉ
+IDENTITY
 --------
-    board_crush = 0,022 x meal_usd_short_ton + 0,11 x oil_c_lb - bean_usd_bu
+    board_crush = 0.022 x meal_usd_short_ton + 0.11 x oil_c_lb - bean_usd_bu
     plant_crush = y_meal x meal_cash + y_oil x oil_cash - bean_cash - opex
     tracking_error = board_crush - plant_crush
 
-POINT DE BASCULE
-----------------
-Le ratio de couverture de variance minimale `h* = cov(dplant, dboard) / var(dboard)`,
-et les régimes où il s'éloigne de 1. Au-delà d'un certain décrochage, couvrir au board
-**est une position en soi**, pas une couverture.
+TIPPING POINT
+-------------
+The minimum-variance hedge ratio `h* = cov(dplant, dboard) / var(dboard)`, and the
+regimes where it drifts from 1. Beyond a certain decoupling, hedging on the board **is a
+position in its own right**, not a hedge.
 
-HYPOTHÈSES
-----------
-X-H1  Rendements CBOT implicites : 44 lb de tourteau et 11 lb d'huile par boisseau. Les
-      rendements réels d'une usine en diffèrent — d'où `y_meal` et `y_oil` en sliders.
-X-H2  L'opex de trituration est un forfait par boisseau, exogène. Varie fortement avec le
-      prix de l'énergie ; paramétré.
-X-H3  Aucun délai entre l'achat de la fève et la vente des produits : le crush est calculé
-      à la même date pour les trois jambes. Une usine réelle porte un décalage de
-      plusieurs semaines, qui **ajoute** du tracking error — biais dans le bon sens.
+ASSUMPTIONS
+-----------
+X-H1  Implicit CBOT yields: 44 lb of meal and 11 lb of oil per bushel. A real plant's
+      yields differ — hence `y_meal` and `y_oil` as sliders.
+X-H2  Crushing opex is a flat rate per bushel, exogenous. Varies strongly with energy
+      prices; parameterised.
+X-H3  No lag between buying the bean and selling the products: the crush is computed on
+      the same date for all three legs. A real plant carries a lag of several weeks,
+      which **adds** tracking error — a bias in the right direction.
 """
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ from agri.data.snapshot import cached
 from agri.core.stats import HacRegression, hac_ols, regime_runs
 from agri.core.units import board_crush_usd_bu
 
-# X-H1 : rendements réels par défaut, légèrement sous les rendements CBOT
+# X-H1: real default yields, slightly below CBOT yields
 DEFAULT_YIELD_MEAL_LB_BU = 43.5
 DEFAULT_YIELD_OIL_LB_BU = 10.8
 DEFAULT_OPEX_USD_BU = 0.42
@@ -89,7 +89,7 @@ LB_PER_SHORT_TON = 2000.0
 
 
 class CrushError(ValueError):
-    """Modèle mal spécifié."""
+    """Mis-specified model."""
 
 
 def plant_crush_usd_bu(
@@ -101,21 +101,21 @@ def plant_crush_usd_bu(
     yield_oil_lb_bu: float = DEFAULT_YIELD_OIL_LB_BU,
     opex_usd_bu: float = DEFAULT_OPEX_USD_BU,
 ) -> pd.Series:
-    """Crush d'une usine réelle, aux prix cash locaux et aux rendements réels (X-H1).
+    """A real plant's crush, at local cash prices and real yields (X-H1).
 
-    Mêmes unités que le board — short ton pour le tourteau, cents/lb pour l'huile — pour
-    que la différence entre les deux soit un vrai tracking error et pas une erreur de
-    conversion déguisée.
+    Same units as the board — short ton for meal, cents/lb for oil — so that the
+    difference between the two is a genuine tracking error and not a disguised
+    conversion error.
     """
     if not 0 < yield_meal_lb_bu < 60 or not 0 < yield_oil_lb_bu < 20:
         raise CrushError(
-            f"rendements hors plage physique : {yield_meal_lb_bu} lb tourteau et "
-            f"{yield_oil_lb_bu} lb huile par boisseau (un boisseau de soja pèse 60 lb)"
+            f"yields outside the physical range: {yield_meal_lb_bu} lb meal and "
+            f"{yield_oil_lb_bu} lb oil per bushel (a bushel of soybeans weighs 60 lb)"
         )
     if yield_meal_lb_bu + yield_oil_lb_bu > 60.0:
         raise CrushError(
-            f"les rendements somment à {yield_meal_lb_bu + yield_oil_lb_bu:.1f} lb pour un "
-            "boisseau de 60 lb — impossible avant même de compter les pertes"
+            f"yields sum to {yield_meal_lb_bu + yield_oil_lb_bu:.1f} lb for a 60 lb "
+            "bushel — impossible before even counting losses"
         )
     meal_leg = (yield_meal_lb_bu / LB_PER_SHORT_TON) * meal_cash_usd_short_ton
     oil_leg = yield_oil_lb_bu * (oil_cash_cents_lb / 100.0)
@@ -134,11 +134,11 @@ def build_tracking(
     yield_oil_lb_bu: float = DEFAULT_YIELD_OIL_LB_BU,
     opex_usd_bu: float = DEFAULT_OPEX_USD_BU,
 ) -> pd.DataFrame:
-    """Board crush, crush usine et leur écart, sur les dates communes.
+    """Board crush, plant crush and their gap, on common dates.
 
-    Colonnes : board_crush, plant_crush, tracking_error, meal_basis, oil_basis, bean_basis.
-    Les trois basis sont exposés parce que le tracking error vient d'eux — c'est la
-    décomposition qui rend le décrochage explicable au lieu d'être constaté.
+    Columns: board_crush, plant_crush, tracking_error, meal_basis, oil_basis, bean_basis.
+    The three bases are exposed because the tracking error comes from them — this is the
+    decomposition that makes decoupling explainable instead of merely observed.
     """
     frame = pd.concat(
         {
@@ -152,7 +152,7 @@ def build_tracking(
         axis=1,
     ).dropna()
     if frame.empty:
-        raise CrushError("aucune date commune aux six séries")
+        raise CrushError("no common date across the six series")
 
     frame["board_crush"] = board_crush_usd_bu(
         frame["bean_board"], frame["meal_board"], frame["oil_board"]
@@ -176,28 +176,28 @@ def build_tracking(
 
 
 def decompose_tracking_error(frame: pd.DataFrame) -> pd.DataFrame:
-    """Décomposition **exacte** du tracking error. Pas une régression : une identité.
+    """**Exact** decomposition of the tracking error. Not a regression: an identity.
 
-        tracking = (0,022 - y_meal/2000) x meal_board      <- écart de rendement tourteau
-                 + (0,11  - y_oil/100)   x oil_board       <- écart de rendement huile
+        tracking = (0.022 - y_meal/2000) x meal_board      <- meal yield gap
+                 + (0.11  - y_oil/100)   x oil_board        <- oil yield gap
                  - (y_meal/2000) x meal_basis
                  - (y_oil/100)   x oil_basis
                  + bean_basis
                  + opex
 
-    Les deux premiers termes sont ce qu'une lecture « le décrochage vient du basis » rate
-    complètement : ils sont proportionnels au **niveau** du board, pas à un basis, et ils
-    existent même quand tous les basis sont nuls. Sur le jeu de test, le terme de rendement
-    huile a un écart-type supérieur à celui du basis fève lui-même.
+    The first two terms are exactly what a "the decoupling comes from basis" reading
+    misses completely: they are proportional to the **level** of the board, not to a
+    basis, and they exist even when every basis is zero. On the test set, the oil-yield
+    term has a larger standard deviation than the bean basis term itself.
 
-    Une régression sur les trois basis les traite en variables omises et estime le
-    coefficient de la fève avec un biais visible (0,988 au lieu de 1,000). L'identité
-    n'a pas ce problème — quand le calcul est exact, on ne l'estime pas.
+    A regression on the three bases treats these as omitted variables and estimates the
+    bean coefficient with a visible bias (0.988 instead of 1.000). The identity does not
+    have this problem — when the calculation is exact, it is not estimated.
     """
     required = {"yield_meal_lb_bu", "yield_oil_lb_bu", "opex_usd_bu"}
     if not required.issubset(frame.attrs):
         raise CrushError(
-            "frame sans métadonnées de rendement — utiliser build_tracking(), qui les pose"
+            "frame with no yield metadata — use build_tracking(), which sets them"
         )
     y_meal = frame.attrs["yield_meal_lb_bu"] / LB_PER_SHORT_TON
     y_oil = frame.attrs["yield_oil_lb_bu"] / 100.0
@@ -205,11 +205,11 @@ def decompose_tracking_error(frame: pd.DataFrame) -> pd.DataFrame:
     board_oil = CBOT_OIL_LB_BU / 100.0
 
     out = pd.DataFrame(index=frame.index)
-    out["rendement_tourteau"] = (board_meal - y_meal) * frame["meal_board"]
-    out["rendement_huile"] = (board_oil - y_oil) * frame["oil_board"]
-    out["basis_tourteau"] = -y_meal * frame["meal_basis"]
-    out["basis_huile"] = -y_oil * frame["oil_basis"]
-    out["basis_feve"] = frame["bean_basis"]
+    out["meal_yield"] = (board_meal - y_meal) * frame["meal_board"]
+    out["oil_yield"] = (board_oil - y_oil) * frame["oil_board"]
+    out["meal_basis"] = -y_meal * frame["meal_basis"]
+    out["oil_basis"] = -y_oil * frame["oil_basis"]
+    out["bean_basis"] = frame["bean_basis"]
     out["opex"] = frame.attrs["opex_usd_bu"]
     out["total"] = out.sum(axis=1)
     return out
@@ -217,7 +217,7 @@ def decompose_tracking_error(frame: pd.DataFrame) -> pd.DataFrame:
 
 @dataclass(frozen=True)
 class OptimalHedge:
-    """Ratio de couverture de variance minimale, et ce qu'il coûte de l'ignorer."""
+    """Minimum-variance hedge ratio, and what ignoring it costs."""
 
     h_star: float
     variance_reduction_at_h_star: float
@@ -226,37 +226,37 @@ class OptimalHedge:
 
     @property
     def naive_hedge_adds_risk(self) -> bool:
-        """Une couverture 1:1 augmente-t-elle la variance au lieu de la réduire ?"""
+        """Does a 1:1 hedge increase variance instead of reducing it?"""
         return self.variance_reduction_at_one < 0.0
 
     @property
     def headline(self) -> str:
         if self.naive_hedge_adds_risk:
             return (
-                f"Le ratio de couverture optimal board/usine tombe à {self.h_star:.2f} : "
-                f"sur ces fenêtres, un hedge à 1:1 **ajoute** "
-                f"{-self.variance_reduction_at_one:.0%} de variance au lieu d'en retirer."
+                f"The optimal board/plant hedge ratio falls to {self.h_star:.2f}: over "
+                f"this sample, a 1:1 hedge **adds** "
+                f"{-self.variance_reduction_at_one:.0%} of variance instead of removing it."
             )
         return (
-            f"Le ratio de couverture optimal est {self.h_star:.2f}. Couvrir à 1:1 retire "
-            f"{self.variance_reduction_at_one:.0%} de variance contre "
-            f"{self.variance_reduction_at_h_star:.0%} au ratio optimal."
+            f"The optimal hedge ratio is {self.h_star:.2f}. Hedging 1:1 removes "
+            f"{self.variance_reduction_at_one:.0%} of variance against "
+            f"{self.variance_reduction_at_h_star:.0%} at the optimal ratio."
         )
 
 
 def optimal_hedge_ratio(frame: pd.DataFrame) -> OptimalHedge:
-    """`h* = cov(dplant, dboard) / var(dboard)`, sur variations et non sur niveaux.
+    """`h* = cov(dplant, dboard) / var(dboard)`, on changes rather than levels.
 
-    Sur niveaux, deux séries non stationnaires donnent un ratio flatteur qui ne veut rien
-    dire. La couverture s'exécute sur des variations : c'est là qu'il faut la mesurer.
+    On levels, two non-stationary series give a flattering ratio that means nothing.
+    The hedge is executed on changes: that is where it has to be measured.
     """
     changes = frame[["plant_crush", "board_crush"]].diff().dropna()
     if len(changes) < 10:
-        raise CrushError(f"pas assez d'observations : n={len(changes)}")
+        raise CrushError(f"not enough observations: n={len(changes)}")
 
     var_board = float(changes["board_crush"].var())
     if var_board == 0:
-        raise CrushError("le board crush ne varie pas — ratio indéfini")
+        raise CrushError("the board crush does not vary — ratio undefined")
     covariance = float(changes["plant_crush"].cov(changes["board_crush"]))
     h_star = covariance / var_board
 
@@ -275,14 +275,14 @@ def optimal_hedge_ratio(frame: pd.DataFrame) -> OptimalHedge:
 
 
 def rolling_hedge_ratio(frame: pd.DataFrame, *, window: int = 120) -> pd.DataFrame:
-    """`h*` en fenêtre glissante — le graphe qui montre qu'il n'est pas constant.
+    """`h*` on a rolling window — the chart that shows it is not constant.
 
-    `n_eff` d'une fenêtre glissante vaut n_obs/window (Règle C) : à afficher avec la
-    courbe, sinon le ratio paraît bien mieux estimé qu'il ne l'est.
+    A rolling window's `n_eff` equals n_obs/window (Rule C): show it alongside the
+    curve, or the ratio looks far better estimated than it is.
     """
     changes = frame[["plant_crush", "board_crush"]].diff().dropna()
     if len(changes) < window + 2:
-        raise CrushError(f"pas assez d'observations pour une fenêtre de {window}")
+        raise CrushError(f"not enough observations for a window of {window}")
     covariance = changes["plant_crush"].rolling(window).cov(changes["board_crush"])
     variance = changes["board_crush"].rolling(window).var()
     out = pd.DataFrame({"h_star": covariance / variance}).dropna()
@@ -294,10 +294,10 @@ def rolling_hedge_ratio(frame: pd.DataFrame, *, window: int = 120) -> pd.DataFra
 def decoupling_episodes(
     frame: pd.DataFrame, *, threshold_usd_bu: float = 0.35, min_obs: int = 5
 ) -> pd.DataFrame:
-    """Épisodes où le tracking error dépasse un seuil en valeur absolue.
+    """Episodes where the tracking error exceeds a threshold in absolute value.
 
-    « Le board et l'usine ont décroché de plus de 35 c/bu pendant six semaines en
-    septembre » est une phrase datée qu'un triturateur peut confirmer ou démentir.
+    "The board and the plant decoupled by more than 35 c/bu for six weeks in
+    September" is a dated sentence a crusher can confirm or deny.
     """
     return regime_runs(
         frame["tracking_error"].abs() > threshold_usd_bu,
@@ -307,14 +307,15 @@ def decoupling_episodes(
 
 
 def explain_tracking_error(frame: pd.DataFrame) -> HacRegression:
-    """Régression du tracking error sur les trois basis, erreurs HAC.
+    """Regression of the tracking error on the three bases, HAC errors.
 
-    Répond à « d'où vient le décrochage » plutôt qu'à « y a-t-il un décrochage ».
+    Answers "where does the decoupling come from" rather than "is there a decoupling".
 
-    Les coefficients sont **prévisibles** : le tracking error est une fonction linéaire
-    exacte des trois basis, de coefficients `-y_meal/2000`, `-y_oil/100` et `+1`. Retrouver
-    ces valeurs est un contrôle de cohérence du moteur, pas une découverte. Ce qui est
-    informatif, ce sont les **contributions** — voir `basis_contributions`.
+    The coefficients are **predictable**: the tracking error is an exact linear
+    function of the three bases, with coefficients `-y_meal/2000`, `-y_oil/100` and
+    `+1`. Recovering these values is a consistency check on the engine, not a
+    discovery. What is informative is the **contribution** of each — see
+    `basis_contributions`.
     """
     return hac_ols(
         frame["tracking_error"], frame[["bean_basis", "meal_basis", "oil_basis"]]
@@ -322,22 +323,22 @@ def explain_tracking_error(frame: pd.DataFrame) -> HacRegression:
 
 
 def basis_contributions(frame: pd.DataFrame) -> pd.DataFrame:
-    """Poids de chaque terme du tracking error, mesuré par son **écart-type en USD/bu**.
+    """Weight of each term of the tracking error, measured by its **std dev in USD/bu**.
 
-    POURQUOI PAS LES COEFFICIENTS NUS. Les trois basis sont dans trois unités différentes
-    — tourteau en USD/short ton, huile en cents/lb, fève en USD/bu. Comparer leurs
-    coefficients revient à comparer des dollars par short ton à des cents par livre : le
-    classement obtenu ne veut rien dire. La décomposition exacte ramène chaque terme en
-    USD/bu, et c'est la dispersion de ces termes-là qui se compare.
+    WHY NOT THE RAW COEFFICIENTS. The three bases are in three different units — meal
+    in USD/short ton, oil in cents/lb, bean in USD/bu. Comparing their coefficients
+    means comparing dollars per short ton to cents per pound: the resulting ranking
+    means nothing. The exact decomposition brings every term back to USD/bu, and it is
+    the spread of those terms that gets compared.
 
-    Le poste `opex` est constant, donc de dispersion nulle : il déplace le niveau du
-    tracking error, jamais sa variabilité. C'est visible dans la table, et c'est une
-    distinction qui compte pour un hedge.
+    The `opex` line is constant, hence zero dispersion: it shifts the level of the
+    tracking error, never its variability. That is visible in the table, and it is a
+    distinction that matters for a hedge.
     """
     components = decompose_tracking_error(frame).drop(columns="total")
     rows = [
         {
-            "terme": column,
+            "term": column,
             "mean_usd_bu": float(components[column].mean()),
             "std_usd_bu": float(components[column].std()),
         }
@@ -350,20 +351,21 @@ def basis_contributions(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 # ===========================================================================
-# L'INVERSION — ce que le board crush exige de vous sans le dire
+# THE INVERSION — what the board crush demands of you without saying so
 # ===========================================================================
-# Les coefficients du board crush ne sont pas des prix : ce sont des **rendements**. Écrire
-# 0,022 x tourteau + 0,11 x huile - fève, c'est poser 44 lb de tourteau et 11 lb d'huile par
-# boisseau. Une usine qui se couvre au board accepte donc silencieusement ces rendements
-# comme les siens, et garde la différence en position nue. La page mesure cette position et
-# l'inverse en une exigence : à quelle précision de rendement le board vous contraint-il.
+# The board crush's coefficients are not prices: they are **yields**. Writing
+# 0.022 x meal + 0.11 x oil - bean means positing 44 lb of meal and 11 lb of oil per
+# bushel. A plant that hedges on the board therefore silently accepts these yields as
+# its own, and keeps the difference as a naked position. The page measures this
+# position and inverts it into a requirement: what yield precision does the board
+# demand of you.
 @cached('t2_3_board')
 def load_real_board_frame(start: str | None = "2015-01-01") -> pd.DataFrame:
-    """Le board crush CBOT sur données réelles — les trois jambes de l'export.
+    """The CBOT board crush on real data — the three legs from the export.
 
-    Colonnes : bean (USD/bu), meal (USD/short ton), oil (c/lb), board (USD/bu).
-    Aucun prix cash n'entre ici : l'export n'en contient pas, et le livrable de la page est
-    justement construit pour ne pas en avoir besoin.
+    Columns: bean (USD/bu), meal (USD/short ton), oil (c/lb), board (USD/bu).
+    No cash price enters here: the export has none, and the page's deliverable is
+    built precisely not to need one.
     """
     from agri.data.bloomberg_loader import load
 
@@ -375,18 +377,18 @@ def load_real_board_frame(start: str | None = "2015-01-01") -> pd.DataFrame:
     if start is not None:
         frame = frame[frame.index >= pd.Timestamp(start)]
     if frame.empty:
-        raise CrushError(f"aucune date commune aux trois jambes du crush après {start}")
+        raise CrushError(f"no common date across the three crush legs after {start}")
     frame["board"] = board_crush_usd_bu(frame["bean"], frame["meal"], frame["oil"])
     return frame
 
 
 @dataclass(frozen=True)
 class YieldExposure:
-    """La position non couverte qu'un écart de rendement crée, jour par jour.
+    """The uncovered position a yield gap creates, day by day.
 
-    Un écart de rendement n'est pas une erreur de niveau qu'on rattraperait par une
-    constante : c'est une **position dans les produits**, dont la taille en dollars est
-    fixée par le prix du tourteau et de l'huile — donc par le marché, pas par l'usine.
+    A yield gap is not a level error that a constant would fix: it is a **position in
+    the products**, whose dollar size is set by the meal and oil prices — i.e. by the
+    market, not by the plant.
     """
 
     frame: pd.DataFrame
@@ -404,17 +406,17 @@ class YieldExposure:
 
     @property
     def share_exceeding_margin(self) -> float:
-        """Part des séances où la position nue dépasse la marge nette entière."""
+        """Share of sessions where the naked position exceeds the whole net margin."""
         return float((self.frame["position_usd_bu"].abs() > self.frame["net_margin"]).mean())
 
     @property
     def headline(self) -> str:
         return (
-            f"Un écart de {self.meal_lb_gap:+.1f} lb de tourteau et {self.oil_lb_gap:+.1f} lb "
-            f"d'huile par boisseau crée une position nue de "
-            f"{self.position_median:+.3f} USD/bu en médiane, soit {self.share_median:.0%} de la "
-            f"marge nette. Elle dépasse la marge entière "
-            f"{self.share_exceeding_margin:.0%} des séances."
+            f"A gap of {self.meal_lb_gap:+.1f} lb of meal and {self.oil_lb_gap:+.1f} lb "
+            f"of oil per bushel creates a naked position of "
+            f"{self.position_median:+.3f} USD/bu at the median, {self.share_median:.0%} "
+            f"of net margin. It exceeds the entire margin on "
+            f"{self.share_exceeding_margin:.0%} of sessions."
         )
 
 
@@ -425,22 +427,22 @@ def yield_exposure(
     oil_lb_gap: float = 0.0,
     opex_usd_bu: float = DEFAULT_OPEX_USD_BU,
 ) -> YieldExposure:
-    """La position que laisse un écart de rendement, sur le board crush réel.
+    """The position a yield gap leaves, on the real board crush.
 
-        position = (Δlb_tourteau / 2000) x prix_tourteau + Δlb_huile x prix_huile / 100
+        position = (Δlb_meal / 2000) x meal_price + Δlb_oil x oil_price / 100
 
-    Les deux termes ont la forme d'un prix multiplié par une quantité : c'est bien une
-    position, pas un résidu de modèle. Rapportée à la marge nette `board - opex`, elle dit
-    quelle fraction du résultat de l'usine n'est pas couverte alors qu'elle se croit couverte.
+    Both terms take the form of a price times a quantity: this really is a position,
+    not a model residual. Relative to the net margin `board - opex`, it says what
+    fraction of the plant's result is uncovered while believing itself hedged.
     """
     for column in ("meal", "oil", "board"):
         if column not in frame.columns:
-            raise CrushError(f"colonne manquante dans le frame board : {column!r}")
+            raise CrushError(f"missing column in the board frame: {column!r}")
     if abs(meal_lb_gap) > CBOT_MEAL_LB_BU or abs(oil_lb_gap) > CBOT_OIL_LB_BU:
         raise CrushError(
-            f"écart de rendement invraisemblable ({meal_lb_gap:+.1f} lb tourteau, "
-            f"{oil_lb_gap:+.1f} lb huile) : il dépasse le rendement du board lui-même "
-            f"({CBOT_MEAL_LB_BU:.0f} et {CBOT_OIL_LB_BU:.0f} lb/bu)."
+            f"implausible yield gap ({meal_lb_gap:+.1f} lb meal, "
+            f"{oil_lb_gap:+.1f} lb oil): it exceeds the board's own yield "
+            f"({CBOT_MEAL_LB_BU:.0f} and {CBOT_OIL_LB_BU:.0f} lb/bu)."
         )
 
     meal_leg = (meal_lb_gap / LB_PER_SHORT_TON) * frame["meal"]
@@ -454,8 +456,8 @@ def yield_exposure(
             "oil_leg": oil_leg,
             "position_usd_bu": position,
             "net_margin": net_margin,
-            # Marge nette bornée par le bas : au voisinage de zéro le ratio explose et
-            # rendrait la médiane illisible. Le plancher est signalé, pas caché.
+            # Net margin floored: near zero the ratio blows up and would make the
+            # median unreadable. The floor is flagged, not hidden.
             "share_of_margin": position / net_margin.clip(lower=0.05),
         }
     )
@@ -469,11 +471,11 @@ def yield_exposure(
 
 @dataclass(frozen=True)
 class RequiredPrecision:
-    """LE livrable : la précision de rendement que le board exige, en lb par boisseau.
+    """THE deliverable: the yield precision the board demands, in lb per bushel.
 
-    On inverse `yield_exposure` : au lieu de demander ce que coûte un écart donné, on
-    demande quel écart consomme **toute** la marge nette. Le nombre qui sort est dans
-    l'unité qu'un exploitant de trituration manie tous les jours.
+    Inverts `yield_exposure`: instead of asking what a given gap costs, we ask what
+    gap consumes **all** of the net margin. The number that comes out is in the unit a
+    crush operator handles every day.
     """
 
     frame: pd.DataFrame
@@ -486,7 +488,7 @@ class RequiredPrecision:
 
     @property
     def tight_decile_lb(self) -> float:
-        """La précision exigée dans le décile de marge le plus tendu."""
+        """The precision required in the tightest margin decile."""
         tight = self.frame[self.frame["net_margin"] <= self.frame["net_margin"].quantile(0.10)]
         return float(tight["breakeven_lb"].median())
 
@@ -500,17 +502,17 @@ class RequiredPrecision:
         return self.tight_decile_lb / self.board_meal_lb
 
     def share_below(self, lb: float) -> float:
-        """Part des séances où un écart de `lb` livres suffit à effacer la marge nette."""
+        """Share of sessions where a gap of `lb` pounds is enough to erase net margin."""
         return float((self.frame["breakeven_lb"] <= lb).mean())
 
     @property
     def headline(self) -> str:
         return (
-            f"Le board crush exige en médiane une précision de {self.median_lb:.1f} lb de "
-            f"tourteau par boisseau. Mais dans le décile de marge le plus tendu, l'exigence "
-            f"tombe à {self.tight_decile_lb:.2f} lb — soit {self.tight_decile_pct:.1%} des "
-            f"{self.board_meal_lb:.0f} lb du board. Une seule livre d'écart efface la marge "
-            f"nette entière {self.share_below(1.0):.0%} des séances."
+            f"The board crush demands a median precision of {self.median_lb:.1f} lb of "
+            f"meal per bushel. But in the tightest margin decile, the requirement "
+            f"falls to {self.tight_decile_lb:.2f} lb — {self.tight_decile_pct:.1%} of "
+            f"the board's {self.board_meal_lb:.0f} lb. A single pound of gap erases "
+            f"the entire net margin on {self.share_below(1.0):.0%} of sessions."
         )
 
 
@@ -519,21 +521,21 @@ def required_yield_precision(
     *,
     opex_usd_bu: float = DEFAULT_OPEX_USD_BU,
 ) -> RequiredPrecision:
-    """L'écart de rendement tourteau qui annule exactement la marge nette, jour par jour.
+    """The meal yield gap that exactly zeroes the net margin, day by day.
 
-        seuil_lb = (board - opex) / (prix_tourteau / 2000)
+        threshold_lb = (board - opex) / (meal_price / 2000)
 
-    Le seuil est décroissant en marge : il se resserre précisément quand la marge se
-    resserre, c'est-à-dire dans le régime où la décision d'arrêt de l'usine devient vive
-    (cf. T2-5). C'est là que la couverture au board cesse d'en être une.
+    The threshold decreases with the margin: it tightens exactly when the margin
+    tightens, i.e. in the regime where the plant's shutdown decision becomes live
+    (cf. T2-5). That is where hedging on the board stops being a hedge.
     """
     if "board" not in frame.columns or "meal" not in frame.columns:
-        raise CrushError("le frame doit contenir les colonnes 'board' et 'meal'")
+        raise CrushError("the frame must contain 'board' and 'meal' columns")
 
     net_margin = frame["board"] - opex_usd_bu
     position_per_lb = frame["meal"] / LB_PER_SHORT_TON
     if (position_per_lb <= 0).any():
-        raise CrushError("prix du tourteau nul ou négatif : le seuil n'est pas défini")
+        raise CrushError("meal price zero or negative: the threshold is undefined")
 
     out = pd.DataFrame(
         {
@@ -549,16 +551,17 @@ def required_yield_precision(
 
 @dataclass(frozen=True)
 class IdentityBias:
-    """Pourquoi la page calcule la position directement au lieu de la régresser.
+    """Why the page computes the position directly instead of regressing it.
 
-    Hérité de T2-1, retiré du portefeuille faute de séries cash. Le résultat s'applique ici
-    tel quel : régresser une grandeur sur une autre qui partage ses composantes ne mesure
-    pas une relation économique, elle mesure une identité comptable.
+    Inherited from T2-1, dropped from the portfolio for lack of cash series. The
+    result carries over unchanged: regressing one quantity on another that shares its
+    components does not measure an economic relationship, it measures an accounting
+    identity.
 
-    HONNÊTETÉ SUR L'ORDRE DE GRANDEUR : la contamination est **petite** — environ +1 % pour
-    un écart d'une livre, et proportionnelle à l'écart. Ce n'est pas un piège qui fait
-    exploser les chiffres, et le présenter comme tel serait malhonnête. Ce qui compte n'est
-    pas sa taille, c'est ce qu'un praticien ferait du coefficient : voir `headline`.
+    HONESTY ABOUT THE ORDER OF MAGNITUDE: the contamination is **small** — roughly +1%
+    for a one-pound gap, and proportional to the gap. This is not a trap that blows
+    numbers up, and presenting it as such would be dishonest. What matters is not its
+    size, it is what a practitioner would do with the coefficient: see `headline`.
     """
 
     beta_naive: float
@@ -570,14 +573,14 @@ class IdentityBias:
     @property
     def headline(self) -> str:
         return (
-            f"Régresser la marge de l'usine sur le board crush donne {self.beta_naive:.3f} "
-            f"là où la réponse structurelle est {self.beta_structural:.3f} — un écart de "
-            f"{self.bias:+.3f} seulement, mais entièrement mécanique : les deux grandeurs "
-            "partagent le tourteau, l'huile et la fève. Le danger n'est pas la taille du "
-            "biais, c'est ce qu'on en fait : appliquer ce coefficient revient à couvrir son "
-            "écart de rendement avec **davantage de board crush**, alors que l'écart est une "
-            "position en tourteau et en huile pris séparément. On ne couvre pas un écart de "
-            "rendement avec l'instrument dont l'hypothèse de rendement l'a créé."
+            f"Regressing the plant's margin on the board crush gives {self.beta_naive:.3f} "
+            f"where the structural answer is {self.beta_structural:.3f} — a gap of only "
+            f"{self.bias:+.3f}, but entirely mechanical: the two quantities share meal, "
+            "oil and bean. The danger is not the size of the bias, it is what one does "
+            "with it: applying this coefficient means hedging your yield gap with "
+            "**more board crush**, when the gap is a position in meal and oil taken "
+            "separately. You do not hedge a yield gap with the instrument whose yield "
+            "assumption created it."
         )
 
 
@@ -588,25 +591,24 @@ def hedge_ratio_identity_bias(
     oil_lb_gap: float = 0.0,
     opex_usd_bu: float = DEFAULT_OPEX_USD_BU,
 ) -> IdentityBias:
-    """Le piège d'identité comptable, démontré sur la donnée réelle.
+    """The accounting-identity trap, demonstrated on real data.
 
-    La marge d'usine s'écrit exactement `board + écart_rendement - opex`. Régresser sa
-    variation sur celle du board donne donc
+    The plant's margin is written exactly as `board + yield_gap - opex`. Regressing
+    its change on the board's change therefore gives
 
-        beta = 1 + cov(Δécart, Δboard) / var(Δboard)
+        beta = 1 + cov(Δgap, Δboard) / var(Δboard)
 
-    et le second terme n'est pas nul, puisque l'écart de rendement est lui-même une
-    combinaison de tourteau et d'huile — les deux jambes qui composent le board. Le
-    coefficient estimé n'est pas un ratio de couverture : c'est 1 plus une contamination.
+    and the second term is not zero, since the yield gap is itself a combination of
+    meal and oil — the two legs that make up the board. The estimated coefficient is
+    not a hedge ratio: it is 1 plus contamination.
 
-    La réponse structurelle est 1 : à rendements identiques, un boisseau couvert au board
-    est couvert un pour un. Tout écart à 1 mesuré par cette régression est mécanique.
+    The structural answer is 1: at identical yields, a bushel hedged on the board is
+    hedged one for one. Any departure from 1 measured by this regression is mechanical.
 
-    LA CONCLUSION UTILE n'est pas « attention, votre beta est biaisé » — le biais est petit.
-    C'est que la bonne couverture d'un écart de rendement n'est pas un ajustement du ratio
-    de board crush, mais des jambes tourteau et huile dimensionnées séparément. Le board
-    crush est un panier 44/11 figé : il ne peut pas, par construction, couvrir un écart à
-    44/11.
+    THE USEFUL CONCLUSION is not "careful, your beta is biased" — the bias is small. It
+    is that the right way to hedge a yield gap is not adjusting the board crush ratio,
+    but sizing the meal and oil legs separately. The board crush is a fixed 44/11
+    basket: by construction it cannot hedge a gap away from 44/11.
     """
     exposure = yield_exposure(
         frame, meal_lb_gap=meal_lb_gap, oil_lb_gap=oil_lb_gap, opex_usd_bu=opex_usd_bu
@@ -617,11 +619,11 @@ def hedge_ratio_identity_bias(
         {"plant": plant_margin.diff(), "board": frame["board"].diff()}, axis=1, sort=True
     ).dropna()
     if len(changes) < 30:
-        raise CrushError(f"échantillon trop court pour la démonstration : n={len(changes)}")
+        raise CrushError(f"sample too short for the demonstration: n={len(changes)}")
 
     variance = float(changes["board"].var())
     if variance <= 0:
-        raise CrushError("variance nulle du board crush : la régression n'est pas définie")
+        raise CrushError("zero variance in the board crush: the regression is undefined")
     beta_naive = float(changes["plant"].cov(changes["board"]) / variance)
 
     return IdentityBias(

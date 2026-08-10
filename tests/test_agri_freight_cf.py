@@ -71,7 +71,7 @@ def test_arb_identity_is_a_plain_subtraction():
 
 
 def test_negative_financing_rate_is_rejected():
-    with pytest.raises(Exception, match="négatif"):
+    with pytest.raises(Exception, match="negative"):
         financing_cost_usd_t(440.0, 36.0, annual_rate=-0.01, voyage_days=78.0, credit_days=30.0)
 
 
@@ -193,9 +193,9 @@ def test_marginal_zone_produces_the_headline(frame):
     assert zone.n_in_band > 0
     assert 0.0 < zone.share_of_sample <= 1.0
     headline = zone.headline
-    assert "5 $/t du breakeven" in headline
-    assert "IC 95" in headline
-    assert "convention de fret" in headline
+    assert "5 USD/t of breakeven" in headline
+    assert "95% exact CI" in headline
+    assert "freight convention" in headline
 
 
 def test_a_wider_band_captures_more_days(frame):
@@ -216,7 +216,7 @@ def test_marginal_zone_is_empty_when_the_arb_is_never_close():
 
 def test_zero_band_is_rejected():
     frame = pd.DataFrame({"arb_index": [1.0], "arb_full": [1.0]})
-    with pytest.raises(Exception, match="bande"):
+    with pytest.raises(Exception, match="band"):
         marginal_decision_zone(frame, band_usd_t=0.0)
 
 
@@ -363,9 +363,9 @@ def test_pnl_attribution_sign_convention(frame):
     out = pnl_attribution(frame, cargo_t=66_000.0)
     assert (out["gap_usd_t"] * 66_000.0).equals(out["pnl_shifted_usd"])
     positive = out[out["gap_usd_t"] > 0]
-    assert (positive["credited"] == "département fret").all()
+    assert (positive["credited"] == "freight department").all()
     negative = out[out["gap_usd_t"] <= 0]
-    assert (negative["credited"] == "desk trading").all()
+    assert (negative["credited"] == "trading desk").all()
 
 
 def test_pnl_attribution_cumulates(frame):

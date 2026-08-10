@@ -43,64 +43,65 @@ st.set_page_config(page_title="T2-4 — White premium", layout="wide")
 _LIVE = snapshot_banner()
 
 # ===========================================================================
-# En-tête et périmètre
+# Header and scope
 # ===========================================================================
 page_header(
     code="T2-4",
-    title="Le white premium, ou ce qu'un prix peut dire et ce qu'il ne peut pas",
+    title="The white premium, or what a price can and cannot tell you",
     subtitle=(
-        "Le niveau de la rente de raffinage n'est pas identifiable à partir des prix — sa "
-        "variation l'est entièrement, et elle a changé de régime d'environ 60 USD/t"
+        "The level of the refining rent is not identifiable from prices — its "
+        "variation fully is, and it shifted regime by about 60 USD/t"
     ),
     scope=Scope(
         unit_trap=(
-            "Le No.11 cote en **cents par livre, base 96° pol** ; le No.5 en **USD par "
-            "tonne** de sucre raffiné. Les comparer demande la conversion c/lb → USD/t "
-            "**et** un ajustement de polarisation, parce qu'il faut plus d'une tonne de brut "
-            "à 96° pour faire une tonne de blanc. Ce second facteur n'est **publié par "
-            "personne** : il dépend de la spécification contractuelle retenue et vaut "
-            f"entre {POL_PLAUSIBLE_LO:.2f} et {POL_PLAUSIBLE_HI:.2f}. Toute la page consiste "
-            "à établir ce qu'on peut conclure malgré cette ignorance."
+            "No.11 quotes in **cents per pound, 96° pol basis**; No.5 in **USD per "
+            "tonne** of refined sugar. Comparing them needs the c/lb → USD/t "
+            "conversion **and** a polarisation adjustment, because it takes more than "
+            "one tonne of raw at 96° to make one tonne of white. This second factor is "
+            "**published by nobody**: it depends on the contract specification used "
+            f"and runs between {POL_PLAUSIBLE_LO:.2f} and {POL_PLAUSIBLE_HI:.2f}. The "
+            "whole page is about establishing what can be concluded despite this "
+            "ignorance."
         ),
         conversion=(
-            "white_premium = No5_usd_t - No11_c_lb x 22,0462 x pol_adjust\n"
-            "richness      = white_premium - coût_de_raffinage\n"
-            "                (> 0 : le blanc paie plus que le coût de le produire)"
+            "white_premium = No5_usd_t - No11_c_lb x 22.0462 x pol_adjust\n"
+            "richness      = white_premium - refining_cost\n"
+            "                (> 0: white pays more than it costs to produce)"
         ),
         proxies=[
-            "coût énergie : Henry Hub réel x une intensité énergétique paramétrée "
-            "(~8 mmBtu/t) — le prix est réel, l'intensité ne l'est pas",
-            "main-d'œuvre, fret et perte de rendement : forfaits, aucune comptabilité "
-            "analytique de raffinerie n'est publique en série temporelle",
+            "energy cost: real Henry Hub x a parameterised energy intensity "
+            "(~8 mmBtu/t) — the price is real, the intensity is not",
+            "labour, freight and yield loss: flat rates, no public refinery cost "
+            "accounting exists as a time series",
         ],
         out_of_scope=[
-            "coût du capital de l'actif de raffinage : la richness est une marge de "
-            "contribution, jamais un profit — ne pas la comparer à un ROIC (W-H4)",
-            "primes de qualité et contraintes de livraison sur le No.5, qui font partie du "
-            "résidu que la page ne prétend pas décomposer",
+            "the refining asset's cost of capital: richness is a contribution margin, "
+            "never a profit — do not compare it to a ROIC (W-H4)",
+            "quality premia and delivery constraints on No.5, which are part of the "
+            "residual the page does not claim to decompose",
         ],
-        frequency_note="No.11, No.5 et Henry Hub sont quotidiens ; la richness l'est donc aussi.",
+        frequency_note="No.11, No.5 and Henry Hub are all daily; so is richness.",
         data_warnings=[
-            "L'ajustement de polarisation est le paramètre qui décide du signe. La page ne "
-            "le fixe pas : elle mesure d'abord ce que son incertitude coûte (S3), et ne "
-            "conclut que sur ce qui y survit (S4).",
+            "The polarisation adjustment is the parameter that decides the sign. The "
+            "page does not fix it: it first measures what its uncertainty costs (S3), "
+            "and only concludes on what survives that (S4).",
         ],
     ),
 )
 
 # ===========================================================================
-# Paramètres
+# Parameters
 # ===========================================================================
-st.sidebar.markdown("### Paramètres")
+st.sidebar.markdown("### Parameters")
 pol_adjust = st.sidebar.slider(
-    "Ajustement de polarisation", 1.00, 1.20, 1.07, 0.005,
-    help="Inobservable. Plage plausible 1,06–1,08 selon la spécification contractuelle.",
+    "Polarisation adjustment", 1.00, 1.20, 1.07, 0.005,
+    help="Unobservable. Plausible range 1.06–1.08 depending on contract specification.",
 )
 energy_intensity = st.sidebar.slider(
-    "Intensité énergétique du raffinage (mmBtu/t)", 3.0, 15.0, 8.0, 0.5
+    "Refining energy intensity (mmBtu/t)", 3.0, 15.0, 8.0, 0.5
 )
 window_start = st.sidebar.selectbox(
-    "Fenêtre", ["2015-01-01", "2010-01-01", "1990-07-18"], index=0
+    "Window", ["2015-01-01", "2010-01-01", "1990-07-18"], index=0
 )
 
 common = dict(energy_intensity_mmbtu_t=energy_intensity)
@@ -111,11 +112,11 @@ cost = implied_refining_cost(start=window_start, pol_adjust=pol_adjust, **common
 
 kpi_banner(
     {
-        "White premium (médian)": f"{frame['white_premium'].median():.0f} USD/t",
-        "Coût modélisé": f"{cost.modelled_usd_t:.0f} USD/t",
-        "Richness médiane": f"{frame['richness'].median():+.1f} USD/t",
-        "Amplitude du paramètre": f"{check.parameter_span_max:.1f} USD/t",
-        "Amplitude du signal": f"{check.signal_span:.1f} USD/t",
+        "White premium (median)": f"{frame['white_premium'].median():.0f} USD/t",
+        "Modelled cost": f"{cost.modelled_usd_t:.0f} USD/t",
+        "Median richness": f"{frame['richness'].median():+.1f} USD/t",
+        "Parameter span": f"{check.parameter_span_max:.1f} USD/t",
+        "Signal span": f"{check.signal_span:.1f} USD/t",
     }
 )
 
@@ -124,16 +125,16 @@ kpi_banner(
 # ===========================================================================
 section(
     "S1",
-    "« Le white premium est la marge de raffinage » est une affirmation, pas une définition",
-    "L'écart entre le sucre blanc No.5 et le sucre brut No.11 est couramment appelé la marge "
-    "de raffinage, et traité comme si c'en était une par construction. Ce n'est pas le cas. "
-    "C'est un écart entre deux contrats à terme qui diffèrent par **quatre choses à la "
-    "fois** : le degré de raffinage, l'unité de cotation, la base de polarisation, et le "
-    "lieu et la forme de livraison. Appeler cet écart « la marge de raffinage », c'est "
-    "affirmer que le premier terme domine les trois autres.\n\n"
-    "L'affirmation est peut-être vraie. Mais elle est testable, et le test bute d'emblée sur "
-    "un obstacle qui n'est pas économique : pour seulement **écrire** l'écart, il faut "
-    "connaître un facteur de conversion que personne ne publie.",
+    "\"The white premium is the refining margin\" is a claim, not a definition",
+    "The gap between white sugar No.5 and raw sugar No.11 is commonly called the "
+    "refining margin, and treated as if it were one by construction. It is not. It is "
+    "a gap between two futures contracts that differ by **four things at once**: "
+    "degree of refining, quoting unit, polarisation basis, and delivery location and "
+    "form. Calling this gap \"the refining margin\" amounts to claiming the first "
+    "term dominates the other three.\n\n"
+    "The claim may well be true. But it is testable, and the test immediately runs "
+    "into an obstacle that is not economic: just to **write down** the gap requires a "
+    "conversion factor nobody publishes.",
 )
 
 # ===========================================================================
@@ -141,26 +142,26 @@ section(
 # ===========================================================================
 section(
     "S2",
-    "Le facteur que personne ne publie",
-    "Le No.11 se livre à 96° de polarisation, le No.5 est du sucre raffiné. Il faut donc "
-    "plus d'une tonne de brut pour faire une tonne de blanc, et le rapport dépend de la "
-    "spécification contractuelle exacte — pas d'une loi physique. Les valeurs qui circulent "
-    f"vont de {POL_PLAUSIBLE_LO:.2f} à {POL_PLAUSIBLE_HI:.2f}.\n\n"
-    "L'écart entre ces deux bornes paraît anodin : deux points de pourcentage. Mais il "
-    "multiplie le prix du brut converti en USD/t, c'est-à-dire une grandeur de plusieurs "
-    "centaines de dollars. Sur l'échantillon réel, changer de borne déplace la richness "
-    f"d'environ {check.parameter_span_max:.0f} USD/t — à comparer à une richness médiane de "
-    f"{frame['richness'].median():+.1f} USD/t. **Le paramètre inobservable est du même ordre "
-    "que la réponse cherchée.**",
+    "The factor nobody publishes",
+    "No.11 is delivered at 96° polarisation, No.5 is refined sugar. It therefore "
+    "takes more than one tonne of raw to make one tonne of white, and the ratio "
+    "depends on the exact contract specification — not on a physical law. The values "
+    f"in circulation run from {POL_PLAUSIBLE_LO:.2f} to {POL_PLAUSIBLE_HI:.2f}.\n\n"
+    "The gap between these two bounds looks harmless: two percentage points. But it "
+    "multiplies the raw price once converted to USD/t, a quantity worth several "
+    "hundred dollars. On the real sample, switching bound moves richness by about "
+    f"{check.parameter_span_max:.0f} USD/t — against a median richness of "
+    f"{frame['richness'].median():+.1f} USD/t. **The unobservable parameter is the "
+    "same order of magnitude as the answer being sought.**",
     formula=f"pol_adjust ∈ [{POL_PLAUSIBLE_LO:.2f} ; {POL_PLAUSIBLE_HI:.2f}]  →  richness ± {check.parameter_span_max / 2:.1f} USD/t",
 )
 show(
     regime_chart(
-        frame.assign(sous_zero=frame["richness"] <= 0),
+        frame.assign(below_zero=frame["richness"] <= 0),
         "richness",
-        regime_col="sous_zero",
+        regime_col="below_zero",
         regime_color=SHUT_COLOR,
-        title=f"Richness du raffinage à pol_adjust = {pol_adjust:.3f}",
+        title=f"Refining richness at pol_adjust = {pol_adjust:.3f}",
         y_title="USD/tonne",
         annotations={"2020-03-01": "Covid", "2023-01-01": "?"},
     )
@@ -168,55 +169,55 @@ show(
 st.caption(summary.headline)
 
 # ===========================================================================
-# S3 — le problème, posé franchement
+# S3 — the problem, stated plainly
 # ===========================================================================
 section(
     "S3",
-    "Le niveau n'est pas identifiable — et l'inversion le montre proprement",
-    "Plutôt que de choisir une valeur et de conclure, on retourne la question. Supposons le "
-    "raffinage **concurrentiel** : une industrie mature ne dégage pas de rente médiane "
-    "durable. Quel ajustement de polarisation le marché price-t-il alors ? C'est une "
-    "équation à une inconnue, et sa solution se compare directement à la spécification qu'un "
-    "raffineur connaît par cœur.",
-    formula="pol* tel que médiane(richness) = 0",
+    "The level is not identifiable — and the inversion shows it cleanly",
+    "Rather than picking a value and concluding, the question is turned around. "
+    "Suppose refining is **competitive**: a mature industry does not sustain a "
+    "durable median rent. Which polarisation adjustment does the market then price? "
+    "That is a one-unknown equation, and its solution compares directly to the "
+    "specification a refiner knows by heart.",
+    formula="pol* such that median(richness) = 0",
 )
 try:
     implied = implied_pol_adjust(start=window_start, **common)
     finding(implied.headline)
     c1, c2, c3 = st.columns(3)
-    c1.metric("pol* impliqué", f"{implied.pol_star:.4f}")
-    c2.metric("Borne plausible haute", f"{POL_PLAUSIBLE_HI:.2f}")
+    c1.metric("Implied pol*", f"{implied.pol_star:.4f}")
+    c2.metric("High plausible bound", f"{POL_PLAUSIBLE_HI:.2f}")
     c3.metric(
-        "Écart",
+        "Gap",
         f"{implied.pol_star - POL_PLAUSIBLE_HI:+.4f}",
-        delta="dans la plage" if implied.within_plausible else "hors plage",
+        delta="within range" if implied.within_plausible else "outside range",
         delta_color="off",
     )
     scope_note(
-        "Deux lectures restent ouvertes et **le prix ne permet pas de trancher entre elles** : "
-        "soit la plage plausible est trop étroite et les raffineurs travaillent avec un "
-        "ajustement plus élevé, soit le raffinage capte effectivement une rente. C'est "
-        "exactement le genre de question qu'un insider règle en une phrase et qu'aucune "
-        "quantité de données de prix ne réglera."
+        "Two readings remain open and **price alone cannot settle between them**: "
+        "either the plausible range is too narrow and refiners work with a higher "
+        "adjustment, or refining genuinely captures a rent. This is exactly the kind "
+        "of question an insider settles in one sentence and no amount of price data "
+        "will."
     )
 except WhitePremiumError as error:
-    diagnostic_note(f"Inversion impossible sur cette fenêtre : {error}")
+    diagnostic_note(f"Inversion not possible on this window: {error}")
 
 # ===========================================================================
-# S4 — LE RÉSULTAT
+# S4 — THE RESULT
 # ===========================================================================
 section(
     "S4",
-    "Mais la variation, elle, est entièrement identifiable",
-    "Un paramètre inconnu ne rend pas une page inutile — il rend inutilisables les "
-    "conclusions qui en dépendent, et seulement celles-là. L'ajustement de polarisation "
-    "multiplie le prix du brut, donc il déplace la richness de toutes les années **dans le "
-    "même sens et de façon comparable**. Les écarts entre années lui survivent.\n\n"
-    "Le tableau ci-dessous donne la richness médiane par année aux deux bornes de la plage "
-    "plausible et à la valeur retenue. Trois vérifications décident si on a le droit de lire "
-    "les écarts : l'amplitude du paramètre comparée à celle du signal, la stabilité du "
-    "classement des années, et le nombre d'années dont le **signe** dépend du paramètre. "
-    "Celles-là, et seulement celles-là, restent non interprétables.",
+    "But the variation is fully identifiable",
+    "An unknown parameter does not make a page useless — it makes the conclusions "
+    "that depend on it unusable, and only those. The polarisation adjustment "
+    "multiplies the raw price, so it shifts every year's richness **in the same "
+    "direction and by a comparable amount**. The gaps between years survive it.\n\n"
+    "The table below gives median richness by year at both bounds of the plausible "
+    "range and at the chosen value. Three checks decide whether reading the gaps is "
+    "warranted: the parameter's amplitude compared to the signal's, the stability of "
+    "the year ranking, and the number of years whose **sign** depends on the "
+    "parameter. Those, and only those, remain non-interpretable.",
 )
 finding(check.headline)
 
@@ -224,84 +225,85 @@ annual = check.annual.copy()
 annual.columns = [
     f"pol {check.pol_lo:.2f}", f"pol {check.pol_ref:.3f}", f"pol {check.pol_hi:.2f}"
 ]
-annual["amplitude du paramètre"] = (annual.iloc[:, 0] - annual.iloc[:, 2]).round(1)
+annual["parameter span"] = (annual.iloc[:, 0] - annual.iloc[:, 2]).round(1)
 st.dataframe(annual.round(1), width="stretch")
 
 flipping = check.sign_flipping_years
 if flipping:
     diagnostic_note(
-        f"Année(s) non interprétable(s) : {', '.join(map(str, flipping))} — leur signe "
-        "dépend du choix de pol_adjust, donc rien ne peut en être dit. Elles sont écartées "
-        "de la lecture plutôt que résolues par un choix de paramètre commode."
+        f"Non-interpretable year(s): {', '.join(map(str, flipping))} — their sign "
+        "depends on the choice of pol_adjust, so nothing can be said about them. They "
+        "are excluded from the reading rather than resolved by a convenient parameter "
+        "choice."
     )
 else:
-    scope_note("Aucune année ne change de signe sur la plage plausible.")
+    scope_note("No year changes sign across the plausible range.")
 
 # ===========================================================================
-# S5 — ce que la variation révèle
+# S5 — what the variation reveals
 # ===========================================================================
 reference = check.annual["richness_ref"]
 worst_year, best_year = int(reference.idxmin()), int(reference.idxmax())
 section(
     "S5",
-    "Ce que la variation révèle : un changement de régime, pas une oscillation",
-    f"Une fois acquis qu'on peut lire les écarts, le graphe est net. La richness est "
-    f"**persistamment négative de 2017 à 2021** — le raffinage détruit de la valeur au prix "
-    f"affiché, avec un creux à {reference.min():+.0f} USD/t en {worst_year} — puis bascule "
-    f"franchement positive à partir de 2023, jusqu'à {reference.max():+.0f} USD/t en "
-    f"{best_year}, et elle y est restée.\n\n"
-    f"L'amplitude de ce basculement, environ {check.signal_span:.0f} USD/t, est **{check.ratio:.1f} "
-    "fois** ce que l'incertitude de paramètre peut produire. Ce n'est donc pas un artefact "
-    "de convention : quelque chose a changé dans l'économie du raffinage entre 2021 et 2023, "
-    "et c'est resté. La page mesure ce basculement ; elle ne prétend pas l'expliquer — "
-    "restrictions à l'export chez les grands exportateurs, fermetures de capacité, "
-    "réallocation des flux vers les raffineurs de destination sont toutes des hypothèses que "
-    "la donnée de prix ne départage pas.",
+    "What the variation reveals: a regime change, not an oscillation",
+    "Once it is established that the gaps can be read, the chart is stark. Richness "
+    "is **persistently negative from 2017 to 2021** — refining destroys value at the "
+    f"quoted price, bottoming at {reference.min():+.0f} USD/t in {worst_year} — then "
+    f"turns decisively positive from 2023 onward, reaching {reference.max():+.0f} "
+    f"USD/t in {best_year}, and has stayed there.\n\n"
+    f"The size of this swing, about {check.signal_span:.0f} USD/t, is **{check.ratio:.1f} "
+    "times** what parameter uncertainty alone can produce. This is therefore not a "
+    "convention artefact: something changed in the economics of refining between 2021 "
+    "and 2023, and it stuck. The page measures this swing; it does not claim to "
+    "explain it — export restrictions among major exporters, capacity closures, flow "
+    "reallocation toward destination refiners are all hypotheses that price data does "
+    "not adjudicate between.",
 )
 show(
     regime_chart(
-        check.annual.assign(positif=check.annual["richness_ref"] > 0),
+        check.annual.assign(positive=check.annual["richness_ref"] > 0),
         "richness_ref",
-        regime_col="positif",
+        regime_col="positive",
         regime_color=ALT_COLOR,
-        title="Richness médiane par année — le basculement survit au choix de paramètre",
+        title="Median richness by year — the swing survives the choice of parameter",
         y_title="USD/tonne",
     )
 )
 
 # ===========================================================================
-# S6 — le nombre du mail
+# S6 — the number for the email
 # ===========================================================================
 section(
     "S6",
-    "Le nombre à mettre dans un mail",
-    "Toute la discussion précédente porte sur la **richness**, qui demande un modèle de "
-    "coût. Le white premium lui-même n'en demande aucun : c'est le prix que le marché met "
-    "sur la transformation d'une tonne de brut en une tonne de blanc, observé, sans "
-    "hypothèse d'opex ni d'énergie. C'est donc lui qu'on présente à un raffineur, pas la "
-    "richness — il connaît son propre coût et fera la soustraction lui-même.",
+    "The number to put in an email",
+    "All the discussion so far concerns **richness**, which needs a cost model. The "
+    "white premium itself needs none: it is the price the market puts on turning one "
+    "tonne of raw into one tonne of white, observed, with no opex or energy "
+    "assumption. It is therefore this number that gets shown to a refiner, not "
+    "richness — they know their own cost and will do the subtraction themselves.",
 )
 finding(cost.headline)
 
-st.markdown("**Sensibilité au paramètre, en un tableau**")
+st.markdown("**Sensitivity to the parameter, in one table**")
 st.dataframe(
     pol_adjust_sensitivity(frame["no5"], frame["no11"]).round(2),
     width="stretch", hide_index=True,
 )
 scope_note(
-    "L'énergie est la seule composante de coût réellement observée (Henry Hub) ; "
-    f"l'intensité de {energy_intensity:.1f} mmBtu/t qui la convertit en USD/t est, elle, un "
-    "paramètre. Main-d'œuvre, fret et perte de rendement sont des forfaits — aucune source "
-    "publique ne les donne en série temporelle."
+    "Energy is the only cost component genuinely observed (Henry Hub); the "
+    f"{energy_intensity:.1f} mmBtu/t intensity that converts it to USD/t is itself a "
+    "parameter. Labour, freight and yield loss are flat rates — no public source "
+    "gives them as a time series."
 )
 
 mail_question(
-    f"Sur ICE No.5 contre No.11 depuis {window_start[:4]}, je trouve que le marché paie "
-    f"environ {cost.market_usd_t:.0f} USD/t pour l'acte de raffiner, et surtout que ce prix "
-    f"a changé de régime d'environ {check.signal_span:.0f} USD/t entre {worst_year} et "
-    f"{best_year} — un basculement {check.ratio:.0f} fois plus grand que l'incertitude sur "
-    "l'ajustement de polarisation, donc pas un artefact de convention. Est-ce que votre coût "
-    "de raffinage tout compris est de cet ordre ? Et qu'est-ce qui a changé de votre côté "
-    "entre ces deux dates ?",
-    "Raffineurs de destination (Al Khaleej, ASR, Tereos, Südzucker), desks sucre de Sucden, Czarnikow, ED&F Man",
+    f"On ICE No.5 against No.11 since {window_start[:4]}, I find the market pays "
+    f"around {cost.market_usd_t:.0f} USD/t for the act of refining, and, more "
+    f"notably, that this price shifted regime by about {check.signal_span:.0f} USD/t "
+    f"between {worst_year} and {best_year} — a swing {check.ratio:.0f} times larger "
+    "than the uncertainty on the polarisation adjustment, so not a convention "
+    "artefact. Is your all-in refining cost of that order? And what changed on your "
+    "side between those two dates?",
+    "Destination refiners (Al Khaleej, ASR, Tereos, Südzucker), sugar desks at Sucden, Czarnikow, ED&F Man",
 )

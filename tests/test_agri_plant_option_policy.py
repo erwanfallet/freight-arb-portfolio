@@ -121,7 +121,7 @@ def test_degenerate_band_is_detected():
         value_on=np.zeros(5), value_off=np.zeros(5), n_iterations=1, converged=True,
     )
     assert band.is_degenerate
-    assert "jamais s'arrêter" in band.headline
+    assert "never stop" in band.headline
 
 
 def test_degenerate_band_refuses_to_run_rather_than_substituting(path):
@@ -132,7 +132,7 @@ def test_degenerate_band_refuses_to_run_rather_than_substituting(path):
         m_off=10.0, m_on=-10.0, grid=np.linspace(-20, 20, 5),
         value_on=np.zeros(5), value_off=np.zeros(5), n_iterations=1, converged=True,
     )
-    with pytest.raises(PlantOptionError, match="dégénérée"):
+    with pytest.raises(PlantOptionError, match="degenerate"):
         run_band_policy(path, band, **COSTS)
 
 
@@ -146,7 +146,7 @@ def test_comparison_continues_without_the_band_when_degenerate(path):
     comparison = compare_policies(path, band, **COSTS)
     assert not comparison.band_is_available
     assert np.isnan(comparison.gap_vs_band)
-    assert "Pas de frontière d'exercice" in comparison.headline
+    assert "No exercise boundary" in comparison.headline
     # le contrefactuel reste calculable : -164 (heuristique) - 30 (jamais d'arret)
     assert comparison.heuristic_flexibility_value == pytest.approx(-194.0)
     assert len(comparison.to_frame()) == 2
@@ -178,7 +178,7 @@ def test_implied_switching_cost_is_the_deliverable():
     assert implied.n_stops_observed > 10
     assert implied.effective_m_off < 0 < implied.effective_m_on
     assert 100.0 < implied.implied_switching_cost < 200.0
-    assert "suppose sans le dire" in implied.headline
+    assert "assumes without saying so" in implied.headline
 
 
 @pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
