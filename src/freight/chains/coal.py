@@ -74,6 +74,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 BENCHMARK_CV_KCAL_PER_KG = 6000.0
 
 # B-H6 — montée en charge de l'ETS maritime. Avant 2024 : aucune obligation.
@@ -392,6 +394,7 @@ DEFAULT_COAL_EFFICIENCY = 0.38
 DEFAULT_GAS_EFFICIENCY = 0.55
 
 
+@cached('b_switching')
 def load_real_switching_frame(start: str | None = "2018-01-01") -> pd.DataFrame:
     """API2, TTF, EUA and EURUSD on their common calendar, plus coal restated per MWh.
 

@@ -60,6 +60,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.stats import regime_runs
 from agri.core.units import cents_lb_to_usd_t
 
@@ -234,6 +236,7 @@ def pol_adjust_sensitivity(
     return pd.DataFrame(rows)
 
 
+@cached('t2_4_richness')
 def load_real_richness_frame(
     *,
     pol_adjust: float = DEFAULT_POL_ADJUST,
@@ -381,6 +384,12 @@ class IdentificationCheck:
 
     @property
     def ratio(self) -> float:
+        if self.parameter_span_max <= 0:
+            raise WhitePremiumError(
+                "amplitude de parametre nulle : les trois variantes de pol_adjust sont "
+                "identiques, ce qui ne peut arriver que si elles ont ete reconstruites a "
+                "partir d'une seule et meme serie. Le rapport n'a pas de sens ici."
+            )
         return self.signal_span / self.parameter_span_max
 
     @property
@@ -436,10 +445,18 @@ def identification_check(
             f"{pol_lo} et {pol_hi}"
         )
 
+    # Les trois variantes sont reconstruites depuis UN SEUL frame plutot que par trois
+    # appels au loader. Deux raisons, et la seconde est la plus importante :
+    #   - c'est trois fois moins de lecture disque ;
+    #   - en mode snapshot le loader ignore ses arguments et renverrait trois fois le meme
+    #     frame, donc une amplitude de parametre nulle et une division par zero. Recalculer
+    #     ici garde la page vraie meme quand la donnee brute est absente.
+    base = load_real_richness_frame(pol_adjust=pol_ref, start=start, **kwargs)
     columns = {}
     for label, pol in (("richness_lo", pol_lo), ("richness_ref", pol_ref), ("richness_hi", pol_hi)):
-        frame = load_real_richness_frame(pol_adjust=pol, start=start, **kwargs)
-        columns[label] = frame["richness"].groupby(frame.index.year).median()
+        premium = base["no5"] - cents_lb_to_usd_t(base["no11"]) * pol
+        richness = premium - base["fv_refining"]
+        columns[label] = richness.groupby(base.index.year).median()
 
     annual = pd.DataFrame(columns)
     annual.index.name = "year"

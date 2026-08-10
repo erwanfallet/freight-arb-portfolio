@@ -22,7 +22,8 @@ from agri.chains.sugar_mix import (  # noqa: E402
 )
 from agri.core.fmt import fr, fr_pct  # noqa: E402
 from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     SHUT_COLOR,
     Scope,
     diagnostic_note,
@@ -38,9 +39,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T3-2 — Sucre : le plancher qui bouge", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 # ===========================================================================
 # En-tête et périmètre

@@ -66,6 +66,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.fmt import fr, fr_pct
 from agri.core.stats import regime_runs
 from agri.core.units import bushels_per_tonne, strip_vat
@@ -312,6 +314,7 @@ DEFAULT_BASIS_CENTS_BU = 70.0
 DEFAULT_FREIGHT_USD_T = 45.0
 
 
+@cached('t2_5_china')
 def load_real_crush_frame(
     *,
     start: str = "2018-01-01",
@@ -409,6 +412,7 @@ class OriginationBudget:
         )
 
 
+@cached('t3_4_budget', from_frame=lambda f: OriginationBudget(frame=f, freight_reference_usd_t=DEFAULT_FREIGHT_USD_T))
 def affordable_origination_budget(
     *,
     start: str = "2018-01-01",

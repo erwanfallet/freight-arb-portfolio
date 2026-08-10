@@ -25,7 +25,8 @@ from agri.chains.plant_option import (  # noqa: E402
     volatility_sensitivity,
 )
 from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     Scope,
     diagnostic_note,
     finding,
@@ -40,9 +41,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T2-5 — L'usine comme option", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 # ===========================================================================
 # En-tête et périmètre

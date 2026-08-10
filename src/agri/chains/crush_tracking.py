@@ -73,6 +73,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.stats import HacRegression, hac_ols, regime_runs
 from agri.core.units import board_crush_usd_bu
 
@@ -355,6 +357,7 @@ def basis_contributions(frame: pd.DataFrame) -> pd.DataFrame:
 # boisseau. Une usine qui se couvre au board accepte donc silencieusement ces rendements
 # comme les siens, et garde la différence en position nue. La page mesure cette position et
 # l'inverse en une exigence : à quelle précision de rendement le board vous contraint-il.
+@cached('t2_3_board')
 def load_real_board_frame(start: str | None = "2015-01-01") -> pd.DataFrame:
     """Le board crush CBOT sur données réelles — les trois jambes de l'export.
 

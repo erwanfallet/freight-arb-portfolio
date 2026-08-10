@@ -147,6 +147,30 @@ def _prose(text: str) -> str:
 _escape_dollars = _prose
 
 
+def snapshot_banner() -> bool:
+    """Say plainly whether the page is live or reading committed results.
+
+    Returns True when live data is present. On the deployed app there is no Bloomberg
+    export — the repository is public and the data is licensed — so the pages read frames
+    this codebase computed earlier. Parameters that feed the **data load** are frozen at
+    their defaults; parameters applied **downstream** of it still recompute normally, and
+    the distinction is stated rather than left for the reader to discover by moving a
+    slider and seeing nothing happen.
+    """
+    from agri.data.snapshot import has_live_data
+
+    if has_live_data():
+        return True
+    st.info(
+        "**Published results.** This deployment reads frames computed from a licensed "
+        "Bloomberg export that is deliberately not in the public repository. Sliders that "
+        "feed the data load are pinned to the values these results were computed at; "
+        "sliders applied downstream still work. Clone the repo, drop the export in place "
+        "and every page becomes fully live."
+    )
+    return False
+
+
 def section(number: str, title: str, prose: str, *, formula: str = "") -> None:
     """Une section numerotee : titre, prose dense et causale, formule.
 

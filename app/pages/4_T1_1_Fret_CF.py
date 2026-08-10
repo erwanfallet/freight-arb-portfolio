@@ -15,8 +15,10 @@ from agri.chains.freight_cf import (  # noqa: E402
     market_implied_ballast_share,
 )
 from agri.core.voyage import ROUTES, VESSELS, VoyageParams, voyage_freight_usd_t  # noqa: E402
-from agri.data.bloomberg_loader import DEFAULT_PATH, load  # noqa: E402
-from page_template import (  # noqa: E402
+from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
+from agri.data.snapshot import series_or_live  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     Scope,
     diagnostic_note,
     finding,
@@ -31,9 +33,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T1-1 — Le fret dans le C&F", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 st.sidebar.markdown("### Hypothèses de voyage")
 speed_laden = st.sidebar.slider("Vitesse en charge (nœuds)", 10.0, 15.0, 12.5, 0.5)
@@ -42,7 +42,7 @@ mgo_premium = st.sidebar.slider("Prime MGO sur VLSFO", 1.0, 1.8, 1.35, 0.05)
 
 params = VoyageParams(speed_laden_kn=speed_laden, port_days=port_days)
 spread = load_real_route_frame(params=params, mgo_premium=mgo_premium)
-tce_2021 = load("p8_route_tce_2021")
+tce_2021 = series_or_live("t1_1_tce_2021", "p8_route_tce_2021")
 boom_peak = float(tce_2021.max())
 
 page_header(
@@ -215,7 +215,7 @@ reference_tce = st.slider(
          f"{boom_peak:,.0f}",
 )
 latest_rate = float(spread.route_rate_usd_t.iloc[-1])
-latest_vlsfo = float(load("vlsfo_singapore").reindex(spread.route_rate_usd_t.index).ffill().iloc[-1])
+latest_vlsfo = float(series_or_live("t1_1_vlsfo", "vlsfo_singapore").reindex(spread.route_rate_usd_t.index).ffill().iloc[-1])
 
 implied = market_implied_ballast_share(
     latest_rate, float(reference_tce), latest_vlsfo, latest_vlsfo * mgo_premium,

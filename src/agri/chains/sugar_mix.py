@@ -72,6 +72,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.stats import HacRegression, hac_ols
 from agri.core.fmt import fr, fr_pct
 from agri.core.units import LB_PER_TONNE, strip_vat
@@ -383,6 +385,7 @@ CENTS_LB_TO_USD_T = LB_PER_TONNE / 100.0     # 22,0462
 CZARNIKOW_COST_BRL_T = 2000.0
 
 
+@cached('t3_2_parity')
 def load_real_parity_frame(start: str | None = "2000-01-01") -> pd.DataFrame:
     """NY11 et USDBRL réels, plus le sucre exprimé en BRL par tonne.
 

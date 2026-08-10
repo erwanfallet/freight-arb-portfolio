@@ -22,7 +22,8 @@ from agri.chains.hedge_cost import (  # noqa: E402
     procyclicality,
 )
 from agri.data.bloomberg_loader import DEFAULT_PATH, load  # noqa: E402
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     Scope,
     diagnostic_note,
     finding,
@@ -37,9 +38,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T1-2 — Coût du hedge", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 COMMODITIES = {
     "cacao_ny": ("Cacao ICE New York", "cocoa_ny", "USD/t"),
@@ -60,7 +59,9 @@ line_usd = line_musd * 1e6
 label, series_key, unit = COMMODITIES[commodity]
 params = HedgeParams(side=SHORT_HEDGE, book_size_t=book_t, credit_line_usd=line_usd)
 simulation = load_real_hedge_frame(commodity, params=params)
-price = load(series_key)
+# Le prix affiche est celui que la simulation a REELLEMENT utilise, pas un rechargement
+# separe : les deux coincident, mais seul le premier survit au mode snapshot.
+price = simulation["front"].rename(series_key)
 margin_rate = implied_margin_rate(simulation, book_size_t=book_t)
 
 page_header(

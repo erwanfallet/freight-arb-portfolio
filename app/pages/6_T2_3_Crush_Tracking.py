@@ -20,7 +20,8 @@ from agri.chains.crush_tracking import (  # noqa: E402
     yield_exposure,
 )
 from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     SHUT_COLOR,
     Scope,
     diagnostic_note,
@@ -36,9 +37,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T2-3 — Board crush", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 # ===========================================================================
 # En-tête et périmètre

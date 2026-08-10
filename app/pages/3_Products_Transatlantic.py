@@ -23,7 +23,8 @@ from freight.chains.products import (  # noqa: E402
     load_real_transatlantic_frame,
     transatlantic_spread,
 )
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     ALT_COLOR,
     SHUT_COLOR,
     Scope,
@@ -40,9 +41,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="C — Transatlantic distillate", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Bloomberg export not found: {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 # ===========================================================================
 # Header and scope

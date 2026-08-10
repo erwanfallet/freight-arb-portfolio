@@ -22,7 +22,8 @@ from agri.chains.white_premium import (  # noqa: E402
     summarise_richness,
 )
 from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
-from page_template import (  # noqa: E402
+from page_template import (
+    snapshot_banner,  # noqa: E402
     ALT_COLOR,
     SHUT_COLOR,
     Scope,
@@ -39,9 +40,7 @@ from page_template import (  # noqa: E402
 
 st.set_page_config(page_title="T2-4 — White premium", layout="wide")
 
-if not DEFAULT_PATH.exists():
-    st.error(f"Fichier Bloomberg introuvable : {DEFAULT_PATH}")
-    st.stop()
+_LIVE = snapshot_banner()
 
 # ===========================================================================
 # En-tête et périmètre

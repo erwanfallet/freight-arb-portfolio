@@ -85,6 +85,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from freight.signals.worldscale import FlatRateTable
 
 # C-H1 — densité par défaut du distillat, en barils par tonne.
@@ -392,6 +394,7 @@ def gallons_per_tonne(density_kg_l: float) -> float:
     return KG_PER_TONNE / density_kg_l / LITRES_PER_GALLON
 
 
+@cached('c_products')
 def load_real_transatlantic_frame(start: str | None = "2015-01-01") -> pd.DataFrame:
     """NYMEX ULSD and ICE gasoil, both real, on their common calendar.
 

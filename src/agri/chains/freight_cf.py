@@ -61,6 +61,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.breakeven import Breakeven, NoBreakevenInRange, solve_breakeven
 from agri.core.stats import ProportionCI, clopper_pearson, regime_runs
 from agri.core.voyage import (
@@ -637,6 +639,7 @@ def market_implied_ballast_share(
         )
 
 
+@cached('t1_1_route', from_frame=lambda f: ImpliedTceSpread(f["route_rate_usd_t"], f["tce_no_ballast"], f["tce_full_ballast"]))
 def load_real_route_frame(
     *,
     vessel_key: str = "panamax",

@@ -45,6 +45,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.stats import adf_kpss, hac_ols
 
 DEFAULT_WIDE_QUANTILE = 0.75          # S-H2
@@ -283,6 +285,7 @@ MYR_PEG_END = "2005-07-21"
 CENTS_LB_TO_USD_T = 22.0462
 
 
+@cached('t2_6_peg')
 def load_peg_window_spread() -> pd.DataFrame:
     """Spread palme-soja en USD/tonne sur la fenêtre de parité fixe du ringgit.
 

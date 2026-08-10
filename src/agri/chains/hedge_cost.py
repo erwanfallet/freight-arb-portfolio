@@ -68,6 +68,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 SHORT_HEDGE = 1      # négociant long physique, short futures
 LONG_HEDGE = -1      # manufacturier acheteur, long futures
 
@@ -417,6 +419,7 @@ REAL_COMMODITY_KEYS: dict[str, str] = {
 }
 
 
+@cached('t1_2_hedge')
 def load_real_hedge_frame(
     commodity: str = "cacao_ny",
     *,

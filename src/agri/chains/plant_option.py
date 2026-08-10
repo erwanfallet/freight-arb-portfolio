@@ -88,6 +88,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.stats import StationarityVerdict, adf_kpss, regime_runs
 
 STATE_ON = 0
@@ -907,6 +909,7 @@ def volatility_sensitivity(
     return pd.DataFrame(rows)
 
 
+@cached("t2_5_us_board", from_frame=lambda f: f.iloc[:, 0].rename("board_crush"))
 def real_board_crush_margin(*, start: str = "1990-07-18") -> pd.Series:
     """Marge de trituration board, entièrement réelle — CBOT soja/tourteau/huile.
 

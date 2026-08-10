@@ -100,6 +100,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 from agri.core.breakeven import Breakeven, NoBreakevenInRange, solve_breakeven
 
 # --- constantes physiques et réglementaires ------------------------------
@@ -748,6 +750,7 @@ def structural_exit(
     )
 
 
+@cached('t3_1_soyoil', from_frame=lambda f: f.iloc[:, 0].rename("soyoil_usd_lb"))
 def load_soyoil_usd_lb(start: str | None = None) -> pd.Series:
     """Le soyoil CBOT de l'export réel, converti de cents par livre en USD par livre.
 

@@ -51,6 +51,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from agri.data.snapshot import cached
+
 # Valeurs par défaut des hypothèses A-H2. Documentées, jamais codées en dur ailleurs.
 DEFAULT_MOISTURE_BRAZIL = 0.090
 DEFAULT_MOISTURE_AUSTRALIA = 0.080
@@ -300,6 +302,7 @@ def _read_sheet(sheet: str) -> pd.Series:
     return pd.Series(values.values, index=dates).dropna().sort_index()
 
 
+@cached('a_iron_ore')
 def load_real_premium_frame() -> pd.DataFrame:
     """The four legs on a common **monthly** grid, and the reason it has to be monthly.
 
