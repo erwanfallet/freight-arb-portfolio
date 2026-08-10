@@ -1,11 +1,21 @@
 [project]
 name = "freight"
-version = "0.2.0"
-description = "Arbitrages physiques ou le fret est le terme decisif — minerai de fer, charbon, produits"
+version = "0.3.0"
+description = "Physical commodity arbitrage — twelve projects across dry bulk, refined products, softs and grains"
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
     "numpy>=1.24",
+    # scipy : brentq (les points de bascule) et l'IC exact de Clopper-Pearson.
+    # statsmodels : ADF, KPSS et la covariance HAC Newey-West.
+    # Dans le moteur et pas dans l'extra "app" : les golden tests du socle en dependent.
+    # Reecrire un KPSS a la main est le genre de chose qui produit une page fausse sans
+    # jamais planter.
+    "scipy>=1.10",
+    "statsmodels>=0.14",
+    # openpyxl : lecture de l'export Bloomberg (.xlsx). Sans lui, la moitie des projets
+    # tombe en collecte de tests avec un ModuleNotFoundError peu parlant.
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]

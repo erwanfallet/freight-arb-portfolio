@@ -10,3 +10,11 @@ data/raw/*
 data/interim/*
 !data/raw/.gitkeep
 !data/interim/.gitkeep
+
+# R console history, created by the editor, never intentional
+.Rhistory
+
+# Bloomberg exports live OUTSIDE the repository on purpose. The repo is public and
+# redistributing licensed market data would breach the terms it was obtained under —
+# `agri.data.bloomberg_loader.DEFAULT_PATH` points at the user's own copy.
+*.xlsx

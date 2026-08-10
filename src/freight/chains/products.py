@@ -359,3 +359,234 @@ def freight_model_vs_quoted(
         "ecart_moyen_pct": float(100.0 * (diff / aligned["quoted"]).mean()),
         "correlation": float(np.corrcoef(aligned["modelled"], aligned["quoted"])[0, 1]),
     }
+
+
+# ===========================================================================
+# REAL DATA — the density assumption measured against the arb it computes
+# ===========================================================================
+# Everything above runs on synthetic prices. The Bloomberg export now carries both legs
+# with 9 000+ observations each: NYMEX ULSD (cents per gallon) and ICE gasoil (USD per
+# tonne). That is enough to stop asserting that the density conversion is large relative to
+# the arb, and start measuring it.
+LITRES_PER_GALLON = 3.785411784
+KG_PER_TONNE = 1000.0
+
+# Plausible density band for a middle distillate, in kg per litre. Diesel and gasoil
+# specifications sit inside it; the exact figure depends on the grade, the additive package
+# and the reference temperature, and no exchange publishes it alongside the price.
+DENSITY_LIGHT = 0.820
+DENSITY_TYPICAL = 0.845
+DENSITY_HEAVY = 0.860
+
+
+def gallons_per_tonne(density_kg_l: float) -> float:
+    """Volume of one tonne of distillate, in US gallons.
+
+    This is the whole conversion, and it is one line: a tonne is a mass, a gallon is a
+    volume, and the only thing standing between them is a density that nobody quotes.
+    """
+    if not 0.6 < density_kg_l < 1.1:
+        raise ValueError(
+            f"density outside the plausible range for a liquid hydrocarbon: {density_kg_l}"
+        )
+    return KG_PER_TONNE / density_kg_l / LITRES_PER_GALLON
+
+
+def load_real_transatlantic_frame(start: str | None = "2015-01-01") -> pd.DataFrame:
+    """NYMEX ULSD and ICE gasoil, both real, on their common calendar.
+
+    Columns: ulsd_c_gal (US leg, volume-quoted), gasoil_usd_t (European leg, mass-quoted).
+    Deliberately left in their native units — converting on the way in would hide the very
+    thing this project is about.
+    """
+    from agri.data.bloomberg_loader import load
+
+    frame = pd.concat(
+        {"ulsd_c_gal": load("ulsd"), "gasoil_usd_t": load("ice_gasoil")},
+        axis=1,
+        sort=True,
+    ).dropna()
+    if start is not None:
+        frame = frame[frame.index >= pd.Timestamp(start)]
+    if frame.empty:
+        raise ValueError(f"no common dates between ULSD and ICE gasoil after {start}")
+    return frame
+
+
+def transatlantic_spread(
+    frame: pd.DataFrame, *, density_kg_l: float = DENSITY_TYPICAL
+) -> pd.Series:
+    """US leg converted to USD per tonne, minus the European leg.
+
+        spread = ULSD_c_gal / 100 x gallons_per_tonne(density) - gasoil_usd_t
+
+    Positive means the US barrel, once expressed in European units, is worth more than the
+    European one — which is what has to be true before freight can be paid out of it.
+    """
+    converted = frame["ulsd_c_gal"] / 100.0 * gallons_per_tonne(density_kg_l)
+    return (converted - frame["gasoil_usd_t"]).rename("spread_usd_t")
+
+
+@dataclass(frozen=True)
+class DensityIdentification:
+    """How much of the arb is the arb, and how much is the conversion factor.
+
+    The comparison that matters is not "is the density swing large in absolute terms" but
+    "is it large next to the variability of the quantity it is used to compute". If a
+    parameter nobody publishes moves the answer by as much as the answer moves on its own,
+    then the level of the arb is not identifiable from prices — only its sign and its
+    changes are.
+    """
+
+    swing_usd_t: float
+    spread_std_usd_t: float
+    spread_median_usd_t: float
+    density_light: float
+    density_heavy: float
+    n_obs: int
+
+    @property
+    def ratio(self) -> float:
+        return self.swing_usd_t / self.spread_std_usd_t
+
+    @property
+    def level_is_identifiable(self) -> bool:
+        """A level is only meaningful if the parameter noise is small next to it. One third
+        is the line taken here, and it is stated rather than tuned."""
+        return self.ratio < 0.33
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Moving the density assumption across its plausible range "
+            f"({self.density_light:.3f} to {self.density_heavy:.3f} kg/l) moves the arb by "
+            f"{self.swing_usd_t:.1f} USD/t. The arb's own standard deviation is "
+            f"{self.spread_std_usd_t:.1f} USD/t. The conversion factor therefore accounts "
+            f"for {self.ratio:.0%} of the variability of the number it is used to compute — "
+            "the level of this arb is not identifiable from prices alone."
+        )
+
+
+def density_identification(
+    frame: pd.DataFrame,
+    *,
+    density_light: float = DENSITY_LIGHT,
+    density_heavy: float = DENSITY_HEAVY,
+    density_reference: float = DENSITY_TYPICAL,
+) -> DensityIdentification:
+    """Measure the density swing against the arb's own variability."""
+    if density_light >= density_heavy:
+        raise ValueError(
+            f"the light density must be below the heavy one: {density_light} >= {density_heavy}"
+        )
+    light = transatlantic_spread(frame, density_kg_l=density_light)
+    heavy = transatlantic_spread(frame, density_kg_l=density_heavy)
+    reference = transatlantic_spread(frame, density_kg_l=density_reference)
+    return DensityIdentification(
+        swing_usd_t=float((light - heavy).median()),
+        spread_std_usd_t=float(reference.std()),
+        spread_median_usd_t=float(reference.median()),
+        density_light=float(density_light),
+        density_heavy=float(density_heavy),
+        n_obs=int(len(frame)),
+    )
+
+
+@dataclass(frozen=True)
+class BreakevenDensity:
+    """The density at which the arb exactly covers freight — the trade decision.
+
+    This is the inversion. Rather than picking a density and announcing whether the arb is
+    open, we ask which density makes it marginal at a stated freight cost. If that density
+    falls inside the plausible band, then the decision to load a cargo turns on a number
+    that is not a market price.
+    """
+
+    density_star: float
+    freight_usd_t: float
+    band_light: float
+    band_heavy: float
+    date: pd.Timestamp
+
+    @property
+    def inside_plausible_band(self) -> bool:
+        return self.band_light <= self.density_star <= self.band_heavy
+
+    @property
+    def headline(self) -> str:
+        if self.inside_plausible_band:
+            return (
+                f"At a freight cost of {self.freight_usd_t:.0f} USD/t, the arb breaks even "
+                f"at a density of {self.density_star:.4f} kg/l — **inside** the plausible "
+                f"band [{self.band_light:.3f} ; {self.band_heavy:.3f}]. A light grade makes "
+                "this cargo economic and a heavy one does not, at identical prices. The "
+                "decision is not being made on the market."
+            )
+        side = "above" if self.density_star > self.band_heavy else "below"
+        return (
+            f"At a freight cost of {self.freight_usd_t:.0f} USD/t, the arb breaks even at a "
+            f"density of {self.density_star:.4f} kg/l, {side} the plausible band "
+            f"[{self.band_light:.3f} ; {self.band_heavy:.3f}]. The sign of the arb therefore "
+            "survives the conversion uncertainty — only its size does not."
+        )
+
+
+def breakeven_density(
+    frame: pd.DataFrame,
+    *,
+    freight_usd_t: float,
+    row: pd.Series | None = None,
+    band_light: float = DENSITY_LIGHT,
+    band_heavy: float = DENSITY_HEAVY,
+) -> BreakevenDensity:
+    """Solve, in closed form, the density at which the spread equals freight.
+
+        spread(rho) = ULSD/100 x 1000 / rho / 3.785412 - gasoil = freight
+        =>  rho* = ULSD/100 x 1000 / 3.785412 / (gasoil + freight)
+
+    Closed form rather than a solver, because it shows what the answer depends on: the
+    breakeven density is inversely proportional to the sum of the European price and the
+    freight, which is why it tightens exactly when freight is expensive.
+    """
+    if freight_usd_t < 0:
+        raise ValueError("freight must be >= 0")
+    if row is None:
+        row = frame.iloc[-1]
+
+    denominator = row["gasoil_usd_t"] + freight_usd_t
+    if denominator <= 0:
+        raise ValueError("European leg plus freight must be > 0")
+
+    density_star = (
+        row["ulsd_c_gal"] / 100.0 * KG_PER_TONNE / LITRES_PER_GALLON / denominator
+    )
+    return BreakevenDensity(
+        density_star=float(density_star),
+        freight_usd_t=float(freight_usd_t),
+        band_light=float(band_light),
+        band_heavy=float(band_heavy),
+        date=pd.Timestamp(row.name),
+    )
+
+
+def breakeven_density_series(
+    frame: pd.DataFrame, *, freight_usd_t: float
+) -> pd.DataFrame:
+    """The breakeven density day by day, with the plausible band attached.
+
+    The deliverable of the page: a series that spends part of its life inside the band —
+    the periods when the cargo decision genuinely turned on the grade rather than on the
+    market — and part outside it, when the arb was unambiguous either way.
+    """
+    if freight_usd_t < 0:
+        raise ValueError("freight must be >= 0")
+    density = (
+        frame["ulsd_c_gal"] / 100.0 * KG_PER_TONNE / LITRES_PER_GALLON
+        / (frame["gasoil_usd_t"] + freight_usd_t)
+    )
+    out = pd.DataFrame({"density_star": density})
+    out["inside_band"] = (out["density_star"] >= DENSITY_LIGHT) & (
+        out["density_star"] <= DENSITY_HEAVY
+    )
+    out["above_band"] = out["density_star"] > DENSITY_HEAVY
+    return out

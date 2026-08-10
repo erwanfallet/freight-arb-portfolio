@@ -1,303 +1,284 @@
-"""Projet B — S1 à S6."""
 from __future__ import annotations
 
-import numpy as np
+import sys
+from pathlib import Path
+
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from freight.chains.coal import (
-    BENCHMARK_CV_KCAL_PER_KG,
-    DEFAULT_EMISSION_FACTOR,
-    EXTRA_EU_SCOPE_FACTOR,
-    ets_cost_per_cargo_tonne,
-    freight_binding_test,
-    ols,
-    phase_in_factor,
-    phase_in_series,
-    reconstruct_ara_arb,
-    regime_stats,
-    to_energy_basis,
-    voyage_emissions_t_co2,
+_APP_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_APP_DIR.parent / "src"))
+sys.path.insert(0, str(_APP_DIR))
+
+from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
+from freight.chains.coal import (  # noqa: E402
+    DEFAULT_COAL_EFFICIENCY,
+    DEFAULT_GAS_EFFICIENCY,
+    EF_COAL_T_PER_MWH_TH,
+    EF_GAS_T_PER_MWH_TH,
+    MWH_TH_PER_TONNE_COAL,
+    efficiency_identification,
+    generation_cost_eur_mwh_e,
+    load_real_switching_frame,
+    switching_carbon_price,
 )
-from freight.ingest.fixture_coal import BREAKPOINT, SYNTHETIC_TICKERS, synthetic_coal
-from freight.ingest.series import to_series
-
-REAL_TICKERS: dict[str, str] = {}  # à remplir quand les séries arrivent
-
-st.set_page_config(page_title="Coal Atlantic arb", layout="wide")
-
-
-@st.cache_data(show_spinner=False)
-def load_data() -> tuple[dict[str, pd.Series], bool]:
-    raw = synthetic_coal()
-    return {r: to_series(raw, t) for r, t in SYNTHETIC_TICKERS.items()}, True
-
-
-series, synthetic = load_data()
-
-st.title("L'arb charbon Atlantique a perdu sa contrainte contraignante en 2022")
-st.caption(
-    "API2 − API4 − fret C4 − financement − ETS. Et le terme manquant : le netback vers "
-    "la destination alternative."
+from page_template import (  # noqa: E402
+    ALT_COLOR,
+    SHUT_COLOR,
+    Scope,
+    diagnostic_note,
+    finding,
+    kpi_banner,
+    mail_question,
+    page_header,
+    regime_chart,
+    scope_note,
+    section,
+    show,
 )
 
-if synthetic:
-    st.error(
-        "**DONNÉES SYNTHÉTIQUES — LECTURE ÉCONOMIQUE INTERDITE.** Pire que sur la page A : "
-        "**la rupture de 2022 est imposée à la main dans le générateur.** Le coefficient de "
-        "fret s'effondrera après 2022 parce que c'est écrit dans le code du générateur, pas "
-        "parce que le marché l'a fait. Cette page prouve que les six sections et le test "
-        "d'attribution tournent. Rien d'autre.",
-        icon="🚫",
-    )
+st.set_page_config(page_title="B — Coal-to-gas switching", layout="wide")
 
-with st.sidebar:
-    st.header("Voyage (B-H3, B-H4)")
-    voyage_days = st.number_input("Jours de voyage RB → ARA", 5, 60, 20)
-    annual_rate = st.slider("Taux de financement annuel", 0.0, 0.15, 0.06, 0.005)
-    cargo_t = st.number_input("Cargaison (t)", 50_000, 210_000, 150_000, step=10_000)
-    st.divider()
-    st.header("ETS maritime (B-H5, B-H6)")
-    bunker_t = st.number_input("Combustible consommé sur le voyage (t)", 100, 2_000, 480)
-    emission_factor = st.slider(
-        "Facteur d'émission (tCO2/t fuel)", 2.9, 3.3, DEFAULT_EMISSION_FACTOR, 0.001
-    )
-    scope = st.slider("Portée voyage extra-UE", 0.0, 1.0, EXTRA_EU_SCOPE_FACTOR, 0.05)
-    st.caption(
-        "Portée × montée en charge = couverture effective : 20 % en 2024, 35 % en 2025, "
-        "50 % à partir de 2026."
-    )
-    st.divider()
-    st.header("Pouvoir calorifique (B-H2)")
-    cv_actual = st.slider("CV réellement exporté (kcal/kg)", 5_300, 6_100, 5_750, 50)
-    st.divider()
-    breakpoint_str = st.text_input("Date de rupture testée", str(BREAKPOINT.date()))
+if not DEFAULT_PATH.exists():
+    st.error(f"Bloomberg export not found: {DEFAULT_PATH}")
+    st.stop()
 
-emissions = voyage_emissions_t_co2(float(bunker_t), float(emission_factor))
-phase_in = phase_in_series(series["api2"].index)
-ets = ets_cost_per_cargo_tonne(
-    eua_price_eur=series["eua"],
-    eurusd=series["eurusd"],
-    emissions_t_co2=emissions,
-    cargo_t=float(cargo_t),
-    phase_in=phase_in,
-    scope_factor=float(scope),
-)
-
-arb = reconstruct_ara_arb(
-    api2=series["api2"], api4=series["api4"], freight=series["freight"],
-    voyage_days=float(voyage_days), annual_rate=float(annual_rate),
-    ets_cost=ets.reindex(series["api2"].index),
-)
-
-# ------------------------------------------------------------------------------- S1
-st.header("S1 — État actuel")
-last = arb.iloc[-1]
-cols = st.columns(7)
-cols[0].metric("API2 CIF ARA", f"${last['api2']:,.1f}/t")
-cols[1].metric("API4 FOB RB", f"${last['api4']:,.1f}/t")
-cols[2].metric("Spread", f"${last['spread']:,.1f}/t")
-cols[3].metric("Fret C4", f"${last['freight']:,.2f}/t")
-cols[4].metric("Financement", f"${last['financing']:,.2f}/t")
-cols[5].metric("ETS", f"${last['ets']:,.2f}/t")
-cols[6].metric(
-    "Arb", f"${last['arb']:,.2f}/t", "OUVERT" if last["is_open"] else "FERMÉ"
-)
-
-# ------------------------------------------------------------------------------- S2
-st.header("S2 — L'arb, terme par terme")
-st.markdown(
-    """
-```
-arb_ARA = API2 − API4 − fret(C4) − financement − ETS
-```
-Si le fret est la contrainte contraignante, cet arb doit osciller autour de zéro sans
-persistance : dès qu'il s'ouvre, des tonnes partent et il se referme.
-"""
-)
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=arb.index, y=arb["spread"], name="spread API2−API4", mode="lines"))
-fig.add_trace(
-    go.Scatter(
-        x=arb.index, y=arb["freight"] + arb["financing"] + arb["ets"],
-        name="coûts (fret + financement + ETS)", mode="lines",
-    )
-)
-fig.add_trace(go.Scatter(x=arb.index, y=arb["arb"], name="arb", mode="lines",
-                         line=dict(color="black", width=2)))
-fig.add_hline(y=0, line_dash="dash")
-fig.add_vline(x=pd.Timestamp(breakpoint_str), line_dash="dot")
-fig.update_layout(height=430, yaxis_title="USD/t", xaxis_title="date",
-                  legend=dict(orientation="h", y=-0.2))
-st.plotly_chart(fig, use_container_width=True)
-
-# ------------------------------------------------------------------------------- S3
-st.header("S3 — Le test de rupture, avec le contrôle qui décide de tout")
-st.markdown(
-    """
-**Le piège.** 2022 est l'année où le charbon sud-africain se réoriente vers l'Inde, **et**
-l'année du choc gazier européen. Attribuer le décrochage à l'Inde sans contrôler par le
-TTF, c'est se tromper de mécanisme — et la première personne compétente qui lit l'email le
-verra. Les deux régressions ci-dessous sont donc affichées côte à côte, sans et avec le
-contrôle.
-"""
-)
-stats = regime_stats(arb, breakpoint_str)
-st.dataframe(
-    pd.DataFrame(
-        [
-            {
-                "régime": s.label, "n": s.n_obs,
-                "arb moyen ($/t)": round(s.arb_mean, 2),
-                "écart-type": round(s.arb_std, 2),
-                "part de jours ouverts": f"{100 * s.share_open:.0f}%",
-                "plus longue série ouverte (jours)": s.longest_open_run,
-            }
-            for s in stats
-        ]
+# ===========================================================================
+# Header and scope
+# ===========================================================================
+page_header(
+    code="B",
+    title="The coal-to-gas switching price is not a property of the fuels",
+    subtitle=(
+        "It is a property of two plant efficiencies that no exchange quotes — and they move "
+        "the answer twice as much as the carbon price itself"
     ),
-    use_container_width=True, hide_index=True,
+    scope=Scope(
+        unit_trap=(
+            "**Three units and two currencies, before any comparison exists.** API2 coal is "
+            "quoted in **USD per tonne** — a mass, which only becomes energy through a "
+            "calorific value of 6 000 kcal/kg. TTF gas is quoted in **EUR per MWh** — "
+            "already energy. EUA carbon is quoted in **EUR per tonne of CO2** — which only "
+            "enters through an emission factor. And the two fuels are burned in plants whose "
+            "efficiencies differ by roughly a factor of one and a half, so nothing is "
+            "comparable until everything is expressed per MWh of **electricity**."
+        ),
+        conversion=(
+            f"coal_eur_mwh_th = API2_usd_t / EURUSD / {MWH_TH_PER_TONNE_COAL:.3f}\n"
+            f"coal_eur_mwh_e  = (coal_eur_mwh_th + EUA x {EF_COAL_T_PER_MWH_TH}) / eta_coal\n"
+            f"gas_eur_mwh_e   = (ttf_eur_mwh     + EUA x {EF_GAS_T_PER_MWH_TH}) / eta_gas\n"
+            "EUA*            = (ttf/eta_gas - coal_th/eta_coal) / (EF_c/eta_c - EF_g/eta_g)"
+        ),
+        proxies=[
+            "emission factors: standard combustion figures, not plant-specific — a real unit "
+            "varies with coal rank and gas composition",
+            "plant efficiencies: **the parameter this page is about**. Not market data, not "
+            "published, and the thing the whole answer turns on",
+        ],
+        out_of_scope=[
+            "start-up costs, minimum stable generation and ramp constraints, which decide "
+            "whether a plant that is theoretically in the money actually runs",
+            "the API2 − API4 arb this engine was originally built for: **API4 Richards Bay "
+            "is absent from the export**, so that spread is simply not computable and is not "
+            "faked with a proxy",
+        ],
+        frequency_note="All four legs are daily, 2 214 common sessions since January 2018.",
+        data_warnings=[
+            "The EURUSD quoting direction is checked at load time rather than assumed — a "
+            "reversed FX leg would produce a coal price roughly 25 % off with no visible "
+            "error, which is exactly the failure mode this portfolio is built to catch.",
+        ],
+    ),
 )
-st.caption(
-    "La persistance compte autant que le niveau : un arb contraint se referme vite, un "
-    "arb non contraint reste ouvert des mois."
+
+# ===========================================================================
+# Parameters
+# ===========================================================================
+st.sidebar.markdown("### Parameters")
+coal_efficiency = st.sidebar.slider(
+    "Coal plant efficiency", 0.34, 0.45, DEFAULT_COAL_EFFICIENCY, 0.005,
+    help="Old subcritical around 0.36, supercritical around 0.42. Not published anywhere.",
+)
+gas_efficiency = st.sidebar.slider(
+    "CCGT efficiency", 0.45, 0.63, DEFAULT_GAS_EFFICIENCY, 0.005,
+    help="Early CCGT around 0.50, modern H-class around 0.60.",
 )
 
-naive = freight_binding_test(arb["spread"], arb["freight"], breakpoint_str)
-controlled = freight_binding_test(
-    arb["spread"], arb["freight"], breakpoint_str,
-    controls={"ttf": series["ttf"].reindex(arb.index)},
+frame = load_real_switching_frame()
+costs = generation_cost_eur_mwh_e(
+    frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
 )
-left, right = st.columns(2)
-with left:
-    st.subheader("Sans contrôle")
-    for label, res in naive.items():
-        st.markdown(f"**{label}** — {res.summary()}")
-with right:
-    st.subheader("Avec contrôle TTF")
-    for label, res in controlled.items():
-        st.markdown(f"**{label}** — {res.summary()}")
-st.caption(
-    "Écarts-types classiques, non robustes à l'autocorrélation : sur des prix quotidiens "
-    "les t de Student sont optimistes. Le signe et l'ordre de grandeur des coefficients "
-    "sont lisibles, pas leur significativité au dernier décimal."
+switch = switching_carbon_price(
+    frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+)
+identification = efficiency_identification(frame)
+
+kpi_banner(
+    {
+        "API2 (last)": f"{frame['api2_usd_t'].iloc[-1]:.1f} USD/t",
+        "TTF (last)": f"{frame['ttf_eur_mwh'].iloc[-1]:.1f} EUR/MWh",
+        "EUA (last)": f"{frame['eua_eur_t'].iloc[-1]:.1f} EUR/t",
+        "Switching EUA": f"{switch.iloc[-1]:.1f} EUR/t",
+        "Efficiency swing": f"{identification.swing_eur_t:.0f} EUR/t",
+    }
 )
 
-# ------------------------------------------------------------------------------- S4
-st.header("S4 — Le terme manquant, mesuré en flux")
-st.markdown(
-    """
-Le prix CFR Inde est sous licence, donc on ne peut pas prouver l'égalité de prix. On
-montre la réorientation physique : **quand l'arb ARA se ferme, la part indienne des
-exports de Richards Bay monte.**
-
-C'est un résultat plus faible qu'une égalité d'arbitrage, et il faut le présenter comme
-tel plutôt que d'inventer une série de prix.
-
-**Séries requises :** importations européennes de charbon sud-africain (Eurostat, mensuel,
-gratuit) et importations indiennes par origine.
-"""
+# ===========================================================================
+# S1
+# ===========================================================================
+section(
+    "S1",
+    "Nothing here is comparable until everything is electricity",
+    "A European generator with both a coal unit and a CCGT does not compare API2 to TTF. The "
+    "two numbers are not commensurable, and not for a subtle reason: one is a price per "
+    "**tonne of a solid**, the other a price per **MWh of energy**. Getting from the first "
+    "to the second requires a calorific value — API2 is assessed at 6 000 kcal per kg, which "
+    f"makes a tonne worth about {MWH_TH_PER_TONNE_COAL:.2f} thermal MWh — and a currency, "
+    "because coal prices in dollars and everything else in this calculation prices in "
+    "euros.\n\n"
+    "Then carbon enters, quoted per **tonne of CO2**, which only becomes a cost per MWh "
+    "through an emission factor. And finally both fuel and carbon have to be divided by a "
+    "plant efficiency, because what the generator sells is electricity, not heat.\n\n"
+    "That last division is where the interesting part hides. Dividing by efficiency scales "
+    "**both** the fuel cost and the carbon cost — so a less efficient plant pays more for "
+    "its CO2 per unit sold, not just more for its fuel. The carbon term is therefore larger "
+    "than it looks, and it is larger by an amount that depends on a number nobody publishes.",
 )
-st.info("Section en attente des séries de flux Eurostat et indiennes.", icon="⏳")
 
-# ------------------------------------------------------------------------------- S5
-st.header("S5 — La couche ETS, que personne n'intègre")
-st.markdown(
-    f"""
-Un voyage Richards Bay → Rotterdam a une extrémité hors UE : la couverture est de
-**{scope:.0%}** des émissions du voyage, multipliée par la montée en charge
-(**{phase_in_factor(2024):.0%}** en 2024, **{phase_in_factor(2025):.0%}** en 2025,
-**{phase_in_factor(2026):.0%}** à partir de 2026). Soit une couverture effective de
-{scope * phase_in_factor(2024):.0%}, puis {scope * phase_in_factor(2025):.0%},
-puis {scope * phase_in_factor(2026):.0%}.
-
-```
-coût_ETS = émissions × portée × montée_en_charge × prix_EUA × EURUSD / cargaison
-```
-
-Avec **{bunker_t} t** de combustible et un facteur de **{emission_factor:.3f} tCO2/t**, le
-voyage émet **{emissions:,.0f} tCO2**. Le quota est coté en EUR et l'arb en USD : la
-conversion de change est un terme du calcul, pas un détail.
-
-**Conséquence économique :** à distance égale, le fret vers l'Europe devient
-structurellement plus cher que le fret vers l'Inde. C'est un terme récent, chiffrable, et
-absent des modèles d'arb charbon publics.
-"""
+# ===========================================================================
+# S2
+# ===========================================================================
+section(
+    "S2",
+    "The switching price, and what its denominator is made of",
+    "Set the two generation costs equal and solve for the carbon price. The result is worth "
+    "looking at closely, because the **denominator contains no price at all** — only two "
+    "emission factors and two efficiencies.\n\n"
+    "That is not a presentational curiosity. It means the sensitivity of the switching price "
+    "to the efficiency assumption is not a second-order correction sitting somewhere in the "
+    "error term: the efficiencies are in the denominator of the answer. Change them and the "
+    "switching price moves, with no fuel price and no carbon price having moved at all.",
+    formula="EUA* = (ttf / eta_gas - coal_th / eta_coal) / (EF_coal / eta_coal - EF_gas / eta_gas)",
 )
-fig5 = go.Figure()
-fig5.add_trace(go.Scatter(x=arb.index, y=arb["ets"], name="coût ETS ($/t cargaison)",
-                          mode="lines", fill="tozeroy"))
-fig5.update_layout(height=300, yaxis_title="USD/t", xaxis_title="date",
-                   title="Coût ETS par tonne — les marches sont la montée en charge")
-st.plotly_chart(fig5, use_container_width=True)
-
-recent = arb.loc[arb.index >= "2024-01-01"]
-if not recent.empty:
-    st.markdown(
-        f"Depuis 2024, l'ETS retire en moyenne **${recent['ets'].mean():,.2f}/t** à l'arb, "
-        f"pour un arb moyen de **${recent['arb'].mean():,.2f}/t** sur la même période — "
-        f"soit **{100 * recent['ets'].mean() / max(abs(recent['arb'].mean()), 1e-9):,.1f} %** "
-        "de sa valeur absolue."
+show(
+    regime_chart(
+        pd.DataFrame({"eua_switch": switch, "eua_actual": frame["eua_eur_t"]}).assign(
+            above=frame["eua_eur_t"] > switch
+        ),
+        "eua_switch",
+        regime_col="above",
+        regime_color=ALT_COLOR,
+        title=f"Switching carbon price at {coal_efficiency:.0%} coal / {gas_efficiency:.0%} gas",
+        y_title="EUR per tonne of CO2",
+        reference_lines={"EUA today": float(frame["eua_eur_t"].iloc[-1])},
+        annotations={"2021-10-01": "gas crisis", "2022-02-24": "Ukraine"},
     )
-
-# ------------------------------------------------------------------------------- S6
-st.header("S6 — Sensibilités")
-st.subheader("Dérive du pouvoir calorifique")
-st.markdown(
-    f"""
-API2 et API4 sont **tous deux** des références 6 000 kcal/kg NAR : l'arb de référence est
-donc neutre en CV **par construction**, et il reste juste. Le problème est ailleurs — il a
-cessé de décrire la cargaison physique, dont le CV réel a dérivé.
-
-Le fret se paie **à la tonne**, le charbon se vend **au kcal**. À
-**{cv_actual:,} kcal/kg**, une tonne livre {cv_actual / BENCHMARK_CV_KCAL_PER_KG:.1%} de
-l'énergie d'une tonne de référence, donc le fret par tonne-équivalent-6 000 vaut
-**{BENCHMARK_CV_KCAL_PER_KG / cv_actual:.4f}×** le fret affiché.
-"""
 )
-cv_grid = list(range(5300, 6101, 100))
-rows = []
-for cv in cv_grid:
-    freight_energy = to_energy_basis(arb["freight"], float(cv))
-    rows.append(
+scope_note(
+    f"Shaded where the actual carbon price sits **above** the switching level — the regime "
+    f"in which carbon is doing the work of displacing coal. At these efficiencies that is "
+    f"{(frame['eua_eur_t'] > switch).mean():.0%} of the sample. Hold that number: the next "
+    "section moves it by a factor of three without touching a single price."
+)
+
+# ===========================================================================
+# S3 — THE RESULT
+# ===========================================================================
+section(
+    "S3",
+    "The unpublished parameter is twice the size of the published one",
+    "Coal plants in Europe run at anywhere from about 36 % efficiency for an old subcritical "
+    "unit to about 42 % for a supercritical one. CCGTs run from about 50 % for an early "
+    "machine to about 60 % for a modern H-class. Both ranges are ordinary, and which pair is "
+    "**at the margin** on a given day is a question about the merit order, not about the "
+    "fuels.\n\n"
+    "Sweeping those pairs moves the switching price across a range wider than the carbon "
+    "price's own variability — and it flips the qualitative conclusion entirely. Assume old "
+    "coal against modern gas and carbon looks like it has been doing its job for most of the "
+    "past eight years. Assume modern coal against old gas and it looks like it has barely "
+    "worked at all.\n\n"
+    "**Same fuel prices, same carbon price, opposite conclusions about whether the carbon "
+    "market functions.**",
+)
+finding(identification.headline)
+
+grid = identification.grid.copy()
+grid.columns = [
+    "coal efficiency", "gas efficiency", "switching EUA (EUR/t)", "share EUA above",
+]
+st.dataframe(
+    grid.style.format(
         {
-            "CV (kcal/kg)": cv,
-            "facteur": round(BENCHMARK_CV_KCAL_PER_KG / cv, 4),
-            "fret moyen affiché ($/t)": round(arb["freight"].mean(), 2),
-            "fret moyen par t-éq-6000 ($)": round(freight_energy.mean(), 2),
-            "surcoût ($/t)": round(freight_energy.mean() - arb["freight"].mean(), 2),
+            "coal efficiency": "{:.0%}", "gas efficiency": "{:.0%}",
+            "switching EUA (EUR/t)": "{:.1f}", "share EUA above": "{:.0%}",
         }
+    ),
+    width="stretch", hide_index=True,
+)
+diagnostic_note(
+    "This is the same shape as several other projects in this portfolio, and the recurrence "
+    "is the point: a parameter that is not a market price, is not published, and is quietly "
+    "assumed, turns out to move the answer more than the market data does. Here the ratio is "
+    f"{identification.ratio:.1f} to one."
+)
+
+# ===========================================================================
+# S4
+# ===========================================================================
+section(
+    "S4",
+    "What the two costs actually did",
+    "Underneath the parameter argument there is a real history, and it survives any "
+    "efficiency pair in the plausible range because the pair shifts both curves rather than "
+    "crossing them. Gas was structurally cheaper to burn than coal through the late 2010s, "
+    "the 2021–22 gas crisis inverted that violently, and the relationship has been "
+    "renegotiating itself since.\n\n"
+    "What the page adds to that familiar story is the caveat that the **level** of the "
+    "switching threshold is not knowable from prices — only its movements are.",
+)
+show(
+    regime_chart(
+        costs,
+        "spread",
+        regime_col="gas_cheaper",
+        regime_color=SHUT_COLOR,
+        title="Coal minus gas generation cost — shaded where gas is the cheaper plant",
+        y_title="EUR per MWh of electricity",
+        annotations={"2021-10-01": "gas crisis", "2022-02-24": "Ukraine"},
     )
-st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+)
+c1, c2, c3 = st.columns(3)
+c1.metric("Coal cost (median)", f"{costs['coal'].median():.1f} EUR/MWh")
+c2.metric("Gas cost (median)", f"{costs['gas'].median():.1f} EUR/MWh")
+c3.metric("Gas cheaper", f"{costs['gas_cheaper'].mean():.0%} of sessions")
 
-st.subheader("Sensibilité du seuil au fret et au financement")
-grid = []
-for days in (10, 15, 20, 25, 30):
-    row = {"jours de voyage": days}
-    for rate in (0.03, 0.06, 0.09, 0.12):
-        a = reconstruct_ara_arb(
-            api2=series["api2"], api4=series["api4"], freight=series["freight"],
-            voyage_days=float(days), annual_rate=rate,
-            ets_cost=ets.reindex(series["api2"].index),
-        )
-        row[f"{rate:.0%}"] = round(100 * a["is_open"].mean(), 1)
-    grid.append(row)
-st.dataframe(pd.DataFrame(grid), use_container_width=True, hide_index=True)
-st.caption("Part de jours où l'arb est ouvert (%), selon la durée de voyage et le taux.")
+# ===========================================================================
+# S5
+# ===========================================================================
+section(
+    "S5",
+    "What this page is not, and the project it replaces",
+    "This engine was originally built around the API2 − API4 arb — Rotterdam against "
+    "Richards Bay — and the thesis that the marginal South African tonne stopped pricing off "
+    "Europe after 2022. **API4 is not in the export**, so that spread is not computable. "
+    "Rather than substitute a proxy and keep the original headline, the question was changed "
+    "to one the available data can actually answer.\n\n"
+    "What is deliberately missing here is the plant-level reality: start-up costs, minimum "
+    "stable generation, ramp rates and must-run constraints all decide whether a unit that "
+    "is theoretically in the money actually generates. A switching price is a necessary "
+    "condition for a fuel switch, never a sufficient one — and no amount of price data fixes "
+    "that.",
+)
 
-st.divider()
-st.markdown(
-    """
-#### Ce que cette page ne fait pas
-
-- **Aucun prix indien.** Le netback alternatif est mesuré en flux, pas en prix. C'est la
-  limite centrale du projet et elle est déclarée.
-- **Aucune correction du mix de navires.** B-H3 suppose que C4 (Capesize) est le fret
-  pertinent. Une partie du flux voyage en Panamax ou Supramax, à coût différent.
-- **Aucun écart-type robuste à l'autocorrélation.** Les t affichés sont optimistes, et on
-  le dit plutôt que d'appliquer une correction dont on ne montrerait pas l'hypothèse.
-- **Aucune modélisation du soutage réel.** Le combustible consommé est un paramètre, pas
-  une donnée de voyage.
-"""
+mail_question(
+    "Computing the coal-to-gas switching carbon price from API2, TTF and EUA, I find that "
+    f"the efficiency pair alone moves it by about {identification.swing_eur_t:.0f} EUR/t — "
+    f"roughly {identification.ratio:.1f} times the standard deviation of the carbon price "
+    f"itself — and that it changes the share of the sample where carbon displaces coal from "
+    f"{identification.share_above_high:.0%} to {identification.share_above_low:.0%}. Which "
+    "pair of efficiencies does your switching calculation actually use, and how often is it "
+    "re-estimated against the units that are really at the margin rather than a fleet "
+    "average?",
+    "European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal), "
+    "utility fuel procurement, carbon desks",
 )

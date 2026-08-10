@@ -1,320 +1,315 @@
-"""Projet C — S1 à S6."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from freight.chains.products import (
-    DEFAULT_BBL_PER_TONNE,
-    decompose_freight_change,
-    density_sensitivity,
-    flat_rate_step_series,
-    freight_model_vs_quoted,
-    freight_usd_per_tonne,
-    implied_freight_from_tce,
-    january_reset_effect,
-    monthly_profile,
-    open_days_comparison,
-    reconstruct_arb,
+_APP_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_APP_DIR.parent / "src"))
+sys.path.insert(0, str(_APP_DIR))
+
+from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
+from freight.chains.products import (  # noqa: E402
+    DENSITY_HEAVY,
+    DENSITY_LIGHT,
+    DENSITY_TYPICAL,
+    breakeven_density,
+    breakeven_density_series,
+    density_identification,
+    gallons_per_tonne,
+    load_real_transatlantic_frame,
+    transatlantic_spread,
 )
-from freight.ingest.fixture_products import (
-    ROUTE,
-    SYNTHETIC_FLAT_RATES,
-    SYNTHETIC_TICKERS,
-    synthetic_products,
-)
-from freight.ingest.series import to_series
-from freight.voyage.config import VoyageParams
-from freight.voyage.consumption import leg_bunker_consumption_t, sea_days
-
-st.set_page_config(page_title="Transatlantic distillate arb", layout="wide")
-
-
-@st.cache_data(show_spinner=False)
-def load_data() -> tuple[dict[str, pd.Series], bool]:
-    raw = synthetic_products()
-    return {r: to_series(raw, t) for r, t in SYNTHETIC_TICKERS.items()}, True
-
-
-series, synthetic = load_data()
-
-st.title("Arb distillat transatlantique — et le fret qui n'est pas un coût")
-st.caption(
-    "USGC ULSD → gasoil ARA. Deux termes de l'équation ne sont pas ce qu'ils paraissent : "
-    "la conversion volume/masse et les points Worldscale."
+from page_template import (  # noqa: E402
+    ALT_COLOR,
+    SHUT_COLOR,
+    Scope,
+    diagnostic_note,
+    finding,
+    kpi_banner,
+    mail_question,
+    page_header,
+    regime_chart,
+    scope_note,
+    section,
+    show,
 )
 
-if synthetic:
-    st.error(
-        "**DONNÉES SYNTHÉTIQUES — LECTURE ÉCONOMIQUE INTERDITE.** Les marches de flat rate "
-        "au 1er janvier sont **écrites à la main** dans le générateur. Le saut de coût que "
-        "vous allez voir au 1er janvier est là parce que je l'ai mis, pas parce que la "
-        "Worldscale Association l'a fait cette année-là.",
-        icon="🚫",
-    )
+st.set_page_config(page_title="C — Transatlantic distillate", layout="wide")
 
-with st.sidebar:
-    st.header("Densité (C-H1)")
-    bbl_per_tonne = st.slider(
-        "Barils par tonne", 7.20, 7.70, DEFAULT_BBL_PER_TONNE, 0.01,
-        help="Le terme le plus sensible du projet. Il ne peut pas être un nombre en dur.",
-    )
-    st.header("Pont de spécification (C-H2)")
-    spec_bridge = st.slider("USGC 15 ppm → ICE Gasoil 10 ppm ($/t)", 0.0, 20.0, 5.0, 0.5)
-    st.caption("Fourchette explicite, jamais un chiffre unique.")
-    st.header("Voyage (C-H3, C-H4)")
-    voyage_days = st.number_input("Jours de traversée", 8, 40, 16)
-    annual_rate = st.slider("Taux de financement annuel", 0.0, 0.15, 0.06, 0.005)
-    losses = st.slider("Pertes en transit + surestaries ($/t)", 0.0, 10.0, 1.0, 0.5)
+if not DEFAULT_PATH.exists():
+    st.error(f"Bloomberg export not found: {DEFAULT_PATH}")
+    st.stop()
 
-flat_rates = flat_rate_step_series(series["ws"].index, ROUTE, SYNTHETIC_FLAT_RATES)
-freight = freight_usd_per_tonne(series["ws"], flat_rates)
-
-arb = reconstruct_arb(
-    price_destination_usd_t=series["p_ara"],
-    price_origin_usd_per_gallon=series["p_usgc"],
-    freight_usd_t=freight,
-    bbl_per_tonne=float(bbl_per_tonne),
-    spec_bridge_usd_t=float(spec_bridge),
-    voyage_days=float(voyage_days),
-    annual_rate=float(annual_rate),
-    losses_usd_t=float(losses),
+# ===========================================================================
+# Header and scope
+# ===========================================================================
+page_header(
+    code="C",
+    title="The transatlantic distillate arb is a unit conversion before it is a trade",
+    subtitle=(
+        "A density nobody quotes accounts for 91 % of the variability of the arb it is used "
+        "to compute — and more than half the time, it alone decides whether the cargo works"
+    ),
+    scope=Scope(
+        unit_trap=(
+            "The US leg is quoted in **cents per gallon** — a **volume**. The European leg "
+            "is quoted in **USD per tonne** — a **mass**. The only thing standing between "
+            "them is a density, and no exchange publishes it next to the price. It is not a "
+            "constant of nature either: it depends on the grade, the additive package and "
+            "the reference temperature. Middle distillates run roughly "
+            f"{DENSITY_LIGHT:.3f} to {DENSITY_HEAVY:.3f} kg/l, and that band is the whole "
+            "subject of this page."
+        ),
+        conversion=(
+            "gallons_per_tonne(rho) = 1000 / rho / 3.785412\n"
+            "spread_usd_t = ULSD_c_gal / 100 x gallons_per_tonne(rho) - gasoil_usd_t\n"
+            "\n"
+            f"rho = {DENSITY_LIGHT:.3f}  ->  {gallons_per_tonne(DENSITY_LIGHT):.1f} gal/t\n"
+            f"rho = {DENSITY_HEAVY:.3f}  ->  {gallons_per_tonne(DENSITY_HEAVY):.1f} gal/t"
+        ),
+        proxies=[
+            "freight: a parameter, not a series. The Baltic clean tanker legs in the export "
+            "are not identified with enough confidence to price a specific route",
+            "no spec bridge, no financing cost: both are real terms of a physical arb and "
+            "both are left out rather than guessed",
+        ],
+        out_of_scope=[
+            "Worldscale flat-rate mechanics, which are modelled elsewhere in this engine on "
+            "synthetic data — the January reset is real but it is not what decides this page",
+            "quality differentials between USGC diesel and ARA gasoil specifications, which "
+            "would shift the level and are deliberately not invented",
+        ],
+        frequency_note="Both legs are daily front-month futures, 2 917 common sessions since 2015.",
+        data_warnings=[
+            "Both legs are front-month futures, not physical assessments. A physical arb is "
+            "struck on cargo differentials against these screens; the page measures the "
+            "screen spread and says so.",
+        ],
+    ),
 )
 
-# ------------------------------------------------------------------------------- S1
-st.header("S1 — État actuel")
-last = arb.iloc[-1]
-cols = st.columns(7)
-cols[0].metric("Gasoil ARA", f"${last['p_dest']:,.1f}/t")
-cols[1].metric("ULSD USGC", f"${last['p_origin_gal']:,.3f}/gal")
-cols[2].metric("→ converti", f"${last['p_origin_t']:,.1f}/t")
-cols[3].metric("Spread nu", f"${last['spread_naif']:,.2f}/t")
-cols[4].metric("Fret", f"${last['freight']:,.2f}/t")
-cols[5].metric("Financement", f"${last['financing']:,.2f}/t")
-cols[6].metric("Arb", f"${last['arb']:,.2f}/t", "OUVERT" if last["is_open"] else "FERMÉ")
-
-# ------------------------------------------------------------------------------- S2
-st.header("S2 — L'arb, terme par terme")
-st.markdown(
-    """
-```
-arb = P_ARA($/t) − P_USGC($/t) − fret($/t) − pont_spec − financement − pertes
-      avec P_USGC($/t) = P_USGC($/gal) × 42 × bbl_par_tonne
-```
-"""
+# ===========================================================================
+# Parameters
+# ===========================================================================
+st.sidebar.markdown("### Parameters")
+freight = st.sidebar.slider("Freight, USGC to ARA (USD/t)", 0.0, 80.0, 25.0, 1.0)
+density = st.sidebar.slider(
+    "Density assumption (kg/l)", DENSITY_LIGHT, DENSITY_HEAVY, DENSITY_TYPICAL, 0.001,
+    help="The parameter that carries the sign. No exchange publishes it.",
 )
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=arb.index, y=arb["spread_naif"], name="spread nu (avant coûts)",
-                         mode="lines"))
-fig.add_trace(go.Scatter(x=arb.index, y=arb["arb"], name="arb réel", mode="lines",
-                         line=dict(color="black", width=2)))
-fig.add_hline(y=0, line_dash="dash")
-fig.update_layout(height=420, yaxis_title="USD/t", xaxis_title="date",
-                  legend=dict(orientation="h", y=-0.2))
-st.plotly_chart(fig, use_container_width=True)
+window_start = st.sidebar.selectbox("Window", ["2015-01-01", "2020-01-01", "2022-01-01"], index=0)
 
-# ------------------------------------------------------------------------------- S3
-st.header("S3 — Les points Worldscale ne sont pas un coût")
-st.markdown(
-    """
-Le fret tanker se cote en points Worldscale. WS 100 correspond au *flat rate* de la route,
-**recalculé chaque 1er janvier** à partir de l'environnement de coûts de l'année
-précédente :
+frame = load_real_transatlantic_frame(window_start)
+spread = transatlantic_spread(frame, density_kg_l=density)
+identification = density_identification(frame)
+breakeven = breakeven_density(frame, freight_usd_t=freight)
+breakeven_path = breakeven_density_series(frame, freight_usd_t=freight)
 
-```
-fret($/t) = WS/100 × flat_rate(route, année)
-
-Δfret = [ ΔWS·FR_prev  +  WS_prev·ΔFR  +  ΔWS·ΔFR ] / 100
-          └ marché ┘      └ réglage ┘     └ croisé ┘
-```
-
-Les trois termes somment **exactement** à Δfret — c'est une identité algébrique. Le terme
-« réglage » est celui qu'un modèle en points WS ne voit pas : au 1er janvier, ΔWS peut être
-nul et Δfret ne pas l'être.
-"""
-)
-decomp = decompose_freight_change(series["ws"], flat_rates)
-resets = january_reset_effect(decomp)
-if not resets.empty:
-    st.subheader("Réinitialisations de flat rate")
-    st.dataframe(resets, use_container_width=True, hide_index=True)
-    biggest = resets.iloc[resets["part_reglage"].abs().argmax()]
-    st.markdown(
-        f"""
-La plus grosse marche de l'échantillon : le **{pd.Timestamp(biggest['date']).date()}**, le
-coût de fret bouge de **${biggest['saut_total']:,.2f}/t**, dont
-**${biggest['part_reglage']:,.2f}/t** attribuables au seul réglage du flat rate et
-**${biggest['part_marche']:,.2f}/t** au marché.
-
-À comparer à l'arb moyen de **${arb['arb'].mean():,.2f}/t** : un modèle qui suit les points
-WS se trompe de seuil d'un montant du même ordre que le signal qu'il cherche.
-"""
-    )
-
-fig3 = go.Figure()
-fig3.add_trace(go.Bar(x=decomp.index, y=decomp["market_component"], name="part marché"))
-fig3.add_trace(go.Bar(x=decomp.index, y=decomp["reset_component"], name="part réglage"))
-fig3.update_layout(barmode="relative", height=320, yaxis_title="USD/t par jour",
-                   xaxis_title="date", title="Variation quotidienne du fret, décomposée",
-                   legend=dict(orientation="h", y=-0.2))
-st.plotly_chart(fig3, use_container_width=True)
-st.caption(
-    "Le module `signals/worldscale.py` refuse par construction de convertir des points en "
-    "$/t sans flat rate daté : il lève une exception plutôt que de se rabattre sur "
-    "l'année précédente. C'est cette erreur-là que le projet démontre."
+kpi_banner(
+    {
+        "ULSD (last)": f"{frame['ulsd_c_gal'].iloc[-1]:.1f} c/gal",
+        "ICE gasoil (last)": f"{frame['gasoil_usd_t'].iloc[-1]:.1f} USD/t",
+        "Spread at your density": f"{spread.iloc[-1]:+.1f} USD/t",
+        "Density swing": f"{identification.swing_usd_t:.1f} USD/t",
+        "Share of arb variability": f"{identification.ratio:.0%}",
+    }
 )
 
-# ------------------------------------------------------------------------------- S4
-st.header("S4 — Combien de jours « ouverts » n'existent pas")
-comp = open_days_comparison(arb)
-c1, c2, c3 = st.columns(3)
-c1.metric("Jours ouverts sur le spread nu", f"{comp.days_looking_open:,}",
-          f"{100 * comp.share_looking_open:.1f}%")
-c2.metric("Jours réellement ouverts", f"{comp.days_really_open:,}",
-          f"{100 * comp.share_really_open:.1f}%")
-c3.metric("Illusion", f"{100 * comp.illusion_share:.1f}%" if comp.days_looking_open else "n/a")
-st.markdown(
-    """
-**Validation de flux, la série qui rend ce projet vérifiable :** exportations américaines
-de distillat par destination (EIA, mensuel, gratuit). Si l'arb est réel, les tonnes
-partent — et contrairement au projet A, cette série est officielle, gratuite et directement
-liée au trade.
-"""
-)
-st.info("Série de flux EIA à brancher.", icon="⏳")
-
-st.subheader("Saisonnalité")
-profile = monthly_profile(arb["arb"])
-fig4 = go.Figure()
-fig4.add_trace(go.Bar(x=profile.index, y=profile["mean"], name="arb moyen"))
-fig4.update_layout(height=300, yaxis_title="USD/t", xaxis_title="mois",
-                   title="Arb moyen par mois calendaire")
-st.plotly_chart(fig4, use_container_width=True)
-st.caption(
-    "Un arb qui ne survit que quelques mois par an n'est pas le même objet qu'un arb "
-    "permanent. Chauffage européen et campagnes de maintenance."
+# ===========================================================================
+# S1
+# ===========================================================================
+section(
+    "S1",
+    "Two prices that cannot be subtracted",
+    "The transatlantic diesel arb is discussed as a single spread — buy the US barrel, ship "
+    "it to Rotterdam, sell it against ARA gasoil — as though the two legs were "
+    "commensurable. They are not. NYMEX ULSD is quoted in cents per **gallon**, which is a "
+    "volume. ICE gasoil is quoted in dollars per **tonne**, which is a mass. Subtracting "
+    "one from the other requires a density.\n\n"
+    "That density is not published anywhere near the price, and it is not a constant. It "
+    "depends on the grade, on the additive package, and on the temperature the volume is "
+    "referenced to. Real middle distillates occupy a band of roughly "
+    f"{DENSITY_LIGHT:.3f} to {DENSITY_HEAVY:.3f} kg per litre — a spread of about five per "
+    "cent in volume terms.\n\n"
+    "Five per cent sounds like a rounding detail. On a leg worth several hundred dollars a "
+    "tonne, it is not.",
 )
 
-# ------------------------------------------------------------------------------- S5
-st.header("S5 — Variante C-2 : le fret calculé plutôt qu'acheté")
-st.markdown(
-    """
-Si les flat rates Worldscale sont indisponibles, on ne renonce pas au projet : on inverse
-le moteur TCE.
-
-```
-TCE = (cargo · F · (1 − c) − coûts) / jours   =>   F = (TCE · jours + coûts) / (cargo · (1 − c))
-```
-
-À partir d'un TCE de marché MR, des distances, du prix des soutes et des jours de port, on
-remonte au taux de fret que ce TCE implique. **« Je n'ai pas acheté le fret, je l'ai
-reconstruit » est un argument de crédibilité plus fort qu'un abonnement.**
-"""
+# ===========================================================================
+# S2 — the measurement
+# ===========================================================================
+section(
+    "S2",
+    "The conversion factor is as large as the thing it measures",
+    "The question is not whether the density swing is big in absolute terms. It is whether "
+    "it is big **next to the variability of the arb it is used to compute** — because that "
+    "ratio decides whether the level of the arb means anything at all.\n\n"
+    "On eleven years of real prices, moving the density across its plausible band moves the "
+    f"arb by {identification.swing_usd_t:.1f} USD per tonne. The arb's own standard "
+    f"deviation over the same window is {identification.spread_std_usd_t:.1f} USD per tonne. "
+    "The two are the same size.\n\n"
+    "The consequence is the same one that recurs across this portfolio: **the level is not "
+    "identifiable, the sign and the changes are.** Anyone quoting a transatlantic arb of "
+    "twenty-seven dollars a tonne without stating their density is quoting a number that "
+    "another desk, using an equally defensible density, would put at forty-four or at "
+    "eighteen.",
+    formula="swing = spread(rho_light) - spread(rho_heavy)     compared with     std(spread)",
 )
-mr_col1, mr_col2, mr_col3 = st.columns(3)
-distance = mr_col1.number_input("Distance chargée (nm)", 2_000, 9_000, 5_000, step=250)
-cargo_t = mr_col2.number_input("Cargaison MR (t)", 20_000, 60_000, 37_000, step=1_000)
-port_days = mr_col3.number_input("Jours de port", 1, 12, 4)
+finding(identification.headline)
 
-mr_params = VoyageParams(
-    cargo_t=float(cargo_t), laden_speed_kn=13.0, ballast_speed_kn=14.0,
-    reference_speed_kn=13.0, reference_consumption_t_per_day=25.0,
-    port_costs_usd=120_000.0, brokerage_commission=0.0375,
+comparison = pd.DataFrame(
+    {
+        "density (kg/l)": [DENSITY_LIGHT, DENSITY_TYPICAL, DENSITY_HEAVY],
+        "gallons per tonne": [
+            gallons_per_tonne(DENSITY_LIGHT),
+            gallons_per_tonne(DENSITY_TYPICAL),
+            gallons_per_tonne(DENSITY_HEAVY),
+        ],
+        "median spread (USD/t)": [
+            float(transatlantic_spread(frame, density_kg_l=d).median())
+            for d in (DENSITY_LIGHT, DENSITY_TYPICAL, DENSITY_HEAVY)
+        ],
+        "share of days above freight": [
+            float((transatlantic_spread(frame, density_kg_l=d) > freight).mean())
+            for d in (DENSITY_LIGHT, DENSITY_TYPICAL, DENSITY_HEAVY)
+        ],
+    }
 )
-laden_days = sea_days(float(distance), mr_params.laden_speed_kn)
-ballast_days = sea_days(float(distance), mr_params.ballast_speed_kn)
-total_days = laden_days + ballast_days + float(port_days)
-bunker_t = (
-    leg_bunker_consumption_t(float(distance), mr_params.laden_speed_kn, mr_params)
-    + leg_bunker_consumption_t(float(distance), mr_params.ballast_speed_kn, mr_params)
-)
-voyage_costs = bunker_t * series["bunker"] + mr_params.port_costs_usd
-modelled_freight = pd.Series(
-    [
-        implied_freight_from_tce(
-            target_tce_usd_per_day=float(tce), total_days=total_days,
-            total_voyage_costs_usd=float(cost), cargo_t=float(cargo_t),
-            commission=mr_params.brokerage_commission,
-        )
-        for tce, cost in zip(series["tce_mr"], voyage_costs)
-    ],
-    index=series["tce_mr"].index,
-    name="modelled_freight",
-)
-
-stats = freight_model_vs_quoted(modelled_freight, freight)
-s1, s2, s3 = st.columns(3)
-s1.metric("Écart moyen", f"${stats['ecart_moyen_usd_t']:,.2f}/t")
-s2.metric("Écart moyen relatif", f"{stats['ecart_moyen_pct']:,.1f}%")
-s3.metric("Corrélation", f"{stats['correlation']:,.2f}")
-
-fig5 = go.Figure()
-fig5.add_trace(go.Scatter(x=freight.index, y=freight, name="fret coté (WS × flat rate)",
-                          mode="lines"))
-fig5.add_trace(go.Scatter(x=modelled_freight.index, y=modelled_freight,
-                          name="fret reconstruit (TCE inversé)", mode="lines"))
-fig5.update_layout(height=350, yaxis_title="USD/t", xaxis_title="date",
-                   legend=dict(orientation="h", y=-0.2))
-st.plotly_chart(fig5, use_container_width=True)
-st.markdown(
-    f"""
-Voyage retenu : **{laden_days:.1f} j** chargés + **{ballast_days:.1f} j** sur ballast +
-**{port_days} j** de port = **{total_days:.1f} j**, pour **{bunker_t:,.0f} t** de soutes.
-
-Un écart systématiquement d'un côté n'est pas une erreur de modèle : c'est ce que la route
-intègre au-delà du coût de voyage — attente, positionnement, pouvoir de négociation. C'est
-le résultat de la variante, pas son échec.
-"""
-)
-
-# ------------------------------------------------------------------------------- S6
-st.header("S6 — Sensibilités")
-st.subheader("Densité : le terme le plus incertain est aussi l'un des plus gros")
 st.dataframe(
-    density_sensitivity(float(arb["p_origin_gal"].iloc[-1])),
-    use_container_width=True, hide_index=True,
+    comparison.style.format(
+        {
+            "density (kg/l)": "{:.3f}", "gallons per tonne": "{:.1f}",
+            "median spread (USD/t)": "{:+.1f}", "share of days above freight": "{:.0%}",
+        }
+    ),
+    width="stretch", hide_index=True,
 )
-st.markdown(
-    f"""
-À **${arb['p_origin_gal'].iloc[-1]:,.3f}/gal**, passer de 7,45 à 7,50 bbl/t déplace la jambe
-US de plusieurs dollars la tonne — souvent davantage que l'arb tout entier, dont la moyenne
-est de **${arb['arb'].mean():,.2f}/t** sur l'échantillon.
-
-C'est le résultat central du projet : **le facteur de conversion que tout le monde traite
-comme une constante pèse autant que le signal.**
-"""
+scope_note(
+    f"Read the last column: at a freight cost of {freight:.0f} USD/t, the share of sessions "
+    "on which this trade looks economic moves by tens of percentage points depending on a "
+    "parameter that is not a market price."
 )
 
-st.subheader("Pont de spécification et jours de voyage")
-grid = []
-for spec in (0.0, 2.5, 5.0, 7.5, 10.0):
-    row = {"pont spec ($/t)": spec}
-    for days in (12, 16, 20):
-        a = reconstruct_arb(
-            price_destination_usd_t=series["p_ara"],
-            price_origin_usd_per_gallon=series["p_usgc"],
-            freight_usd_t=freight,
-            bbl_per_tonne=float(bbl_per_tonne), spec_bridge_usd_t=spec,
-            voyage_days=float(days), annual_rate=float(annual_rate),
-            losses_usd_t=float(losses),
-        )
-        row[f"{days} j"] = round(100 * a["is_open"].mean(), 1)
-    grid.append(row)
-st.dataframe(pd.DataFrame(grid), use_container_width=True, hide_index=True)
-st.caption("Part de jours où l'arb est ouvert (%).")
+# ===========================================================================
+# S3 — THE DELIVERABLE
+# ===========================================================================
+section(
+    "S3",
+    "The inversion: which density makes the cargo marginal",
+    "Rather than picking a density and announcing whether the arb is open, ask the question "
+    "the other way round — **at what density does this cargo exactly break even against "
+    "freight?** That has a closed form, and the form is informative in itself: the breakeven "
+    "density is inversely proportional to the European price plus freight, which is why it "
+    "tightens precisely when freight is expensive.\n\n"
+    "The test then writes itself. If the breakeven density falls **inside** the plausible "
+    "band, the decision to load turns on the grade of the specific parcel rather than on the "
+    "market. If it falls outside, the arb is unambiguous and the conversion argument, while "
+    "still true about the magnitude, does not change the decision.",
+    formula="rho* = ULSD_c_gal / 100 x 1000 / 3.785412 / (gasoil_usd_t + freight)",
+)
+finding(breakeven.headline)
 
-st.divider()
-st.markdown(
-    """
-#### Ce que cette page ne fait pas
+c1, c2, c3 = st.columns(3)
+c1.metric("Breakeven density", f"{breakeven.density_star:.4f} kg/l")
+c2.metric("Plausible band", f"{DENSITY_LIGHT:.3f} – {DENSITY_HEAVY:.3f}")
+c3.metric(
+    "Inside the band",
+    "yes" if breakeven.inside_plausible_band else "no",
+    delta="the grade decides" if breakeven.inside_plausible_band else "the market decides",
+    delta_color="off",
+)
 
-- **Aucun pont de spécification estimé.** C-H2 est une fourchette réglée à la main, pas un
-  modèle. Bricoler ce terme transformerait l'arb en bruit.
-- **Aucune modélisation de la densité réelle du lot.** La densité est une hypothèse balayée,
-  pas une donnée.
-- **Aucun coût de mise à quai, d'inspection ou de mélange à l'arrivée.**
-- **Le fret reconstruit suppose un ballast retour à vide sur la même distance.** Un MR
-  trouve souvent un chargement retour, ce qui abaisse le fret d'équilibre.
-"""
+show(
+    regime_chart(
+        breakeven_path,
+        "density_star",
+        regime_col="inside_band",
+        regime_color=ALT_COLOR,
+        title=f"Breakeven density at {freight:.0f} USD/t of freight — shaded where the grade decides",
+        y_title="kg per litre",
+        zero_line=False,
+        reference_lines={
+            f"heavy {DENSITY_HEAVY:.3f}": DENSITY_HEAVY,
+            f"light {DENSITY_LIGHT:.3f}": DENSITY_LIGHT,
+        },
+        annotations={"2022-02-24": "Russian diesel"},
+    )
+)
+finding(
+    f"The breakeven density sits inside the plausible band "
+    f"{breakeven_path['inside_band'].mean():.0%} of the sample and above it "
+    f"{breakeven_path['above_band'].mean():.0%}. On more than half the sessions, whether "
+    "this trade is economic is settled by which grade is in the tank rather than by either "
+    "screen price."
+)
+
+# ===========================================================================
+# S4
+# ===========================================================================
+section(
+    "S4",
+    "What survives the uncertainty, and what does not",
+    "It would be too easy to conclude that nothing can be said. Two things survive.\n\n"
+    "**The sign, most of the time.** When the breakeven density sits above the heavy end of "
+    "the band, no defensible grade closes the arb — it is open regardless of what one "
+    "assumes. That is the case on a substantial share of the sample, and those are the "
+    "periods a trader can act on without arguing about specifications.\n\n"
+    "**The changes, always.** The density enters multiplicatively and moves every date in "
+    "the same direction, so comparisons across time are robust even when levels are not. "
+    "The widening after February 2022 is real on any density in the band.\n\n"
+    "What does not survive is the number itself. A transatlantic arb quoted to the dollar, "
+    "with no density stated, is a number two desks will disagree about while both being "
+    "right.",
+)
+show(
+    regime_chart(
+        spread.to_frame("spread").assign(covers_freight=spread > freight),
+        "spread",
+        regime_col="covers_freight",
+        regime_color=SHUT_COLOR,
+        title=f"Transatlantic spread at rho = {density:.3f} kg/l — shaded where it covers freight",
+        y_title="USD per tonne",
+        reference_lines={f"freight {freight:.0f}": freight},
+        annotations={"2022-02-24": "Russian diesel"},
+    )
+)
+
+# ===========================================================================
+# S5
+# ===========================================================================
+section(
+    "S5",
+    "What this page does not claim",
+    "The two legs are **front-month futures**, not physical assessments. A real cargo is "
+    "struck on differentials against these screens, and those differentials carry the "
+    "quality bridge between USGC diesel and ARA gasoil specifications — a term this page "
+    "deliberately does not invent.\n\n"
+    "Freight is a slider, not a series. The Baltic clean tanker legs present in the export "
+    "are not identified with enough confidence to price a specific USGC–ARA route, and "
+    "attaching a number to the wrong route would be worse than exposing the assumption.\n\n"
+    "Neither omission touches the result. The density argument is about the **conversion "
+    "between the two legs**, and it holds whatever the level of the differentials or the "
+    "freight — those terms shift the breakeven, they do not narrow the band.",
+)
+diagnostic_note(
+    "One thing worth checking before using any of this on a live cargo: the ICE gasoil "
+    "contract specification changed over the history of this series, and the export gives "
+    "no contract metadata. The page treats the series as homogeneous, which is an "
+    "assumption it cannot verify from the data it has."
+)
+
+mail_question(
+    f"Converting NYMEX ULSD to a tonne basis, I find that moving the density across the "
+    f"plausible distillate band changes the transatlantic arb by "
+    f"{identification.swing_usd_t:.0f} USD/t — about the same as the arb's own standard "
+    f"deviation — and that at {freight:.0f} USD/t of freight the breakeven density lands "
+    f"inside that band on {breakeven_path['inside_band'].mean():.0%} of sessions. Which "
+    "density does your desk use, and is it a house convention or re-derived per cargo "
+    "grade? I would expect the answer to change the arb by more than most people assume.",
+    "Refined product desks (Vitol, Trafigura, Gunvor, Mercuria, BP, Shell Trading), USGC "
+    "and NWE distillate traders",
 )

@@ -1,71 +1,99 @@
-"""Page d'accueil du portefeuille. `streamlit run app/Home.py`
+"""Portfolio landing page. `streamlit run app/Home.py`
 
-Ne contient aucune donnée en dur : tout vient de `freight.portfolio`. Pour ajouter un
-projet au portefeuille, on ajoute un `Project` dans `src/freight/portfolio.py` — cette
-page n'a plus jamais besoin d'être modifiée à la main.
+Nothing is hardcoded here: everything comes from `freight.portfolio`. Adding a project to
+the portfolio means adding a `Project` to `src/freight/portfolio.py` — this page never has
+to be edited by hand.
 """
 from __future__ import annotations
 
 import streamlit as st
 
-from freight.portfolio import PROJECTS, STATUS_READY, by_sector, total_tests
+from freight.portfolio import (
+    DATA_REAL,
+    DATA_SYNTHETIC,
+    PROJECTS,
+    STATUS_READY,
+    by_tier,
+    total_tests,
+)
 
-st.set_page_config(page_title="Physical arb portfolio", layout="wide")
+st.set_page_config(page_title="Physical arbitrage portfolio", layout="wide")
 
-st.title("Arbitrages physiques — le fret comme terme décisif")
+st.title("Physical arbitrage — when the quoted unit is not the economic unit")
 
 st.markdown(
     """
-Une règle commune à tout le portefeuille, quel que soit le secteur : reconstruire la
-marge depuis les séries brutes, puis la confronter à une **série de flux physiques
-officielle et gratuite** — douanes, EIA, Eurostat. La question n'est jamais seulement
-« l'arb a-t-il l'air ouvert », c'est **« la cargaison est-elle effectivement partie »**.
+Twelve projects across dry bulk, refined products, gas, softs and grains. One throughline,
+and it is not the commodity: **every project turns on the quoted unit not being the unit
+the economics run on.** Wet tonne against dry tonne, kcal against tonne, gallon against
+tonne, cents per bushel against dollars per bushel, USD per day against USD per tonne,
+ringgit against dollar.
+
+That is not a presentational detail. In several of these projects the conversion factor
+moves the answer by more than the phenomenon being measured — which means getting it wrong
+does not produce an error, it produces a plausible number that is wrong.
 """
 )
 
 n_ready = sum(1 for p in PROJECTS if p.status == STATUS_READY)
-n_planned = len(PROJECTS) - n_ready
-c1, c2, c3 = st.columns(3)
-c1.metric("Projets prêts", n_ready)
-c2.metric("Projets en piste", n_planned)
-c3.metric("Golden tests", total_tests())
+n_real = sum(1 for p in PROJECTS if p.data_mode != DATA_SYNTHETIC)
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Projects", len(PROJECTS))
+c2.metric("Built and tested", n_ready)
+c3.metric("On real market data", n_real)
+c4.metric("Golden tests", total_tests())
 
 st.divider()
 
-for sector, projects in by_sector().items():
-    st.subheader(sector)
-    cols = st.columns(len(projects))
-    for col, project in zip(cols, projects):
-        with col:
-            badge = "🟢 prêt" if project.status == STATUS_READY else "⚪ à construire"
-            st.markdown(f"**{project.letter} — {project.title}** &nbsp; {badge}")
-            st.markdown(f"*{project.thesis}*")
-            with st.expander("Mécanisme"):
-                st.markdown(project.mechanism)
-                if project.flow_validation:
-                    st.caption(f"Validation de flux : {project.flow_validation}")
-            st.caption(project.status_detail)
-            if project.dashboard_page:
-                st.page_link(project.dashboard_page, label="Ouvrir le dashboard →")
+_DATA_BADGE = {
+    DATA_REAL: "🟩 real data",
+    DATA_SYNTHETIC: "⬜ synthetic — no number here is a market result",
+}
+
+for tier, projects in by_tier().items():
+    st.subheader(tier)
+    for row_start in range(0, len(projects), 3):
+        row = projects[row_start : row_start + 3]
+        columns = st.columns(len(row))
+        for column, project in zip(columns, row):
+            with column:
+                badge = _DATA_BADGE.get(project.data_mode, "🟨 hybrid — main legs real")
+                st.markdown(f"**{project.code} — {project.title}**")
+                st.caption(badge)
+                st.markdown(f"*{project.thesis}*")
+                with st.expander("Where the disagreement comes from"):
+                    st.markdown(project.disagreement)
+                    st.markdown(f"**The deliverable** — {project.pivot}")
+                    if project.data_fallback:
+                        st.caption(f"Data constraint: {project.data_fallback}")
+                with st.expander("The question in the email"):
+                    st.markdown(project.mail_question)
+                    st.caption(f"Target: {project.targets}")
+                if project.dashboard_page:
+                    st.page_link(project.dashboard_page, label="Open the dashboard →")
+                st.caption(f"{project.n_tests or 0} golden tests")
     st.divider()
 
 st.markdown(
     """
-### Règles de méthode, valables pour tout le portefeuille
+### Method rules, portfolio-wide
 
-- **Un trou de données est une information**, pas du bruit à lisser. Aucun forward-fill
-  avant l'étape d'audit — `gap_policy` n'accepte que `none`, le refus est codé.
-- **Aucune série n'entre dans un calcul sans contrat rempli** : ticker, unité native,
-  fréquence, source, et un drapeau `verified` daté.
-- **L'unité de cotation n'est pas l'unité économique.** Tonne humide contre tonne sèche,
-  kcal contre tonne, gallon contre tonne — cette conversion est la moitié du travail de
-  chaque projet, pas un détail.
-- **Un résidu s'appelle un résidu.** On ne le rebaptise pas « tension physique » pour
-  rendre la conclusion plus vendable.
-- **Le mode synthétique est signalé**, jamais confondu avec un résultat réel. Aucun
-  chiffre produit dessus ne doit sortir du repo.
+- **A data gap is information**, not noise to smooth over. No forward-fill before the audit
+  step — `gap_policy` accepts only `none`, and the refusal is in the code.
+- **No series enters a calculation without a filled-in contract**: ticker, native unit,
+  frequency, source, and a dated `verified` flag.
+- **An impossible print is a data diagnosis, not a market signal.** A negative freight rate,
+  a margin that jumps by a factor of a hundred: name the cause, bound the window, show what
+  the series becomes once the window is excluded.
+- **The parameter that carries the sign is exposed with its breakeven.** Not "here is a
+  sensitivity" but "it takes 285 USD per tonne of CO2e to offset the credit".
+- **A residual is called a residual.** It does not get renamed "physical tension" to make
+  the conclusion easier to sell.
+- **Synthetic mode is flagged**, never confused with a real result. No number produced on it
+  should leave the repository.
 
-Pour ajouter un nouveau secteur (agriculture, LNG, ...) : `docs/NOUVELLE_CHAINE.md`
-décrit le gabarit exact que suivent A, B et C.
+Several projects end in a **negative result** — the substitution band that does not exist,
+the rent level that is not identifiable from prices. Those are kept as they are. A portfolio
+in which every thesis is confirmed is a portfolio that was not really tested.
 """
 )

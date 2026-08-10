@@ -269,3 +269,185 @@ def carry_cost_of_extra_voyage_days(
     if extra_days < 0:
         raise ValueError("extra_days doit être positif")
     return cargo_value_per_dmt * annual_rate * (extra_days / 365.0)
+
+
+# ===========================================================================
+# REAL DATA — the shorthand tested, and found arithmetically impossible
+# ===========================================================================
+# The whole freight-spread story rests on a shorthand: 65 % Fe is Brazilian and travels on
+# route C3, 62 % Fe is Australian and travels on C5, so the C3 - C5 differential sits inside
+# the CFR premium. The export now carries all four series. Testing the shorthand at full
+# strength turns out to break it — and the moisture correction, which is this project's
+# signature unit trap, makes the contradiction worse rather than resolving it.
+IODEX_62_SHEET = "SGX IODEX (61%) Iron Ore Future"
+MB_65_SHEET = "SGX MB IronOre 65 Sep26 Comdty"
+C3_SHEET = "SGX Baltic C3 Futures FSP Index"
+C5_SHEET = "C5 FFA USD MT M1 Index"
+
+
+def _read_sheet(sheet: str) -> pd.Series:
+    """Read one raw sheet of the Bloomberg export.
+
+    These four series are not in `agri.data.bloomberg_loader` because they belong to the
+    freight side of the portfolio, and because two of them carry defects the loader's
+    contract would have to describe one by one — see `load_real_premium_frame`.
+    """
+    from agri.data.bloomberg_loader import DEFAULT_PATH
+
+    raw = pd.read_excel(DEFAULT_PATH, sheet_name=sheet, header=None)
+    values = pd.to_numeric(raw.iloc[:, 1], errors="coerce")
+    dates = pd.to_datetime(raw.iloc[:, 0], errors="coerce", format="mixed")
+    return pd.Series(values.values, index=dates).dropna().sort_index()
+
+
+def load_real_premium_frame() -> pd.DataFrame:
+    """The four legs on a common **monthly** grid, and the reason it has to be monthly.
+
+    Columns: io65, io62, c3, c5, premium, freight_spread.
+
+    FREQUENCY, AND WHY IT IS NOT A DETAIL. C5 is daily with 3 130 observations; the C3 route
+    in this export has **64 points at a monthly step**. Forward-filling C3 onto a daily grid
+    would create 600 observations out of 31 real ones and make every standard error in the
+    page meaningless — the portfolio's own resampling rules forbid exactly that. So both are
+    taken down to the monthly grid the coarser series actually supports. Thirty-one months
+    is a small sample and the page says so rather than manufacturing a large one.
+    """
+    monthly = {
+        name: _read_sheet(sheet).resample("ME").median()
+        for name, sheet in (
+            ("io65", MB_65_SHEET),
+            ("io62", IODEX_62_SHEET),
+            ("c3", C3_SHEET),
+            ("c5", C5_SHEET),
+        )
+    }
+    frame = pd.concat(monthly, axis=1, sort=True).dropna()
+    if frame.empty:
+        raise ValueError("no common month across the four iron ore legs")
+    frame["premium"] = frame["io65"] - frame["io62"]
+    frame["freight_spread"] = frame["c3"] - frame["c5"]
+    return frame
+
+
+@dataclass(frozen=True)
+class ShorthandTest:
+    """What the origin shorthand implies about the FOB quality differential.
+
+    Both indices are quoted CFR China, so
+
+        premium_CFR = (FOB_65 - FOB_62) + (C3 - C5)
+
+    Taken at full strength, the shorthand therefore pins the FOB quality differential to
+    `premium - freight_spread`. If that comes out negative, high-grade ore would be cheaper
+    at the loadport than low-grade ore — which nobody believes, and which is the point.
+    """
+
+    frame: pd.DataFrame
+    moisture: float
+
+    @property
+    def implied_quality_median(self) -> float:
+        return float(self.frame["implied_quality"].median())
+
+    @property
+    def share_negative(self) -> float:
+        return float((self.frame["implied_quality"] < 0).mean())
+
+    @property
+    def freight_share_of_premium(self) -> float:
+        return float(
+            self.frame["freight_dry"].median() / self.frame["premium"].median()
+        )
+
+    @property
+    def shorthand_survives(self) -> bool:
+        """The shorthand only survives if it implies a non-negative quality differential
+        most of the time."""
+        return self.share_negative < 0.5
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"At {self.moisture:.0%} moisture, the freight differential covers "
+            f"{self.freight_share_of_premium:.0%} of the 65-62 premium, which leaves an "
+            f"implied FOB quality differential of {self.implied_quality_median:+.2f} USD/t "
+            f"— negative in {self.share_negative:.0%} of months. Taken at full strength the "
+            "origin shorthand would make high-grade ore cheaper at the loadport than "
+            "low-grade ore. It cannot be right as stated."
+        )
+
+
+def evaluate_origin_shorthand(
+    frame: pd.DataFrame, *, moisture: float = DEFAULT_MOISTURE_BRAZIL
+) -> ShorthandTest:
+    """Apply the shorthand at full strength and look at what it implies.
+
+    The moisture correction is applied to the freight leg and **only** to the freight leg:
+    freight is paid on the wet tonne shipped, the index is quoted on the dry tonne
+    delivered, so one dry tonne costs `freight / (1 - moisture)` to move. This is the
+    correction the project exists to make — and here it deepens the contradiction instead of
+    resolving it, which is worth more than a correction that had tidied things up.
+    """
+    if not 0.0 <= moisture < 0.30:
+        raise ValueError(f"moisture outside the plausible range [0, 0.30): {moisture}")
+
+    out = frame.copy()
+    out["freight_dry"] = out["freight_spread"] / (1.0 - moisture)
+    out["implied_quality"] = out["premium"] - out["freight_dry"]
+    return ShorthandTest(frame=out, moisture=float(moisture))
+
+
+@dataclass(frozen=True)
+class ImpliedOriginWeight:
+    """The inversion: how much of the freight spread the premium can actually carry.
+
+    Rather than asserting the shorthand and finding a contradiction, assume the FOB quality
+    differential a practitioner believes in and solve for the weight at which the freight
+    spread enters:
+
+        premium = quality_FOB + w x freight_dry     =>     w = (premium - quality) / freight_dry
+
+    `w = 1` is the full-strength shorthand. `w = 0` is a pure quality premium with no freight
+    content. What comes out is neither — and an iron ore desk reads its own answer straight
+    off the curve, because it knows its FOB differential.
+    """
+
+    curve: pd.DataFrame
+    moisture: float
+
+    def weight_at(self, quality_usd_t: float) -> float:
+        row = self.curve.iloc[(self.curve["quality_usd_t"] - quality_usd_t).abs().argmin()]
+        return float(row["implied_weight"])
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Assuming a 6 USD/t FOB quality differential, the freight spread enters the "
+            f"premium at a weight of {self.weight_at(6.0):.2f} rather than 1 — the two "
+            "indices are not single-origin, and the shorthand overstates the freight content "
+            "by roughly a factor of two."
+        )
+
+
+def implied_origin_weight(
+    frame: pd.DataFrame,
+    *,
+    moisture: float = DEFAULT_MOISTURE_BRAZIL,
+    quality_grid: np.ndarray | None = None,
+) -> ImpliedOriginWeight:
+    """The weight at which the freight spread enters, as a function of assumed FOB quality."""
+    tested = evaluate_origin_shorthand(frame, moisture=moisture)
+    grid = np.arange(0.0, 14.1, 0.5) if quality_grid is None else np.asarray(quality_grid)
+
+    rows = []
+    for quality in grid:
+        weight = (tested.frame["premium"] - quality) / tested.frame["freight_dry"]
+        rows.append(
+            {
+                "quality_usd_t": float(quality),
+                "implied_weight": float(weight.median()),
+                "weight_low": float(weight.quantile(0.10)),
+                "weight_high": float(weight.quantile(0.90)),
+            }
+        )
+    return ImpliedOriginWeight(curve=pd.DataFrame(rows), moisture=float(moisture))

@@ -358,3 +358,202 @@ def freight_binding_test(
         regs = {name: s[s.index.isin(y.index)] for name, s in regs.items()}
         results[label] = ols(y, regs)
     return results
+
+
+# ===========================================================================
+# REAL DATA — coal-to-gas switching, and the parameter that decides it
+# ===========================================================================
+# The API2 - API4 arb this module was built around is not computable from the export: API4
+# Richards Bay is absent. API2, TTF, EUA and EURUSD are all present, and they support a
+# better question — the one a European generator actually faces every morning.
+#
+# A generator does not choose between coal and gas on fuel price. It chooses on fuel plus
+# carbon, per MWh of ELECTRICITY, at plant efficiencies that differ by roughly a factor of
+# one and a half. Three units and two currencies have to be reconciled before the comparison
+# even exists, and the answer turns on two efficiencies that no exchange quotes.
+API2_SHEET = "XA1 Comdty"
+EUA_SHEET = "MO1 Comdty"
+
+KCAL_TO_MWH = 1.163e-6
+API2_KCAL_PER_KG = 6000.0          # API2 is assessed at 6 000 kcal/kg NAR
+MWH_TH_PER_TONNE_COAL = API2_KCAL_PER_KG * 1000.0 * KCAL_TO_MWH   # ~6,978
+
+# Emission factors, tonnes of CO2 per MWh of THERMAL input. Standard combustion figures,
+# not plant-specific — a real unit varies with coal rank and with gas composition.
+EF_COAL_T_PER_MWH_TH = 0.34
+EF_GAS_T_PER_MWH_TH = 0.20
+
+# Plant efficiencies. THE parameter of this page: not market data, not published, and the
+# thing the whole answer turns on. Ranges span an old subcritical coal unit to a supercritical
+# one, and an early CCGT to a modern H-class.
+COAL_EFFICIENCY_RANGE = (0.36, 0.42)
+GAS_EFFICIENCY_RANGE = (0.50, 0.60)
+DEFAULT_COAL_EFFICIENCY = 0.38
+DEFAULT_GAS_EFFICIENCY = 0.55
+
+
+def load_real_switching_frame(start: str | None = "2018-01-01") -> pd.DataFrame:
+    """API2, TTF, EUA and EURUSD on their common calendar, plus coal restated per MWh.
+
+    Columns: api2_usd_t, ttf_eur_mwh, eua_eur_t, eurusd, coal_eur_mwh_th.
+
+    The coal leg is the one that needs work: it arrives as a **price per tonne in dollars**
+    and has to become a **price per thermal MWh in euros**, which takes a calorific value and
+    a currency. Neither conversion is reversible by eye, which is why both are done here once
+    and never again downstream.
+    """
+    from agri.data.bloomberg_loader import DEFAULT_PATH, load
+
+    def read_sheet(sheet: str) -> pd.Series:
+        raw = pd.read_excel(DEFAULT_PATH, sheet_name=sheet, header=None)
+        values = pd.to_numeric(raw.iloc[:, 1], errors="coerce")
+        dates = pd.to_datetime(raw.iloc[:, 0], errors="coerce", format="mixed")
+        return pd.Series(values.values, index=dates).dropna().sort_index()
+
+    frame = pd.concat(
+        {
+            "api2_usd_t": read_sheet(API2_SHEET),
+            "eua_eur_t": read_sheet(EUA_SHEET),
+            "ttf_eur_mwh": load("ttf"),
+            "eurusd": load("eurusd"),
+        },
+        axis=1,
+        sort=True,
+    ).dropna()
+    if start is not None:
+        frame = frame[frame.index >= pd.Timestamp(start)]
+    if frame.empty:
+        raise ValueError(f"no common dates across the four switching legs after {start}")
+    if not (0.6 < frame["eurusd"].median() < 1.8):
+        raise ValueError(
+            "EURUSD does not look like USD per EUR — check the quoting direction before "
+            "any of this means anything"
+        )
+
+    frame["coal_eur_mwh_th"] = (
+        frame["api2_usd_t"] / frame["eurusd"] / MWH_TH_PER_TONNE_COAL
+    )
+    return frame
+
+
+def generation_cost_eur_mwh_e(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+) -> pd.DataFrame:
+    """Short-run marginal cost of each plant, in euros per MWh of electricity.
+
+        coal = (coal_eur_mwh_th + EUA x EF_coal) / eta_coal
+        gas  = (ttf_eur_mwh     + EUA x EF_gas ) / eta_gas
+
+    Dividing by the efficiency is what turns a fuel price into a generation cost, and it is
+    also what makes the carbon term bigger than it looks: a coal unit pays for its CO2 **and**
+    burns more fuel per unit of output, so the efficiency divides the carbon cost too.
+    """
+    for efficiency, label in ((coal_efficiency, "coal"), (gas_efficiency, "gas")):
+        if not 0.20 < efficiency < 0.70:
+            raise ValueError(f"{label} efficiency outside the plausible range: {efficiency}")
+
+    out = pd.DataFrame(index=frame.index)
+    out["coal"] = (
+        frame["coal_eur_mwh_th"] + frame["eua_eur_t"] * EF_COAL_T_PER_MWH_TH
+    ) / coal_efficiency
+    out["gas"] = (
+        frame["ttf_eur_mwh"] + frame["eua_eur_t"] * EF_GAS_T_PER_MWH_TH
+    ) / gas_efficiency
+    out["spread"] = out["coal"] - out["gas"]
+    out["gas_cheaper"] = out["spread"] > 0
+    return out
+
+
+def switching_carbon_price(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+) -> pd.Series:
+    """The EUA price at which the two plants cost the same, in closed form.
+
+        EUA* = (ttf / eta_gas - coal_th / eta_coal) / (EF_coal / eta_coal - EF_gas / eta_gas)
+
+    The denominator is the whole story. It contains **no price at all** — only two emission
+    factors and two efficiencies. So the sensitivity of the switching price to the efficiency
+    assumption is not a second-order correction: the efficiencies sit in the denominator of
+    the answer.
+    """
+    denominator = (
+        EF_COAL_T_PER_MWH_TH / coal_efficiency - EF_GAS_T_PER_MWH_TH / gas_efficiency
+    )
+    if denominator <= 0:
+        raise ValueError(
+            "the coal plant does not emit more CO2 per MWh of electricity than the gas "
+            "plant at these efficiencies — no carbon price can make gas competitive, and "
+            "the switching price is undefined rather than large"
+        )
+    numerator = (
+        frame["ttf_eur_mwh"] / gas_efficiency - frame["coal_eur_mwh_th"] / coal_efficiency
+    )
+    return (numerator / denominator).rename("eua_switch_eur_t")
+
+
+@dataclass(frozen=True)
+class EfficiencyIdentification:
+    """What the unpublished parameter does to the published answer.
+
+    The coal-to-gas switching price is quoted in market commentary as if it were a property
+    of the two fuels. It is not. It is a property of two plant efficiencies, and this class
+    measures how much of the answer they account for.
+    """
+
+    grid: pd.DataFrame
+    swing_eur_t: float
+    eua_std_eur_t: float
+    share_above_low: float
+    share_above_high: float
+
+    @property
+    def ratio(self) -> float:
+        return self.swing_eur_t / self.eua_std_eur_t
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"The efficiency pair alone moves the switching price by {self.swing_eur_t:.0f} "
+            f"EUR/t — {self.ratio:.1f} times the standard deviation of the carbon price "
+            f"itself ({self.eua_std_eur_t:.0f} EUR/t). Depending on which plants one assumes "
+            f"are at the margin, carbon has been high enough to displace coal anywhere "
+            f"between {self.share_above_high:.0%} and {self.share_above_low:.0%} of the "
+            "sample. Same fuel prices, same carbon price, opposite conclusions."
+        )
+
+
+def efficiency_identification(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiencies: tuple[float, ...] = (0.36, 0.38, 0.42),
+    gas_efficiencies: tuple[float, ...] = (0.50, 0.55, 0.60),
+) -> EfficiencyIdentification:
+    """Sweep the plausible efficiency pairs and compare the swing to the EUA's own variability."""
+    rows = []
+    for coal_efficiency in coal_efficiencies:
+        for gas_efficiency in gas_efficiencies:
+            switch = switching_carbon_price(
+                frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+            )
+            rows.append(
+                {
+                    "coal_efficiency": coal_efficiency,
+                    "gas_efficiency": gas_efficiency,
+                    "switch_median_eur_t": float(switch.median()),
+                    "share_eua_above": float((frame["eua_eur_t"] > switch).mean()),
+                }
+            )
+    grid = pd.DataFrame(rows)
+    return EfficiencyIdentification(
+        grid=grid,
+        swing_eur_t=float(grid["switch_median_eur_t"].max() - grid["switch_median_eur_t"].min()),
+        eua_std_eur_t=float(frame["eua_eur_t"].std()),
+        share_above_low=float(grid["share_eua_above"].max()),
+        share_above_high=float(grid["share_eua_above"].min()),
+    )

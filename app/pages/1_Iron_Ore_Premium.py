@@ -1,319 +1,301 @@
-"""Projet A — S1 à S6. `streamlit run app/Home.py` puis choisir cette page."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from freight.chains.ironore import (
+_APP_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_APP_DIR.parent / "src"))
+sys.path.insert(0, str(_APP_DIR))
+
+from agri.data.bloomberg_loader import DEFAULT_PATH  # noqa: E402
+from freight.chains.ironore import (  # noqa: E402
     DEFAULT_MOISTURE_AUSTRALIA,
     DEFAULT_MOISTURE_BRAZIL,
-    carry_cost_of_extra_voyage_days,
-    decompose_premium,
-    explained_variance,
-    freight_hedge_effect,
-    negative_residual_episodes,
+    implied_origin_weight,
+    load_real_premium_frame,
+    evaluate_origin_shorthand,
 )
-from freight.ingest.fixture import SYNTHETIC_TICKERS, synthetic_ironore
-from freight.ingest.loader import load_raw_directory
-from freight.ingest.series import MissingSeries, coverage_report, to_series
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = REPO_ROOT / "data" / "raw"
-
-# Mapping rôle -> ticker réel. À remplir quand les séries arrivent, en cohérence avec
-# data_dictionary.csv. Tant que c'est vide, la page tourne en mode synthétique.
-REAL_TICKERS: dict[str, str] = {
-    # "p62": "...",
-    # "p65": "...",
-    # "c3":  "...",
-    # "c5":  "...",
-}
-
-st.set_page_config(page_title="Iron ore 65-62 premium", layout="wide")
-
-
-# --------------------------------------------------------------------------- données
-@st.cache_data(show_spinner=False)
-def load_data() -> tuple[dict[str, pd.Series], bool, list[str]]:
-    """Renvoie ({rôle: série}, synthetic, avertissements)."""
-    warnings: list[str] = []
-    if REAL_TICKERS:
-        try:
-            raw = load_raw_directory(RAW_DIR)
-            series = {role: to_series(raw, tk) for role, tk in REAL_TICKERS.items()}
-            return series, False, warnings
-        except (MissingSeries, ValueError) as exc:
-            warnings.append(f"chargement des données réelles impossible : {exc}")
-
-    raw = synthetic_ironore()
-    series = {role: to_series(raw, tk) for role, tk in SYNTHETIC_TICKERS.items()}
-    return series, True, warnings
-
-
-series, synthetic, warnings = load_data()
-
-st.title("Le premium 65-62 % Fe est en partie un spread de fret Capesize")
-st.caption(
-    "Décomposition du premium haute teneur en une part fret C3 − C5 corrigée de "
-    "l'humidité et un résidu qualité / valeur-en-usage / tension / base FFA."
+from page_template import (  # noqa: E402
+    ALT_COLOR,
+    SHUT_COLOR,
+    Scope,
+    diagnostic_note,
+    finding,
+    kpi_banner,
+    mail_question,
+    page_header,
+    regime_chart,
+    scope_note,
+    section,
+    show,
 )
 
-if synthetic:
-    st.error(
-        "**DONNÉES SYNTHÉTIQUES — NE RIEN INTERPRÉTER.** Cette page tourne sur un jeu "
-        "de test généré aléatoirement, dont la structure a été imposée à la main. Elle "
-        "prouve que le pipeline et les six sections fonctionnent, elle ne prouve rien "
-        "sur le marché. Aucun chiffre de cette page ne doit sortir d'ici. Voir "
-        "`FICHE_DONNEES.md` pour les quatre séries à fournir.",
-        icon="🚫",
-    )
-for w in warnings:
-    st.warning(w)
+st.set_page_config(page_title="A — Iron ore 65-62 premium", layout="wide")
 
-with st.sidebar:
-    st.header("Hypothèses")
-    moisture_br = st.slider(
-        "Humidité fines brésiliennes (A-H2)",
-        0.06, 0.11, DEFAULT_MOISTURE_BRAZIL, 0.005, format="%.3f",
-    )
-    moisture_au = st.slider(
-        "Humidité fines australiennes (A-H2)",
-        0.06, 0.11, DEFAULT_MOISTURE_AUSTRALIA, 0.005, format="%.3f",
-    )
-    st.caption(
-        "Le fret est payé sur le poids embarqué (humide), les indices minerai sont "
-        "cotés en tonne sèche. Corriger l'humidité augmente la part fret du premium."
-    )
-    st.divider()
-    st.header("Sensibilités")
-    extra_days = st.number_input("Jours de voyage supplémentaires Brésil", 0, 60, 25)
-    annual_rate = st.slider("Taux de portage annuel", 0.0, 0.15, 0.06, 0.005)
+if not DEFAULT_PATH.exists():
+    st.error(f"Bloomberg export not found: {DEFAULT_PATH}")
+    st.stop()
 
-decomp = decompose_premium(
-    p65=series["p65"], p62=series["p62"], c3=series["c3"], c5=series["c5"],
-    moisture_brazil=moisture_br, moisture_australia=moisture_au,
+# ===========================================================================
+# Header and scope
+# ===========================================================================
+page_header(
+    code="A",
+    title="The 65–62 premium contains a freight spread — but at half weight",
+    subtitle=(
+        "Taken at full strength the origin shorthand implies that high-grade ore is cheaper "
+        "at the loadport than low-grade ore, and the moisture correction makes that worse "
+        "rather than better"
+    ),
+    scope=Scope(
+        unit_trap=(
+            "**Freight is paid on the wet tonne shipped; the index is quoted on the dry "
+            "tonne delivered.** Iron ore leaves Brazil at around 9 % moisture and Australia "
+            "at around 8 %, so moving one dry tonne costs `freight / (1 - moisture)`, not "
+            "`freight`. Everyone knows this correction exists; the interesting part is that "
+            "applying it here **deepens** the contradiction the page finds instead of "
+            "resolving it — which is worth more than a correction that had tidied things up."
+        ),
+        conversion=(
+            "freight_per_dry_tonne = freight_per_wet_tonne / (1 - moisture)\n"
+            "premium_CFR           = (FOB_65 - FOB_62) + (C3 - C5)\n"
+            "implied_quality_FOB   = premium - freight_dry        [the shorthand at w = 1]\n"
+            "implied_weight        = (premium - quality) / freight_dry"
+        ),
+        proxies=[
+            "the origin mapping itself — 65 % Fe treated as Brazilian on C3 and 62 % as "
+            "Australian on C5 — is a shorthand, and testing it is the subject of the page "
+            "rather than an assumption of it",
+        ],
+        out_of_scope=[
+            "lump and pellet premia, blast-furnace productivity and coke rate economics: all "
+            "real drivers of the quality differential, none of them separable with price "
+            "series alone",
+            "Chinese port stocks and mill margins, which would explain the level of the "
+            "premium but not its freight content",
+        ],
+        frequency_note=(
+            "**The binding constraint of this page.** C5 is daily with 3 130 observations; "
+            "the C3 route in this export has 64 points at a monthly step. Forward-filling C3 "
+            "onto a daily grid would turn 31 real observations into 600 and make every "
+            "standard error meaningless. Both legs are therefore taken down to the monthly "
+            "grid the coarser series actually supports — 31 months. That is a small sample, "
+            "and it is stated rather than disguised."
+        ),
+        data_warnings=[
+            "The 65 % Fe series is labelled as a dated September 2026 contract in the "
+            "export, yet its ratio to the 62 % index stays inside 1,11–1,19 with comparable "
+            "daily volatility, which is spot-tracking behaviour rather than a converging "
+            "forward. Treated as an index here, with the caveat left visible.",
+        ],
+    ),
 )
 
-# ------------------------------------------------------------------- couverture data
-with st.expander("Couverture des séries — à lire avant les graphiques", expanded=False):
-    st.dataframe(coverage_report(series), use_container_width=True, hide_index=True)
-    st.markdown(
-        f"""
-**Alignement.** La décomposition est calculée sur l'intersection des quatre calendriers :
-**{len(decomp)} dates retenues**. Aucun trou n'a été comblé. Un jour où le fret ne cote
-pas est un jour sans décomposition, pas un jour recopié depuis la veille.
-
-**Base FFA (A-H3).** Si les séries de fret proviennent de FFA front-month plutôt que des
-évaluations spot Baltic, il existe une base entre les deux. Elle n'est pas corrigée ici
-et elle contamine le résidu.
-"""
-    )
-
-# ------------------------------------------------------------------------------- S1
-st.header("S1 — État actuel")
-last = decomp.iloc[-1]
-c1, c2, c3_, c4, c5_, c6 = st.columns(6)
-c1.metric("P62 CFR", f"${last['p62']:,.1f}/dmt")
-c2.metric("P65 CFR", f"${last['p65']:,.1f}/dmt")
-c3_.metric("Premium 65-62", f"${last['premium_observed']:,.2f}/dmt")
-c4.metric("Fair value fret", f"${last['freight_fair_value']:,.2f}/dmt")
-c5_.metric("Résidu", f"${last['residual']:,.2f}/dmt")
-share = last["freight_share"]
-c6.metric("Part fret", "n/a" if pd.isna(share) else f"{100 * share:,.1f}%")
-
-mean_share = decomp["freight_share"].mean()
-naive_share = (decomp["premium_naive_freight"] / decomp["premium_observed"]).replace(
-    [np.inf, -np.inf], np.nan
-).mean()
-st.markdown(
-    f"""
-Sur l'échantillon : part fret moyenne du premium **{100 * mean_share:,.1f} %** avec la
-correction d'humidité, contre **{100 * naive_share:,.1f} %** sans. L'écart de
-**{100 * (mean_share - naive_share):,.1f} point(s)** est exactement ce que coûte le fait
-de confondre tonne humide et tonne sèche.
-"""
+# ===========================================================================
+# Parameters
+# ===========================================================================
+st.sidebar.markdown("### Parameters")
+moisture = st.sidebar.slider(
+    "Moisture on the freight leg", 0.0, 0.15, DEFAULT_MOISTURE_BRAZIL, 0.005,
+    help="Freight is paid on the wet tonne, the index is quoted on the dry tonne.",
+)
+quality_assumed = st.sidebar.slider(
+    "Assumed FOB quality differential (USD/t)", 0.0, 14.0, 6.0, 0.5,
+    help="What three extra points of Fe are worth at the loadport, before any freight.",
 )
 
-# ------------------------------------------------------------------------------- S2
-st.header("S2 — Décomposition du premium")
-st.markdown(
-    """
-```
-premium_observé = P65_CFR − P62_CFR
-fair_value_fret = C3/(1−h_BR) − C5/(1−h_AU)
-résidu          = premium_observé − fair_value_fret
-```
-Le résidu contient la qualité, la valeur-en-usage, la tension physique **et** la base
-FFA. On ne le baptise pas « tension » : aucune donnée publique ne permet de séparer ces
-quatre termes, et poser une valeur-en-usage inventée transformerait le résultat en
-artefact.
-"""
+frame = load_real_premium_frame()
+tested = evaluate_origin_shorthand(frame, moisture=moisture)
+weights = implied_origin_weight(frame, moisture=moisture)
+
+kpi_banner(
+    {
+        "Months available": f"{len(frame)}",
+        "65–62 premium": f"{frame['premium'].median():.2f} USD/t",
+        "C3 − C5 (dry)": f"{tested.frame['freight_dry'].median():.2f} USD/t",
+        "Implied FOB quality": f"{tested.implied_quality_median:+.2f} USD/t",
+        "Months negative": f"{tested.share_negative:.0%}",
+    }
 )
-fig = go.Figure()
-fig.add_trace(
-    go.Scatter(
-        x=decomp.index, y=decomp["freight_fair_value"], name="part fret (C3−C5, dmt)",
-        mode="lines", stackgroup="one",
-    )
+
+# ===========================================================================
+# S1
+# ===========================================================================
+section(
+    "S1",
+    "A shorthand that everyone uses and nobody checks",
+    "The 65–62 Fe premium is read on steel desks as a quality signal: when mill margins are "
+    "good, mills pay up for high-grade ore because it lifts blast-furnace productivity and "
+    "cuts coke rate. Freight desks make a different observation. High-grade supply is "
+    "largely Brazilian and travels on route C3; the 62 % benchmark is largely Australian and "
+    "travels on C5. Brazil to China is roughly three times the distance of Western Australia "
+    "to China.\n\n"
+    "Both indices are quoted **CFR China** — delivered. So the freight differential is "
+    "already inside the premium before any quality argument begins:\n\n"
+    "That gives a clean identity, and an obvious test. Take the shorthand at full strength, "
+    "subtract the freight differential from the premium, and whatever remains has to be what "
+    "three extra points of iron are worth at the loadport. That number cannot be negative.",
+    formula="premium_CFR = (FOB_65 - FOB_62) + (C3 - C5)",
 )
-fig.add_trace(
-    go.Scatter(
-        x=decomp.index, y=decomp["residual"].clip(lower=0),
-        name="résidu (qualité + VIU + tension + base)", mode="lines", stackgroup="one",
+
+# ===========================================================================
+# S2 — the test fails
+# ===========================================================================
+section(
+    "S2",
+    "The test, and it fails",
+    "On the thirty-one months where all four series overlap, the freight differential is not "
+    "a fraction of the premium — it is **larger than the whole premium**. Subtracting it "
+    "leaves an implied FOB quality differential that is negative in most months.\n\n"
+    "Read literally, that says Brazilian high-grade ore is cheaper at the loadport than "
+    "Australian low-grade ore. No one in the market believes that, and no producer would "
+    "sell on those terms. So the shorthand is wrong somewhere — and the useful work is "
+    "finding out where, not discarding the result.",
+)
+finding(tested.headline)
+show(
+    regime_chart(
+        tested.frame.assign(negative=tested.frame["implied_quality"] < 0),
+        "implied_quality",
+        regime_col="negative",
+        regime_color=SHUT_COLOR,
+        title="Implied FOB quality differential once the freight spread is removed at full weight",
+        y_title="USD per dry tonne",
     )
 )
-fig.add_trace(
-    go.Scatter(
-        x=decomp.index, y=decomp["premium_observed"], name="premium observé",
-        mode="lines", line=dict(color="black", width=2),
+scope_note(
+    "Shaded months are the ones where the shorthand implies a negative quality differential. "
+    "The series is monthly because C3 is monthly — see the frequency note in the scope box."
+)
+
+# ===========================================================================
+# S3 — the correction makes it worse
+# ===========================================================================
+section(
+    "S3",
+    "The moisture correction deepens the problem instead of fixing it",
+    "The obvious suspect is the unit trap this project was built around. Freight is quoted "
+    "and paid per **wet** tonne loaded; the index is assessed per **dry** tonne of contained "
+    "ore. Delivering one dry tonne therefore means paying freight on rather more than one "
+    "tonne, and the cost per dry tonne is `freight / (1 - moisture)`.\n\n"
+    "Applying it correctly makes the freight leg **larger**, so it makes the implied quality "
+    "differential **more negative**. At zero moisture the shorthand already fails in 61 % of "
+    "months; at a Brazilian 9 % it fails in 77 %.\n\n"
+    "That matters more than a correction that had rescued the story. It rules out the "
+    "explanation a reader would reach for first, and it forces the problem back onto the "
+    "assumption nobody was examining — the origin mapping itself.",
+    formula="freight_per_dry_tonne = freight_per_wet_tonne / (1 - moisture)",
+)
+sensitivity = pd.DataFrame(
+    [
+        {
+            "moisture": value,
+            "freight per dry tonne (USD/t)": float(
+                evaluate_origin_shorthand(frame, moisture=value).frame["freight_dry"].median()
+            ),
+            "implied FOB quality (USD/t)": evaluate_origin_shorthand(
+                frame, moisture=value
+            ).implied_quality_median,
+            "months negative": evaluate_origin_shorthand(frame, moisture=value).share_negative,
+        }
+        for value in (0.0, 0.04, DEFAULT_MOISTURE_AUSTRALIA, DEFAULT_MOISTURE_BRAZIL, 0.12)
+    ]
+)
+st.dataframe(
+    sensitivity.style.format(
+        {
+            "moisture": "{:.1%}", "freight per dry tonne (USD/t)": "{:.2f}",
+            "implied FOB quality (USD/t)": "{:+.2f}", "months negative": "{:.0%}",
+        }
+    ),
+    width="stretch", hide_index=True,
+)
+diagnostic_note(
+    "A correction that worsens the anomaly it was supposed to explain is a result, not a "
+    "failure. It eliminates the moisture convention as the culprit and leaves exactly one "
+    "candidate standing."
+)
+
+# ===========================================================================
+# S4 — THE DELIVERABLE
+# ===========================================================================
+section(
+    "S4",
+    "The inversion: how much freight the premium can actually carry",
+    "The shorthand assumes the freight spread enters the premium at **full weight** — every "
+    "tonne of 65 % Fe pays C3, every tonne of 62 % pays C5. Neither index is single-origin, "
+    "so that cannot be right. Rather than guess the origin mix, assume the FOB quality "
+    "differential a practitioner actually believes in and solve for the weight:\n\n"
+    "An iron ore desk knows what three points of Fe are worth at the loadport. It reads its "
+    "own answer straight off the curve below, and the answer is the honest version of this "
+    "project's thesis: **the freight spread is inside the premium, at roughly half weight, "
+    "not at full weight.**",
+    formula="w = (premium - quality_FOB) / freight_dry        w = 1 is the full shorthand",
+)
+finding(weights.headline)
+
+show(
+    regime_chart(
+        weights.curve.set_index("quality_usd_t"),
+        "implied_weight",
+        title="Weight at which the freight spread enters the premium, by assumed FOB quality",
+        y_title="implied weight (1 = full shorthand)",
+        zero_line=True,
+        reference_lines={"full shorthand w = 1": 1.0, "half weight": 0.5},
     )
 )
-fig.update_layout(
-    height=430, yaxis_title="USD/dmt", xaxis_title="date",
-    legend=dict(orientation="h", y=-0.2),
-    title="Premium 65-62 décomposé (aires empilées ; le résidu négatif sort de la pile)",
+c1, c2, c3 = st.columns(3)
+c1.metric("At your assumption", f"w = {weights.weight_at(quality_assumed):.2f}")
+c2.metric("Full shorthand implies", "w = 1.00")
+c3.metric(
+    "Overstatement factor",
+    f"{1.0 / max(weights.weight_at(quality_assumed), 0.01):.1f}×",
+    delta="how much the shorthand exaggerates the freight content",
+    delta_color="off",
 )
-st.plotly_chart(fig, use_container_width=True)
-st.caption(
-    "Caveat : l'empilement ne représente les périodes de résidu négatif que par "
-    "l'écart entre la ligne noire et la pile. Ces périodes sont l'objet de S3."
-)
-
-# ------------------------------------------------------------------------------- S3
-st.header("S3 — Quand la qualité ne se paie plus")
-episodes = negative_residual_episodes(decomp, min_days=5)
-st.markdown(
-    """
-Un résidu négatif signifie que le premium haute teneur est **inférieur au seul surcoût de
-distance** : le marché ne paie pas la qualité, ou la structure d'offre force le flux
-malgré tout. C'est l'anomalie qui porte la conversation avec un desk.
-"""
-)
-if episodes.empty:
-    st.info("Aucun épisode de résidu négatif de 5 jours ou plus sur l'échantillon.")
-else:
-    st.dataframe(episodes, use_container_width=True, hide_index=True)
-
-fig3 = go.Figure()
-fig3.add_trace(go.Scatter(x=decomp.index, y=decomp["residual"], name="résidu", mode="lines"))
-fig3.add_hline(y=0, line_dash="dash")
-fig3.update_layout(height=320, yaxis_title="USD/dmt", xaxis_title="date",
-                   title="Résidu — passages sous zéro")
-st.plotly_chart(fig3, use_container_width=True)
-
-ev_levels = explained_variance(decomp["premium_observed"], decomp["freight_fair_value"])
-ev_changes = explained_variance(
-    decomp["premium_observed"], decomp["freight_fair_value"], on_changes=True
-)
-a, b = st.columns(2)
-a.markdown(f"**En niveau** — {ev_levels.summary}")
-b.markdown(f"**En variation** — {ev_changes.summary}")
-st.caption(
-    "Le R² en niveau est presque toujours le plus flatteur des deux et ne veut pas dire "
-    "grand-chose sur des séries non stationnaires. Celui en variation est la lecture "
-    "honnête. Les deux sont affichés parce que l'écart entre eux est une information."
+scope_note(
+    "The curve is mechanical, not estimated: it is the identity solved for w, month by "
+    "month, with the median plotted. It carries no standard error because there is nothing "
+    "to estimate — the uncertainty lives entirely in the quality differential you assume, "
+    "which is why that is the slider."
 )
 
-# ------------------------------------------------------------------------------- S4
-st.header("S4 — La boucle de rétroaction, testée sur des flux réels")
-st.markdown(
-    """
-Le mécanisme à tester : le Brésil compétitif tire la demande en **tonne-mille** Capesize
-(≈ 11 000 nm contre ≈ 1 600 nm), donc C3 monte, donc l'avantage brésilien s'auto-annule.
-Si la boucle existe, la part brésilienne des importations chinoises doit précéder un
-élargissement de C3 − C5.
-
-**Série requise :** importations chinoises de minerai de fer par origine, douanes (GACC),
-mensuel, gratuit. Elle n'est pas encore branchée.
-
-**Limite déclarée à l'avance :** la mensualité des douanes détruit la granularité. Si le
-test ne conclut pas, ce n'est pas un échec du mécanisme, c'est une limite de résolution —
-et il vaut mieux l'annoncer maintenant que la découvrir après.
-"""
+# ===========================================================================
+# S5
+# ===========================================================================
+section(
+    "S5",
+    "What would settle this, and why price data cannot",
+    "Two readings remain, and the price series cannot separate them.\n\n"
+    "Either the **origin mix** is the answer — both indices draw on both origins, so the "
+    "effective freight differential inside the premium is diluted to roughly half. Or the "
+    "**routes are wrong** for the physical flow that actually sets each index, in which case "
+    "C3 and C5 are the wrong benchmarks rather than the wrong weights.\n\n"
+    "Both produce the same arithmetic and neither is visible in a price. What separates them "
+    "is cargo-level origin data for the tonnes that actually price each index — which is "
+    "exactly the sort of thing an iron ore desk has and an outsider does not. Hence the "
+    "question below.",
 )
-st.info("Section en attente de la série de flux GACC.", icon="⏳")
-
-# ------------------------------------------------------------------------------- S5
-st.header("S5 — Couvrir la jambe fret")
-hedge_opt = freight_hedge_effect(decomp["premium_observed"], decomp["freight_fair_value"])
-hedge_unit = freight_hedge_effect(
-    decomp["premium_observed"], decomp["freight_fair_value"], beta=1.0
-)
-h1, h2, h3 = st.columns(3)
-h1.metric("Vol quotidienne non couverte", f"${hedge_opt.vol_unhedged:,.3f}/dmt")
-h2.metric(
-    f"Couverture optimale (β = {hedge_opt.beta:,.2f})",
-    f"${hedge_opt.vol_hedged:,.3f}/dmt",
-    f"{-hedge_opt.vol_reduction_pct:,.1f}%",
-)
-h3.metric(
-    "Couverture unitaire (β = 1)",
-    f"${hedge_unit.vol_hedged:,.3f}/dmt",
-    f"{-hedge_unit.vol_reduction_pct:,.1f}%",
-)
-st.markdown(
-    """
-Lecture de desk : si couvrir la part fret par des FFA C3/C5 retire une fraction
-significative de la volatilité du trade de spread 65-62, alors ce trade est en partie un
-trade de fret, et il devrait être géré comme tel.
-
-**Caveat, et il est lourd :** les FFA C3/C5 sont des contrats mensuels sur moyenne de
-route. Couvrir une exposition quotidienne avec ça laisse une base non triviale, non
-modélisée ici. Le chiffre ci-dessus est une borne supérieure de ce qu'une couverture
-réelle obtiendrait, pas un résultat exécutable.
-"""
+diagnostic_note(
+    f"Sample size is the honest limit here: {len(frame)} months, because the C3 series in "
+    "this export is monthly. Every number on this page should be read as an order of "
+    "magnitude rather than a precise estimate, and none of them is given a confidence "
+    "interval it has not earned."
 )
 
-# ------------------------------------------------------------------------------- S6
-st.header("S6 — Sensibilités")
-st.subheader("Humidité")
-grid_br = np.arange(0.07, 0.105, 0.005)
-grid_au = np.arange(0.07, 0.105, 0.005)
-rows = []
-for hb in grid_br:
-    row = {"h_BR": f"{hb:.1%}"}
-    for ha in grid_au:
-        d = decompose_premium(
-            p65=series["p65"], p62=series["p62"], c3=series["c3"], c5=series["c5"],
-            moisture_brazil=float(hb), moisture_australia=float(ha),
-        )
-        row[f"h_AU {ha:.1%}"] = round(100 * d["freight_share"].mean(), 1)
-    rows.append(row)
-st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-st.caption("Part fret moyenne du premium (%), selon les deux hypothèses d'humidité.")
-
-st.subheader("Coût de portage des jours de voyage supplémentaires (A-H5)")
-carry = carry_cost_of_extra_voyage_days(
-    decomp["p62"].mean(), float(extra_days), float(annual_rate)
-)
-st.markdown(
-    f"""
-Sur une cargaison valorisée à la moyenne P62 de l'échantillon
-(**${decomp['p62'].mean():,.1f}/dmt**), **{extra_days} jours** de mer supplémentaires à
-**{annual_rate:.1%}** annuel coûtent **${carry:,.2f}/dmt**.
-
-À comparer au résidu moyen de **${decomp['residual'].mean():,.2f}/dmt**. Petit devant le
-différentiel de fret, pas nécessairement petit devant le résidu — ce qui est
-précisément la raison de l'afficher plutôt que de le supposer négligeable.
-"""
-)
-
-st.divider()
-st.markdown(
-    """
-#### Ce que cette page ne fait pas
-
-- **Aucun modèle de valeur-en-usage.** Coke rate, productivité haut-fourneau, pénalités
-  silice/alumine : ce sont des données de procédé que je n'ai pas. Le résidu les absorbe
-  et le dit.
-- **Aucune correction de la base FFA-vs-index.**
-- **Aucune décomposition de l'origine réelle des indices.** Le 62 % contient aussi du
-  brésilien et de l'indien (A-H1), ce qui **sous-estime** la part fret. Le biais va dans
-  le sens conservateur, ce qui est le bon sens pour une thèse qui affirme que la part
-  fret est grande.
-"""
+mail_question(
+    "Taking the 65–62 CFR premium and subtracting the C3 − C5 differential at full weight, "
+    f"I get an implied FOB quality differential of {tested.implied_quality_median:+.1f} USD/t "
+    f"— negative in {tested.share_negative:.0%} of months, and more negative once the "
+    "wet-to-dry moisture correction is applied properly. That cannot be right, so the origin "
+    "shorthand must be overstating the freight content; assuming a 6 USD/t quality "
+    f"differential puts the effective weight near {weights.weight_at(6.0):.2f}. When your "
+    "desk decomposes a move in the premium, do you weight the freight spread at all, and "
+    "against which origin mix?",
+    "Iron ore desks at Vale, Rio Tinto, BHP, Glencore, Trafigura; Capesize freight desks; "
+    "steel raw materials procurement",
 )
