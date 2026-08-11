@@ -1,7 +1,7 @@
-"""Golden tests du module T1-M (régime ou skill).
+"""Golden tests for the T1-M module (regime or skill).
 
-Le test central est `test_copper_backtest_self_criticism_sentence` : il produit
-littéralement la phrase que la spec demande d'écrire dans le mail.
+The central test is `test_copper_backtest_self_criticism_sentence`: it produces,
+literally, the sentence the spec asks to be written in the email.
 """
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ from agri.core.regime import (
 
 
 # ===========================================================================
-# Win rate honnête — le chiffre du mail
+# Honest win rate — the number for the email
 # ===========================================================================
 def test_copper_backtest_self_criticism_sentence():
-    """La forme du backtest cuivre : 18 positions, hold 30 jours, entrées tous les 11 jours.
+    """The shape of the copper backtest: 18 positions, 30-day hold, entries every 11 days.
 
-    Chevauchement moyen 2.49 -> n_eff = 7.23 -> arrondi conservateur à 7 tirages.
-    18 succès sur 18 devient 7 succès sur 7, dont la borne basse exacte est 59.0 %.
+    Average overlap 2.49 -> n_eff = 7.23 -> conservatively rounded to 7 draws.
+    18 wins out of 18 becomes 7 wins out of 7, whose exact lower bound is 59.0%.
     """
     entries = pd.date_range("2024-01-01", periods=18, freq="11D")
     out = honest_win_rate(entries, [True] * 18, hold_days=30)
@@ -33,18 +33,18 @@ def test_copper_backtest_self_criticism_sentence():
     assert out.naive.point == pytest.approx(1.0)
     assert out.naive.lo == pytest.approx(0.81470, abs=1e-4)
     assert out.honest.lo == pytest.approx(0.59043, abs=1e-4)
-    # ignorer le chevauchement surestimerait la borne basse de 22 points
+    # ignoring the overlap would overstate the lower bound by 22 points
     assert out.lower_bound_cost == pytest.approx(0.2243, abs=1e-3)
 
     sentence = out.mail_sentence
     assert "18 positions" in sentence
-    assert "7.2 tirages indépendants" in sentence
-    assert "6 fois sur 10" in sentence
+    assert "7.2 independent draws" in sentence
+    assert "6 times out of 10" in sentence
     assert "22 points" in sentence
 
 
 def test_non_overlapping_trades_cost_nothing():
-    # entrées espacées d'exactement la période de hold : aucun chevauchement à corriger
+    # entries spaced exactly one holding period apart: no overlap to correct
     entries = pd.date_range("2024-01-01", periods=10, freq="30D")
     out = honest_win_rate(entries, [True] * 10, hold_days=30)
     assert out.sample.overlap == pytest.approx(1.0)
@@ -53,12 +53,12 @@ def test_non_overlapping_trades_cost_nothing():
 
 
 def test_win_share_is_preserved_not_the_raw_count():
-    """Le chevauchement réduit le nombre d'observations, pas le taux de réussite."""
+    """Overlap reduces the number of observations, not the success rate."""
     entries = pd.date_range("2024-01-01", periods=18, freq="11D")
-    wins = [True] * 12 + [False] * 6  # 2/3 de réussite
+    wins = [True] * 12 + [False] * 6  # 2/3 success
     out = honest_win_rate(entries, wins, hold_days=30)
     assert out.naive.point == pytest.approx(12 / 18)
-    # 2/3 reporté sur 7 tirages -> round(0.667 * 7) = 5 succès sur 7
+    # 2/3 carried over onto 7 draws -> round(0.667 * 7) = 5 wins out of 7
     assert out.honest.successes == 5
     assert out.honest.point == pytest.approx(5 / 7)
 
@@ -73,17 +73,17 @@ def test_shorter_hold_preserves_more_information():
 
 def test_mismatched_lengths_raise():
     entries = pd.date_range("2024-01-01", periods=5, freq="D")
-    with pytest.raises(RegimeError, match="trade à trade"):
+    with pytest.raises(RegimeError, match="trade for trade"):
         honest_win_rate(entries, [True] * 3, hold_days=10)
 
 
 # ===========================================================================
-# Attribution du P&L au régime
+# Attributing P&L to the regime
 # ===========================================================================
 def _synthetic_trades(n: int, *, alpha: float, seed: int, freq: str = "11D") -> pd.DataFrame:
-    """P&L fabriqué pour être EXACTEMENT du régime plus une constante connue.
+    """P&L built to be EXACTLY the regime plus a known constant.
 
-    pnl = alpha + 2*vol + 1.5*width - 0.5*dispersion + 0.1*duration + bruit
+    pnl = alpha + 2*vol + 1.5*width - 0.5*dispersion + 0.1*duration + noise
     """
     rng = np.random.default_rng(seed)
     idx = pd.date_range("2020-01-01", periods=n, freq=freq)
@@ -115,12 +115,12 @@ def test_regime_regression_recovers_known_coefficients():
 
 
 def test_pure_regime_pnl_yields_an_alpha_indistinguishable_from_zero():
-    """Un P&L intégralement fabriqué par le régime ne doit pas produire d'alpha."""
+    """A P&L entirely manufactured by the regime must not produce an alpha."""
     trades = _synthetic_trades(400, alpha=0.0, seed=21, freq="3D")
     out = attribute_pnl_to_regime(trades, hold_days=3, n_iter=2000)
     assert not out.alpha_is_distinguishable_from_zero
-    assert out.verdict == "indistinguable du régime"
-    assert "je ne peux pas distinguer ce résultat du régime" in out.mail_sentence
+    assert out.verdict == "indistinguishable from the regime"
+    assert "can't be distinguished" in out.mail_sentence
 
 
 def test_genuine_alpha_is_detected():
@@ -128,22 +128,22 @@ def test_genuine_alpha_is_detected():
     out = attribute_pnl_to_regime(trades, hold_days=3, n_iter=2000)
     assert out.alpha == pytest.approx(5.0, abs=0.3)
     assert out.alpha_is_distinguishable_from_zero
-    assert out.verdict == "alpha présumé"
+    assert out.verdict == "presumed alpha"
 
 
 def test_eighteen_overlapping_trades_are_flagged_uninterpretable():
-    """Le cas du backtest cuivre : 5 paramètres pour ~7 observations indépendantes.
+    """The copper backtest case: 5 parameters for ~7 independent observations.
 
-    Le R² sera flatteur et ne veut rien dire. Le module doit le dire lui-même plutôt que
-    d'afficher le chiffre — c'est la ligne « le résultat est affiché même s'il est
-    défavorable » de la checklist.
+    R² will be flattering and meaningless. The module must say so itself instead of
+    just displaying the number — that's the "the result is shown even when it's
+    unfavourable" line in the checklist.
     """
     trades = _synthetic_trades(18, alpha=3.0, seed=23, freq="11D")
     out = attribute_pnl_to_regime(trades, hold_days=30, n_iter=1000)
     assert out.sample.n_eff == pytest.approx(7.233, abs=1e-2)
     assert out.is_overfit
-    assert out.verdict == "non interprétable"
-    assert "souplesse du modèle" in out.mail_sentence
+    assert out.verdict == "not interpretable"
+    assert "model's flexibility" in out.mail_sentence
 
 
 def test_missing_regime_column_raises_with_guidance():
@@ -153,21 +153,21 @@ def test_missing_regime_column_raises_with_guidance():
 
 
 def test_custom_regime_columns_are_supported():
-    """Chaque page nomme ses propres variables : dispersion inter-origines pour un grain."""
+    """Each page names its own variables: cross-origin dispersion for a grain."""
     trades = _synthetic_trades(200, alpha=1.0, seed=25, freq="3D").rename(
-        columns={"dispersion": "dispersion_inter_origines"}
+        columns={"dispersion": "cross_origin_dispersion"}
     )
     out = attribute_pnl_to_regime(
         trades,
         hold_days=3,
-        regime_columns=("vol_realised", "term_structure_width", "dispersion_inter_origines"),
+        regime_columns=("vol_realised", "term_structure_width", "cross_origin_dispersion"),
         n_iter=1000,
     )
-    assert "dispersion_inter_origines" in out.regime_columns
+    assert "cross_origin_dispersion" in out.regime_columns
     assert out.r_squared > 0.8
 
 
 def test_missing_pnl_column_raises():
     trades = _synthetic_trades(50, alpha=1.0, seed=26, freq="3D").rename(columns={"pnl": "profit"})
-    with pytest.raises(RegimeError, match="colonne P&L absente"):
+    with pytest.raises(RegimeError, match="missing P&L column"):
         attribute_pnl_to_regime(trades, hold_days=3)

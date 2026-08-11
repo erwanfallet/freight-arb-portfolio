@@ -1,4 +1,4 @@
-"""Golden tests du projet C — valeurs calculées à la main dans les commentaires."""
+"""Golden tests for project C — values hand-computed in the comments."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -29,22 +29,21 @@ def _dates(n: int, start: str = "2023-12-20") -> pd.DatetimeIndex:
     return pd.bdate_range(start, periods=n)
 
 
-# ----------------------------------------------------------------- volume vs masse
+# ----------------------------------------------------------------- volume vs mass
 def test_gallon_to_tonne_golden():
-    """2,50 $/gal × 42 gal/bbl = 105,00 $/bbl × 7,45 bbl/t = 782,25 $/t."""
+    """2.50 $/gal × 42 gal/bbl = 105.00 $/bbl × 7.45 bbl/t = 782.25 $/t."""
     assert usd_per_gallon_to_usd_per_tonne(2.50) == pytest.approx(782.25, rel=1e-12)
     assert usd_per_gallon_to_usd_per_tonne(2.50, DEFAULT_BBL_PER_TONNE) == pytest.approx(782.25)
 
 
 def test_density_error_is_bigger_than_a_typical_arb():
-    """LE résultat central du projet C, chiffré à la main.
+    """THE central result of project C, computed by hand.
 
-    À 2,50 $/gal : 7,45 bbl/t -> 782,25 $/t ; 7,50 bbl/t -> 787,50 $/t.
-    Écart : 5,25 $/t pour une variation de densité de 0,67 %.
+    At 2.50 $/gal: 7.45 bbl/t -> 782.25 $/t; 7.50 bbl/t -> 787.50 $/t.
+    Gap: 5.25 $/t for a 0.67% density change.
 
-    Un arb distillat transatlantique vit souvent entre 0 et 15 $/t. Le facteur de
-    conversion que tout le monde traite comme une constante pèse donc autant que le
-    signal.
+    A transatlantic distillate arb often lives between 0 and 15 $/t. The conversion
+    factor everyone treats as a constant therefore weighs as much as the signal.
     """
     at_745 = usd_per_gallon_to_usd_per_tonne(2.50, 7.45)
     at_750 = usd_per_gallon_to_usd_per_tonne(2.50, 7.50)
@@ -55,10 +54,10 @@ def test_density_error_is_bigger_than_a_typical_arb():
 
 def test_density_sensitivity_table_is_centred_on_the_default():
     table = density_sensitivity(2.50)
-    default_row = table[table["bbl_par_tonne"] == DEFAULT_BBL_PER_TONNE].iloc[0]
-    assert default_row["écart au défaut ($/t)"] == pytest.approx(0.0)
-    # monotone croissante en densité
-    assert table["prix ($/t)"].is_monotonic_increasing
+    default_row = table[table["bbl_per_tonne"] == DEFAULT_BBL_PER_TONNE].iloc[0]
+    assert default_row["gap to default ($/t)"] == pytest.approx(0.0)
+    # monotone increasing in density
+    assert table["price ($/t)"].is_monotonic_increasing
 
 
 def test_gallon_conversion_rejects_bad_density():
@@ -74,14 +73,14 @@ def test_flat_rate_step_series_is_a_staircase():
 
 
 def test_missing_flat_rate_is_loud():
-    """Un repli silencieux sur l'année précédente est l'erreur que le projet dénonce."""
+    """A silent fallback to the previous year is the error this project calls out."""
     idx = pd.DatetimeIndex(["2026-01-02"])
     with pytest.raises(FlatRateMissing):
         flat_rate_step_series(idx, ROUTE, TABLE)
 
 
 def test_freight_conversion_golden():
-    """WS 150 avec un flat rate de 20 $/t -> 150/100 × 20 = 30,00 $/t."""
+    """WS 150 with a flat rate of 20 $/t -> 150/100 × 20 = 30.00 $/t."""
     idx = _dates(1)
     f = freight_usd_per_tonne(pd.Series([150.0], index=idx), pd.Series([20.0], index=idx))
     assert f.iloc[0] == pytest.approx(30.0)
@@ -90,14 +89,14 @@ def test_freight_conversion_golden():
 def test_freight_change_decomposition_is_an_exact_identity():
     """WS 150 -> 160, flat rate 20 -> 24.
 
-    fret_prev = 150/100 × 20 = 30,00
-    fret      = 160/100 × 24 = 38,40
-    Δfret     = 8,40
+    freight_prev = 150/100 × 20 = 30.00
+    freight      = 160/100 × 24 = 38.40
+    Δfreight     = 8.40
 
-    part marché  = ΔWS × FR_prev / 100 = 10 × 20 / 100 = 2,00
-    part réglage = WS_prev × ΔFR / 100 = 150 × 4 / 100 = 6,00
-    part croisée = ΔWS × ΔFR / 100     = 10 × 4 / 100  = 0,40
-    somme        = 8,40  ->  identité exacte, pas une approximation
+    market share = ΔWS × FR_prev / 100 = 10 × 20 / 100 = 2.00
+    reset share  = WS_prev × ΔFR / 100 = 150 × 4 / 100 = 6.00
+    cross share  = ΔWS × ΔFR / 100     = 10 × 4 / 100  = 0.40
+    sum          = 8.40  ->  exact identity, not an approximation
     """
     idx = pd.DatetimeIndex(["2023-12-29", "2024-01-02"])
     d = decompose_freight_change(
@@ -115,14 +114,14 @@ def test_freight_change_decomposition_is_an_exact_identity():
 
 
 def test_reset_moves_cost_with_zero_market_move():
-    """LE résultat Worldscale, dans sa forme la plus nue.
+    """THE Worldscale result, in its barest form.
 
-    Points WS strictement inchangés à 150, flat rate 20 -> 24 au 1er janvier :
-      Δfret = 150 × 4 / 100 = 6,00 $/t
-      part marché = 0, part croisée = 0
+    WS points strictly unchanged at 150, flat rate 20 -> 24 on January 1st:
+      Δfreight = 150 × 4 / 100 = 6.00 $/t
+      market share = 0, cross share = 0
 
-    Six dollars la tonne de coût supplémentaire sans qu'un seul point de fret n'ait bougé.
-    Un modèle qui suit les points WS ne voit rien.
+    Six dollars a tonne of extra cost without a single freight point having moved. A
+    model that follows WS points sees nothing.
     """
     idx = pd.DatetimeIndex(["2023-12-29", "2024-01-02"])
     d = decompose_freight_change(
@@ -142,12 +141,12 @@ def test_january_reset_effect_finds_only_the_reset_dates():
     resets = january_reset_effect(decompose_freight_change(ws, fr))
     assert len(resets) == 1
     assert pd.Timestamp(resets.iloc[0]["date"]).year == 2024
-    assert resets.iloc[0]["part_reglage"] > 0
+    assert resets.iloc[0]["reset_share"] > 0
 
 
 def test_decomposition_needs_two_observations():
     idx = _dates(1)
-    with pytest.raises(ValueError, match="au moins deux observations"):
+    with pytest.raises(ValueError, match="at least two observations"):
         decompose_freight_change(
             pd.Series([150.0], index=idx), pd.Series([20.0], index=idx)
         )
@@ -155,16 +154,16 @@ def test_decomposition_needs_two_observations():
 
 # --------------------------------------------------------------------------- arb
 def test_arb_reconstruction_golden():
-    """P_ARA = 800 $/t, P_USGC = 2,50 $/gal, fret = 30 $/t, spec = 4 $/t,
-    16 jours à 6 %, pertes 1 $/t.
+    """P_ARA = 800 $/t, P_USGC = 2.50 $/gal, freight = 30 $/t, spec = 4 $/t,
+    16 days at 6%, losses 1 $/t.
 
-    p_origin_t  = 782,25
-    spread_naif = 800 − 782,25 = 17,75
-    financement = 782,25 × 0,06 = 46,935 ; × 16 = 750,96 ; / 365 = 2,0574246575...
-    arb         = 17,75 − 30 − 4 − 2,0574246575 − 1 = −19,3074246575
+    p_origin_t   = 782.25
+    spread_naive = 800 − 782.25 = 17.75
+    financing    = 782.25 × 0.06 = 46.935; × 16 = 750.96; / 365 = 2.0574246575...
+    arb          = 17.75 − 30 − 4 − 2.0574246575 − 1 = −19.3074246575
 
-    Autrement dit : le spread nu affiche +17,75 et l'arb réel est très négatif. C'est
-    exactement l'illusion que la section S4 quantifie.
+    In other words: the naive spread shows +17.75 and the real arb is strongly
+    negative. That's exactly the illusion section S4 quantifies.
     """
     idx = _dates(1)
     frame = reconstruct_arb(
@@ -178,15 +177,15 @@ def test_arb_reconstruction_golden():
     )
     row = frame.iloc[0]
     assert row["p_origin_t"] == pytest.approx(782.25, rel=1e-12)
-    assert row["spread_naif"] == pytest.approx(17.75, rel=1e-12)
+    assert row["spread_naive"] == pytest.approx(17.75, rel=1e-12)
     assert row["financing"] == pytest.approx(2.0574246575342465, rel=1e-12)
     assert row["arb"] == pytest.approx(-19.307424657534247, rel=1e-12)
-    assert bool(row["looks_open_naif"]) is True
+    assert bool(row["looks_open_naive"]) is True
     assert bool(row["is_open"]) is False
 
 
 def test_arb_requires_common_dates():
-    with pytest.raises(ValueError, match="aucune date commune"):
+    with pytest.raises(ValueError, match="no common date"):
         reconstruct_arb(
             price_destination_usd_t=pd.Series([800.0], index=pd.DatetimeIndex(["2024-01-01"])),
             price_origin_usd_per_gallon=pd.Series([2.5], index=pd.DatetimeIndex(["2024-01-02"])),
@@ -195,11 +194,11 @@ def test_arb_requires_common_dates():
 
 
 def test_open_days_comparison_measures_the_illusion():
-    """10 jours dont 8 ont l'air ouverts et 2 le restent -> illusion de 75 %."""
+    """10 days, 8 look open and 2 stay open -> a 75% illusion."""
     idx = _dates(10)
     frame = pd.DataFrame(
         {
-            "looks_open_naif": [True] * 8 + [False] * 2,
+            "looks_open_naive": [True] * 8 + [False] * 2,
             "is_open": [True] * 2 + [False] * 8,
         },
         index=idx,
@@ -214,7 +213,7 @@ def test_open_days_comparison_measures_the_illusion():
 def test_open_days_comparison_handles_never_open():
     idx = _dates(5)
     frame = pd.DataFrame(
-        {"looks_open_naif": [False] * 5, "is_open": [False] * 5}, index=idx
+        {"looks_open_naive": [False] * 5, "is_open": [False] * 5}, index=idx
     )
     c = open_days_comparison(frame)
     assert c.days_looking_open == 0
@@ -230,13 +229,13 @@ def test_monthly_profile_groups_by_calendar_month():
     assert profile.loc[12, "mean"] == pytest.approx(11.0)
 
 
-# ------------------------------------------------------------- C-2 : fret calculé
+# ------------------------------------------------------------- C-2: computed freight
 def test_implied_freight_round_trips_through_the_tce_engine():
-    """Le test qui valide la variante C-2.
+    """The test that validates the C-2 variant.
 
-    On construit un voyage MR, on calcule son TCE à un taux de fret donné, puis on inverse
-    et on doit retrouver exactement le taux de départ. Si cette boucle ne ferme pas, le
-    fret reconstruit est faux et toute la variante C-2 s'écroule.
+    An MR voyage is built, its TCE is computed at a given freight rate, then inverted
+    — the starting rate must come back exactly. If this loop doesn't close, the
+    reconstructed freight is wrong and the whole C-2 variant collapses.
     """
     params = VoyageParams(
         cargo_t=37_000.0,
@@ -293,11 +292,11 @@ def test_implied_freight_rejects_bad_inputs():
 
 
 def test_freight_model_vs_quoted_reports_a_systematic_gap():
-    """Un modèle systématiquement 10 % au-dessus du coté doit ressortir comme tel."""
+    """A model systematically 10% above the quote must show up as such."""
     idx = _dates(40)
     quoted = pd.Series(np.linspace(25, 40, 40), index=idx)
     modelled = quoted * 1.10
     stats = freight_model_vs_quoted(modelled, quoted)
-    assert stats["ecart_moyen_pct"] == pytest.approx(10.0, rel=1e-9)
+    assert stats["mean_gap_pct"] == pytest.approx(10.0, rel=1e-9)
     assert stats["correlation"] == pytest.approx(1.0, rel=1e-9)
-    assert stats["ecart_moyen_usd_t"] > 0
+    assert stats["mean_gap_usd_t"] > 0

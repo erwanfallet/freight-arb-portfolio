@@ -1,51 +1,51 @@
-# Demande de données — la liste, les fichiers, les accès
+# Data request — the list, the files, the access
 
-Document opérationnel. À ouvrir devant le terminal, ou à envoyer à qui te donne l'accès.
+Operational document. Open it in front of the terminal, or send it to whoever grants access.
 
-**État du code :** les trois projets sont écrits, testés et branchés. 90 tests verts, aucune
-donnée de marché requise pour les faire tourner. Les trois dashboards s'affichent déjà de
-bout en bout sur des jeux synthétiques. **Il ne manque que les colonnes de chiffres.**
+**Code status:** all three projects are written, tested, and wired up. 90 tests green, no
+market data required to run them. All three dashboards already render end to end on
+synthetic datasets. **Only the columns of numbers are missing.**
 
 ---
 
-## 1. En une page
+## 1. On one page
 
-| Priorité | Projet | Séries | Licence nécessaire |
+| Priority | Project | Series | Licence needed |
 |---|---|---|---|
-| **P0** | A — minerai de fer | 4 | **aucune** |
-| **P0** | B — charbon | 6 | **aucune** |
-| P1 | C — distillat | 4 | aucune pour l'arb, **Worldscale pour le résultat principal** |
-| P2 | tous | 4 séries de flux | aucune, tout est public |
+| **P0** | A — iron ore | 4 | **none** |
+| **P0** | B — coal | 6 | **none** |
+| P1 | C — distillate | 4 | none for the arb, **Worldscale for the main result** |
+| P2 | all | 4 flow series | none, all public |
 
-Traduction : **avec un terminal Bloomberg standard, sans aucun entitlement particulier, A et
-B se font intégralement.** C se fait à 70 %, le reste dépend d'un seul verrou.
+Translation: **with a standard Bloomberg terminal, no special entitlement needed, A and B
+are entirely doable.** C is 70% doable, the rest depends on a single lock.
 
 ---
 
-## 2. Trois vérifications à faire avant de télécharger quoi que ce soit
+## 2. Three checks to make before downloading anything
 
-Chacune prend cinq minutes et peut changer le plan.
+Each takes five minutes and can change the plan.
 
-| # | Vérification | Pourquoi c'est décisif |
+| # | Check | Why it's decisive |
 |---|---|---|
-| **V1** | Volume et open interest du contrat **SGX M65F** (minerai 65 % Fe) | Si le contrat est trop peu traité, le premium 65-62 calculé est un artefact de cotation et non un prix de marché. Bascule alors sur un premium **62-58** (FEF contre le contrat SGX 58 % Fe) : dix minutes de code maintenant, deux semaines perdues si on le découvre à la fin |
-| **V2** | Le contrat **TC2 / TC14** est-il coté en **USD par tonne** ou en **points Worldscale** ? | En USD/t : le verrou Worldscale du projet C disparaît. En points WS : il faut la table de flat rates, et c'est le seul vrai blocage des trois projets |
-| **V3** | La fonction **`BALTIC`** répond-elle sur le terminal ? | Si oui : routes spot C3, C5, C4, TC14 en direct au lieu des FFA. Le projet A perd un caveat (la base FFA-vs-index) et le projet B trouve son fret C4 |
+| **V1** | Volume and open interest on the **SGX M65F** contract (65% Fe ore) | If the contract is too thinly traded, the computed 65-62 premium is a quoting artefact, not a market price. Fall back to a **62-58** premium (FEF against the SGX 58% Fe contract): ten minutes of code now, two wasted weeks if discovered at the end |
+| **V2** | Is the **TC2 / TC14** contract quoted in **USD per tonne** or in **Worldscale points**? | In USD/t: project C's Worldscale lock disappears. In WS points: the flat-rate table is needed, and it's the only real blocker across the three projects |
+| **V3** | Does the **`BALTIC`** function respond on the terminal? | If yes: spot routes C3, C5, C4, TC14 live instead of FFAs. Project A loses a caveat (the FFA-vs-index basis) and project B finds its C4 freight |
 
-Note les réponses ici :
+Note the answers here:
 
 ```
-V1 — M65F volume / OI :
-V2 — TC2 coté en :
-V3 — BALTIC répond :
+V1 — M65F volume / OI:
+V2 — TC2 quoted in:
+V3 — BALTIC responds:
 ```
 
 ---
 
-## 3. Les fichiers à produire
+## 3. Files to produce
 
-Un fichier par projet, déposé dans `data/raw/`. **Format large accepté** — c'est le format
-naturel d'un export Bloomberg.
+One file per project, dropped into `data/raw/`. **Wide format accepted** — it's the
+natural format for a Bloomberg export.
 
 ```
 data/raw/ironore.csv
@@ -53,8 +53,8 @@ data/raw/coal.csv
 data/raw/products.csv
 ```
 
-Contenu attendu : une colonne `date`, puis une colonne par série, nommée avec le ticker
-exact utilisé.
+Expected content: a `date` column, then one column per series, named with the exact
+ticker used.
 
 ```csv
 date,SGX_FEF_M1,SGX_M65F_M1,SGX_C3F_M1,SGX_C5F_M1
@@ -62,185 +62,186 @@ date,SGX_FEF_M1,SGX_M65F_M1,SGX_C3F_M1,SGX_C5F_M1
 2024-01-03,137.10,152.05,20.40,10.10
 ```
 
-### Trois règles, et elles comptent plus que la vitesse
+### Three rules, and they matter more than speed
 
-1. **Ne rebouche aucun trou.** Jour férié, cotation suspendue, série morte : le pipeline
-   sait les gérer et t'annonce combien de dates survivent à l'intersection des calendriers.
-   Un trou comblé à la main est indétectable ensuite.
-2. **N'applique aucune conversion d'unité.** Dépose l'unité native et déclare-la dans
-   `data_dictionary.csv`. Une conversion faite dans Excel ne laisse aucune trace, et les
-   trois projets reposent précisément sur des conversions d'unité faites correctement.
-3. **Le plus long historique disponible.** Idéalement 2019 pour A et B, 2021 pour C. Sans
-   plusieurs régimes, il n'y a rien à montrer.
+1. **Don't fill in any gap.** Public holiday, suspended quote, dead series: the pipeline
+   knows how to handle them and reports how many dates survive at the intersection of the
+   calendars. A gap filled by hand is undetectable afterward.
+2. **Don't apply any unit conversion.** Drop in the native unit and declare it in
+   `data_dictionary.csv`. A conversion done in Excel leaves no trace, and all three
+   projects turn precisely on unit conversions being done correctly.
+3. **The longest history available.** Ideally 2019 for A and B, 2021 for C. Without
+   several regimes, there's nothing to show.
 
-Ensuite : remplir `data_dictionary.csv` (colonnes `exchange_code`, `bbg_ticker`, `verified`,
-`verified_date`) puis `REAL_TICKERS` en tête de la page Streamlit correspondante.
+Then: fill in `data_dictionary.csv` (columns `exchange_code`, `bbg_ticker`, `verified`,
+`verified_date`), then `REAL_TICKERS` at the top of the corresponding Streamlit page.
 
 ---
 
-## 4. Projet A — minerai de fer. **4 séries, aucune licence.**
+## 4. Project A — iron ore. **4 series, no licence.**
 
-Fichier : `data/raw/ironore.csv`
+File: `data/raw/ironore.csv`
 
-| # | Série | Code bourse | Unité | Fréq. | Prio |
+| # | Series | Exchange code | Unit | Freq. | Prio |
 |---|---|---|---|---|---|
-| A1 | Minerai 62 % Fe CFR Chine | SGX **FEF**, contrat le plus proche | USD/dmt | quotidien | P0 |
-| A2 | Minerai 65 % Fe CFR Chine | SGX **M65F** | USD/dmt | quotidien | P0 |
-| A3 | Fret route C3 Tubarão → Qingdao | FFA SGX **C3F** | USD/wmt | quotidien | P0 |
-| A4 | Fret route C5 Australie-Occ. → Qingdao | FFA SGX **C5F** | USD/wmt | quotidien | P0 |
-| A5 | Capesize 5TC (repli) | SGX **CWF** | USD/jour | quotidien | P2 |
+| A1 | 62% Fe ore CFR China | SGX **FEF**, nearest contract | USD/dmt | daily | P0 |
+| A2 | 65% Fe ore CFR China | SGX **M65F** | USD/dmt | daily | P0 |
+| A3 | Freight route C3 Tubarão → Qingdao | FFA SGX **C3F** | USD/wmt | daily | P0 |
+| A4 | Freight route C5 W. Australia → Qingdao | FFA SGX **C5F** | USD/wmt | daily | P0 |
+| A5 | Capesize 5TC (fallback) | SGX **CWF** | USD/day | daily | P2 |
 
-**Attention aux unités, c'est le cœur du projet :** A1 et A2 sont en tonne **sèche** (dmt),
-A3 et A4 en tonne **humide** (wmt). Ne les harmonise surtout pas — la conversion est
-justement ce que le code fait, et l'ignorer est l'erreur que le projet démontre.
+**Watch the units, it's the heart of the project:** A1 and A2 are in **dry** tonnes
+(dmt), A3 and A4 in **wet** tonnes (wmt). Whatever you do, don't harmonise them — the
+conversion is exactly what the code does, and ignoring it is the error the project
+demonstrates.
 
-Repli gratuit si le terminal manque : Barchart, racines `KW3` (C3F), `KWD` (C5F),
+Free fallback if the terminal is unavailable: Barchart, roots `KW3` (C3F), `KWD` (C5F),
 `KWC` (5TC).
 
 ---
 
-## 5. Projet B — charbon Atlantique. **6 séries, aucune licence.**
+## 5. Project B — Atlantic coal. **6 series, no licence.**
 
-Fichier : `data/raw/coal.csv`
+File: `data/raw/coal.csv`
 
-| # | Série | Code bourse | Unité | Fréq. | Prio |
+| # | Series | Exchange code | Unit | Freq. | Prio |
 |---|---|---|---|---|---|
-| B1 | API2 CIF ARA | ICE **ATW** | USD/t | quotidien | P0 |
-| B2 | API4 FOB Richards Bay | ICE **AFR** | USD/t | quotidien | P0 |
-| B3 | Fret C4 Richards Bay → Rotterdam | route Baltic C4 | USD/t | quotidien | P0 |
-| B4 | **TTF gaz Europe** | ICE TTF | EUR/MWh | quotidien | **P0** |
-| B5 | Prix EUA | ICE EUA | EUR/tCO2 | quotidien | P1 |
-| B6 | EURUSD | n'importe quelle source | — | quotidien | P1 |
-| B7 | Fret C7 Bolivar → Rotterdam | EEX C7 | USD/t | quotidien | P2 |
+| B1 | API2 CIF ARA | ICE **ATW** | USD/t | daily | P0 |
+| B2 | API4 FOB Richards Bay | ICE **AFR** | USD/t | daily | P0 |
+| B3 | Freight C4 Richards Bay → Rotterdam | Baltic route C4 | USD/t | daily | P0 |
+| B4 | **European gas TTF** | ICE TTF | EUR/MWh | daily | **P0** |
+| B5 | EUA price | ICE EUA | EUR/tCO2 | daily | P1 |
+| B6 | EURUSD | any source | — | daily | P1 |
+| B7 | Freight C7 Bolivar → Rotterdam | EEX C7 | USD/t | daily | P2 |
 
-**B4 est P0 et ce n'est pas négociable.** La thèse du projet est que l'arb ARA a perdu sa
-contrainte en 2022 à cause de la réorientation vers l'Inde. Mais 2022 est aussi le choc
-gazier européen. Sur le jeu synthétique, où je connais la vraie pente (0,15), la régression
-**sans** contrôle TTF donne 0,71 et **avec** contrôle 0,18 : sans le TTF, la conclusion est
-inversée. Une série gratuite décide de la validité du projet.
+**B4 is P0 and it's not negotiable.** The project's thesis is that the ARA arb lost its
+constraint in 2022 because of the reorientation toward India. But 2022 is also the
+European gas shock. On the synthetic set, where the true slope is known (0.15), the
+regression **without** the TTF control gives 0.71 and **with** control gives 0.18:
+without TTF, the conclusion is reversed. One free series decides the project's validity.
 
-**B3 est le point faible connu.** L'existence d'un futures C4 liquide n'est pas confirmée.
-Si C4 n'est pas disponible : repli sur le Capesize 5TC plus un ratio de route, ce qui
-dégrade la précision du niveau de fret et doit être déclaré dans le dashboard.
+**B3 is the known weak point.** The existence of a liquid C4 futures contract isn't
+confirmed. If C4 isn't available: fall back to Capesize 5TC plus a route ratio, which
+degrades the precision of the freight level and must be stated in the dashboard.
 
-**B5-B6 servent la couche ETS.** Le quota est en EUR et l'arb en USD, donc le change est un
-terme du calcul. Ordre de grandeur du terme ETS : ~0,2 $/t en 2024, ~0,9 $/t à pleine montée
-en charge. Réel, à ne pas survendre.
+**B5-B6 feed the ETS layer.** The allowance is in EUR and the arb in USD, so FX is a term
+in the calculation. Order of magnitude of the ETS term: ~0.2 $/t in 2024, ~0.9 $/t at
+full phase-in. Real, not to be oversold.
 
 ---
 
-## 6. Projet C — distillat transatlantique. **4 séries, plus un verrou.**
+## 6. Project C — transatlantic distillate. **4 series, plus one lock.**
 
-Fichier : `data/raw/products.csv`
+File: `data/raw/products.csv`
 
-| # | Série | Source / code | Unité | Fréq. | Prio |
+| # | Series | Source / code | Unit | Freq. | Prio |
 |---|---|---|---|---|---|
-| C1 | ULSD spot US Gulf Coast | **EIA**, gratuit, historique long | USD/gal | quotidien | P0 |
-| C2 | Gasoil ARA | ICE Low Sulphur Gasoil futures | USD/t | quotidien | P0 |
-| C3 | Fret route TC14 USGC → Continent | ICE / CME, racine Barchart `IT2` pour TC2 | points WS **ou** USD/t | quotidien | P0 |
-| C4 | **Flat rates Worldscale** de la route | Worldscale Association | USD/t à WS100 | annuel | **le verrou** |
-| C5 | VLSFO Rotterdam ou Houston | Ship & Bunker, vlsfo.com | USD/t | quotidien | P1 |
-| C6 | TCE moyen MR | Clarksons, ou courtier | USD/jour | quotidien | P1 |
+| C1 | ULSD spot US Gulf Coast | **EIA**, free, long history | USD/gal | daily | P0 |
+| C2 | ARA gasoil | ICE Low Sulphur Gasoil futures | USD/t | daily | P0 |
+| C3 | Freight route TC14 USGC → Continent | ICE / CME, Barchart root `IT2` for TC2 | WS points **or** USD/t | daily | P0 |
+| C4 | **Worldscale flat rates** for the route | Worldscale Association | USD/t at WS100 | annual | **the lock** |
+| C5 | VLSFO Rotterdam or Houston | Ship & Bunker, vlsfo.com | USD/t | daily | P1 |
+| C6 | Average MR TCE | Clarksons, or a broker | USD/day | daily | P1 |
 
-**C1 et C2 sont en unités différentes, et c'est le sujet.** La jambe américaine est en
-$/gallon, l'européenne en $/tonne. La conversion passe par une densité (~7,45 bbl/t). Sur
-une jambe à ~780 $/t, passer de 7,45 à 7,50 déplace le prix de **~5 $/t** — souvent plus que
-l'arb tout entier. **Le facteur de conversion que tout le monde traite comme une constante
-pèse autant que le signal.** C'est le résultat central du projet C.
+**C1 and C2 are in different units, and that's the point.** The US leg is in $/gallon,
+the European leg in $/tonne. The conversion runs through a density (~7.45 bbl/t). On a
+leg at ~780 $/t, moving from 7.45 to 7.50 shifts the price by **~5 $/t** — often more
+than the whole arb. **The conversion factor everyone treats as a constant weighs as much
+as the signal.** That's project C's central result.
 
-**C4, le verrou.** Le fret tanker se cote en points WS, et `$/t = WS/100 × flat_rate`, le
-flat rate étant réinitialisé chaque 1er janvier. Sur le jeu synthétique, la plus grosse
-marche déplace le coût de **11,78 $/t** dont **11,96 attribuables au seul réglage** et
-**−0,13 au marché** — pour un arb dont la moyenne est de −1,02 $/t. Le réglage pèse dix fois
-le signal, et il est invisible pour qui regarde les points WS.
+**C4, the lock.** Tanker freight is quoted in WS points, and `$/t = WS/100 ×
+flat_rate`, with the flat rate resetting every January 1st. On the synthetic set, the
+largest jump moves the cost by **11.78 $/t**, of which **11.96 is attributable to the
+reset alone** and **−0.13 to the market** — against an arb whose mean is −1.02 $/t. The
+reset weighs ten times the signal, and it's invisible to anyone watching the WS points.
 
-**Si C4 est indisponible**, deux issues déjà codées :
+**If C4 is unavailable**, two fallbacks are already coded:
 
-- **C-3** : l'arb se construit quand même avec C1 à C3. Seul le résultat Worldscale tombe.
-- **C-2** : on ne paie pas le fret, on le **calcule**. C5 et C6 suffisent : le moteur TCE est
-  inversé pour remonter au taux de fret qu'implique un TCE de marché, et on le compare au
-  fret coté là où on a un point de comparaison. « Je n'ai pas acheté le fret, je l'ai
-  reconstruit » est un argument plus fort qu'un abonnement.
+- **C-3**: the arb still gets built with C1 through C3. Only the Worldscale result falls
+  away.
+- **C-2**: freight isn't bought, it's **computed**. C5 and C6 are enough: the TCE engine
+  is inverted to back out the freight rate a market TCE implies, and it's compared
+  against the quoted freight wherever there's a point of comparison. "I didn't buy the
+  freight, I reconstructed it" is a stronger argument than a subscription.
 
-Ce qu'il faut demander pour C4, en pratique : **la table de flat rates de la route,
-année par année, même seulement pour les années passées.** Une valeur par an suffit.
+What to actually ask for on C4: **the route's flat-rate table, year by year, even just
+for past years.** One value per year is enough.
 
 ---
 
-## 7. Séries de flux — P2, gratuites, mais c'est le fil rouge du portefeuille
+## 7. Flow series — P2, free, but this is the portfolio's throughline
 
-Ce qui distingue ces trois projets : chacun confronte la marge à une série de flux
-physiques officielle. La question n'est pas seulement « l'arb est-il ouvert », c'est
-**« la cargaison est-elle partie »**.
+What sets these three projects apart: each one confronts the margin with an official
+physical-flow series. The question isn't just "is the arb open," it's **"did the cargo
+leave."**
 
-| Projet | Série | Source | Fréq. |
+| Project | Series | Source | Freq. |
 |---|---|---|---|
-| A | Importations chinoises de minerai par origine | Douanes chinoises (GACC) | mensuel |
-| B | Importations européennes de charbon sud-africain | Eurostat | mensuel |
-| B | Importations indiennes de charbon par origine | Statistiques commerciales indiennes | mensuel |
-| C | Exportations américaines de distillat par destination | EIA | mensuel |
+| A | Chinese ore imports by origin | Chinese customs (GACC) | monthly |
+| B | European imports of South African coal | Eurostat | monthly |
+| B | Indian coal imports by origin | Indian trade statistics | monthly |
+| C | US distillate exports by destination | EIA | monthly |
 
-Toutes gratuites. La mensualité est une limite de résolution **déclarée à l'avance** dans
-chaque projet, pas une surprise à découvrir après coup.
+All free. The monthly frequency is a resolution limit **stated up front** in each
+project, not a surprise discovered afterward.
 
 ---
 
-## 8. Entitlements Bloomberg — ce qu'il faut tester, et ce que ça change
+## 8. Bloomberg entitlements — what to test, and what it changes
 
-| Entitlement | Ce que ça débloque | Verdict |
+| Entitlement | What it unlocks | Verdict |
 |---|---|---|
-| **Terminal standard, sans extra** | Tous les futures : SGX FEF, M65F, C3F, C5F, CWF ; ICE ATW, AFR, TTF, EUA, Gasoil | **Suffit pour A et B en entier** |
-| **Baltic** (`BALTIC`) | Routes spot C3, C5, C4, TC14. Supprime la base FFA-vs-index du projet A, résout le fret C4 du projet B | Fort confort, pas bloquant |
-| **Worldscale** | La table de flat rates | **Le seul verrou réel**, et il ne concerne que C |
-| **Platts** | IODEX spot, primes | Inutile : les futures SGX couvrent A |
-| **Argus** | EBOB, indices API sous-jacents | Inutile dans la version distillat de C |
-| **Clarksons SIN** | TCE MR, distances, spécifications de flotte | Rendrait C-2 solide plutôt qu'approximatif |
-| **Kpler / Vortexa** | Flux navire par navire, quotidien | Le plus gros gain possible : ferait sauter la limite de résolution mensuelle des trois projets |
+| **Standard terminal, no extras** | All the futures: SGX FEF, M65F, C3F, C5F, CWF; ICE ATW, AFR, TTF, EUA, Gasoil | **Enough for A and B in full** |
+| **Baltic** (`BALTIC`) | Spot routes C3, C5, C4, TC14. Removes project A's FFA-vs-index basis, resolves project B's C4 freight | Strong convenience, not blocking |
+| **Worldscale** | The flat-rate table | **The only real lock**, and it only concerns C |
+| **Platts** | IODEX spot, premiums | Not needed: the SGX futures cover A |
+| **Argus** | EBOB, underlying API indices | Not needed in the distillate version of C |
+| **Clarksons SIN** | MR TCE, distances, fleet specifications | Would make C-2 solid rather than approximate |
+| **Kpler / Vortexa** | Vessel-by-vessel flow, daily | The biggest possible gain: would remove all three projects' monthly resolution limit |
 
-**Procédure pour chaque ticker :** partir du code de contrat de la bourse, passer par le
-menu des tables de contrats (`CTM`), confirmer avec `DES` que la série est bien celle
-attendue, puis seulement écrire le ticker dans `data_dictionary.csv` avec
-`verified = oui` et la date. **Aucun ticker Bloomberg n'est écrit dans ce repo sans avoir
-été vu sur un écran.**
-
----
-
-## 9. Message prêt à copier-coller
-
-> Bonjour,
->
-> J'ai besoin d'un export d'historiques de prix de clôture quotidiens, sur le plus long
-> historique disponible, en CSV et **dans les unités natives, sans retraitement**.
->
-> **Minerai de fer et fret sec (SGX)** : futures 62 % Fe (FEF), futures 65 % Fe (M65F), FFA
-> Capesize routes C3 et C5, et le Capesize 5TC.
->
-> **Charbon et énergie (ICE)** : API2 Rotterdam (ATW), API4 Richards Bay (AFR), TTF, EUA, et
-> le fret route Baltic C4 si vous y avez accès.
->
-> **Produits pétroliers** : ICE Low Sulphur Gasoil, et le fret route TC14 — en précisant si
-> la cotation est en points Worldscale ou en USD par tonne.
->
-> Deux questions annexes : est-ce que la fonction BALTIC est accessible sur le terminal, et
-> est-ce que la table de flat rates Worldscale est disponible, même seulement pour les
-> années passées ?
->
-> Merci beaucoup.
-
-Rien là-dedans n'est confidentiel ni exotique : ce sont des contrats à terme listés.
+**Procedure for each ticker:** start from the exchange's contract code, go through the
+contract-table menu (`CTM`), confirm with `DES` that the series is indeed the one
+expected, and only then write the ticker into `data_dictionary.csv` with `verified =
+yes` and the date. **No Bloomberg ticker gets written into this repo without having been
+seen on a screen.**
 
 ---
 
-## 10. Que faire si une série manque
+## 9. Ready-to-copy message
 
-| Manque | Repli | Coût |
+> Hello,
+>
+> I need an export of daily closing-price history, over the longest history available,
+> in CSV and **in native units, with no reprocessing**.
+>
+> **Iron ore and dry freight (SGX)**: 62% Fe futures (FEF), 65% Fe futures (M65F), Capesize
+> FFA routes C3 and C5, and the Capesize 5TC.
+>
+> **Coal and energy (ICE)**: API2 Rotterdam (ATW), API4 Richards Bay (AFR), TTF, EUA, and
+> the Baltic route C4 freight if you have access to it.
+>
+> **Oil products**: ICE Low Sulphur Gasoil, and the TC14 route freight — please specify
+> whether it's quoted in Worldscale points or in USD per tonne.
+>
+> Two side questions: is the BALTIC function accessible on the terminal, and is the
+> Worldscale flat-rate table available, even just for past years?
+>
+> Thank you very much.
+
+Nothing in there is confidential or exotic: these are listed futures contracts.
+
+---
+
+## 10. What to do if a series is missing
+
+| Missing | Fallback | Cost |
 |---|---|---|
-| M65F illiquide | Premium 62-58 avec le contrat SGX 58 % Fe | Moins élégant, mais liquide |
-| C3F ou C5F | Capesize 5TC + ratio de route | Perte de précision sur le niveau, à déclarer |
-| C4 | Capesize 5TC + ratio de route | Idem |
-| Flat rates Worldscale | Variantes C-3 et C-2, déjà codées | Le résultat Worldscale tombe, le projet tient |
-| TCE MR | Estimation depuis les soutes et un taux d'affrètement public | C-2 devient indicatif |
-| Séries de flux | Rien — les sections de validation restent en attente | Les projets tournent, la validation manque |
+| M65F illiquid | 62-58 premium with the SGX 58% Fe contract | Less elegant, but liquid |
+| C3F or C5F | Capesize 5TC + route ratio | Loss of level precision, to be stated |
+| C4 | Capesize 5TC + route ratio | Same |
+| Worldscale flat rates | C-3 and C-2 variants, already coded | The Worldscale result falls away, the project still holds |
+| MR TCE | Estimate from bunkers and a public charter rate | C-2 becomes indicative |
+| Flow series | Nothing — the validation sections stay pending | The projects run, validation is missing |
 
-**Aucun de ces replis n'empêche de livrer les trois projets.** Le seul résultat réellement
-perdu en l'absence de licence est celui du reset Worldscale.
+**None of these fallbacks prevents delivering all three projects.** The only result
+genuinely lost without the licence is the Worldscale reset result.

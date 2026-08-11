@@ -1,158 +1,155 @@
-# Arbitrages physiques — le fret comme terme décisif
+# Physical arbitrage — freight as the decisive term
 
-Un portefeuille, pas trois projets isolés : chaque chaîne ajoutée suit le même gabarit
-(`docs/NOUVELLE_CHAINE.md`), reconstruit sa marge depuis les séries brutes, et la
-confronte à une **série de flux physiques officielle et gratuite**. La question n'est
-jamais seulement « l'arb est-il ouvert », c'est **« la cargaison est-elle effectivement
-partie »**.
+A portfolio, not three isolated projects: every chain added follows the same template
+(`docs/NOUVELLE_CHAINE.md`), rebuilds its margin from raw series, and confronts it with
+an **official, free physical-flow series**. The question is never just "is the arb
+open," it's **"did the cargo actually leave."**
 
-| | Projet | Secteur | Thèse | Statut |
+| | Project | Sector | Thesis | Status |
 |---|---|---|---|---|
-| **A** | Minerai de fer | Vrac sec — minerais | Le premium 65-62 % Fe est en partie un spread de fret Capesize | Moteur + dashboard prêts, en attente des 4 séries |
-| **B** | Charbon Atlantique | Vrac sec — énergie | L'arb API2 − API4 a perdu sa contrainte contraignante en 2022 | Moteur + dashboard prêts, en attente des séries |
-| **C** | Distillat transatlantique | Tankers — produits raffinés | Le volume n'est pas la masse, et les points Worldscale ne sont pas un coût | Moteur + dashboard prêts, variantes C-2/C-3 codées |
-| **D** | À définir | Vrac sec — agriculture | — | Secteur identifié, rien codé |
-| **E** | À définir | Gaz (LNG) | — | Secteur identifié, rien codé |
+| **A** | Iron ore | Dry bulk — ores | The 65-62% Fe premium is partly a disguised Capesize freight spread | Engine + dashboard ready, waiting on the 4 series |
+| **B** | Atlantic coal | Dry bulk — energy | The API2 − API4 arb lost its binding constraint in 2022 | Engine + dashboard ready, waiting on series |
+| **C** | Transatlantic distillate | Tankers — refined products | Volume is not mass, and Worldscale points are not a cost | Engine + dashboard ready, C-2/C-3 variants coded |
+| **D** | TBD | Dry bulk — agriculture | — | Sector identified, nothing coded |
+| **E** | TBD | Gas (LNG) | — | Sector identified, nothing coded |
 
-Cette table est un résumé pour humains — la source de vérité est
-**`src/freight/portfolio.py`**, que lit `app/Home.py`. Ajouter un projet là-bas suffit à
-le faire apparaître sur la plateforme ; voir **`docs/NOUVELLE_CHAINE.md`** pour le gabarit
-exact des sept fichiers que touche une nouvelle chaîne.
+This table is a human-readable summary — the source of truth is
+**`src/freight/portfolio.py`**, which `app/Home.py` reads. Adding a project there is
+enough to make it appear on the platform; see **`docs/NOUVELLE_CHAINE.md`** for the exact
+template of the seven files a new chain touches.
 
-**`DEMANDE_DONNEES.md`** est le document à ouvrir devant le terminal : la liste des séries
-par projet et par priorité, les fichiers exacts à produire, les entitlements à tester, et un
-message prêt à envoyer. `FICHE_DONNEES.md` en est la version longue et raisonnée.
-
----
-
-## Projet A — la thèse en cinq lignes
-
-Les indices minerai 62 % Fe et 65 % Fe sont tous deux cotés **CFR Chine**. Le 65 % est
-essentiellement brésilien (Tubarão → Qingdao, ~11 000 nm, route C3), le 62 %
-essentiellement australien (Port Hedland → Qingdao, ~1 600 nm, route C5). Le fret est
-donc déjà à l'intérieur des deux prix, et le premium haute teneur contient mécaniquement
-le différentiel C3 − C5. On décompose, et on regarde combien il reste quand la distance
-est payée.
-
-```
-premium_observé = P65_CFR − P62_CFR
-fair_value_fret = C3/(1 − h_BR) − C5/(1 − h_AU)
-résidu          = premium_observé − fair_value_fret
-```
-
-Le résidu s'appelle un résidu. Il contient la qualité, la valeur-en-usage, la tension
-physique **et** la base FFA-vs-index. Aucune donnée publique ne permet de séparer ces
-quatre termes, donc on ne le rebaptise pas « tension physique » pour rendre la conclusion
-plus vendable.
-
-### Le piège d'unité, qui est le cœur technique
-
-Les indices minerai sont cotés en USD par tonne métrique **sèche** (dmt). Le fret se paie
-sur le poids **embarqué**, donc humide (wmt, poids du connaissement) :
-
-```
-fret_par_dmt = fret_par_wmt / (1 − humidité)
-```
-
-Fines brésiliennes ~9 % d'humidité, Pilbara Blend ~8 %. Sur l'exemple chiffré du golden
-test — P65 120, P62 100, C3 20, C5 10 — la part fret du premium passe de **50,0 %** sans
-correction à **55,5 %** avec. Ignorer la conversion sous-estime systématiquement le fret.
-
-C'est le même mouvement que `TC_par_t_zinc = TC_par_dmt_conc / (grade × recovery)` :
-l'unité de cotation n'est pas l'unité économique, et faire la conversion proprement est la
-moitié du travail.
+**`DEMANDE_DONNEES.md`** is the document to have open in front of the terminal: the list
+of series by project and priority, the exact files to produce, the entitlements to test,
+and a ready-to-send message. `FICHE_DONNEES.md` is its longer, reasoned version.
 
 ---
 
-## Projet B — la thèse en cinq lignes
+## Project A — the thesis in five lines
+
+The 62% Fe and 65% Fe iron ore indices are both quoted **CFR China**. The 65% grade is
+mostly Brazilian (Tubarão → Qingdao, ~11,000 nm, route C3), the 62% grade mostly
+Australian (Port Hedland → Qingdao, ~1,600 nm, route C5). Freight is therefore already
+inside both prices, and the high-grade premium mechanically contains the C3 − C5
+differential. Decompose it, and look at what's left once the distance is paid for.
 
 ```
-arb_ARA = API2 (CIF ARA) − API4 (FOB Richards Bay) − fret(C4) − financement − ETS
+observed_premium = P65_CFR − P62_CFR
+fair_value_freight = C3/(1 − h_BR) − C5/(1 − h_AU)
+residual            = observed_premium − fair_value_freight
 ```
 
-Le manuel dit que cet arb ne peut pas rester grand ouvert : la concurrence et le fret le
-ramènent vers zéro. Depuis 2022, le charbon sud-africain part vers l'Inde plutôt que vers
-l'Europe, donc la cargaison marginale de Richards Bay n'est plus cotée sur Rotterdam.
-L'équation a perdu son terme contraignant. Le prix CFR Inde étant sous licence, on ne
-prouve pas l'égalité en prix : on montre la réorientation en **flux**, et on le présente
-comme le résultat plus faible qu'il est.
+The residual is called a residual. It contains quality, use-value, physical tension
+**and** the FFA-vs-index basis. No public data lets these four terms be separated, so it
+doesn't get rebranded "physical tension" to make the conclusion easier to sell.
 
-### Le contrôle qui décide de tout
+### The unit trap, which is the technical core
 
-2022 est aussi l'année du choc gazier européen. Attribuer le décrochage à l'Inde sans
-contrôler par le TTF, c'est se tromper de mécanisme. Sur le jeu synthétique — dont la
-vraie pente post-rupture est **0,15** par construction — la régression donne :
+Iron ore indices are quoted in USD per **dry** metric tonne (dmt). Freight is paid on the
+**loaded** weight, i.e. wet (wmt, bill-of-lading weight):
 
-| | coefficient sur le fret, après rupture |
+```
+freight_per_dmt = freight_per_wmt / (1 − moisture)
+```
+
+Brazilian fines ~9% moisture, Pilbara Blend ~8%. On the golden test's worked example —
+P65 120, P62 100, C3 20, C5 10 — the freight share of the premium moves from **50.0%**
+uncorrected to **55.5%** corrected. Ignoring the conversion systematically understates
+freight.
+
+It's the same move as `TC_per_t_zinc = TC_per_dmt_conc / (grade × recovery)`: the quoted
+unit is not the economic unit, and doing the conversion properly is half the job.
+
+---
+
+## Project B — the thesis in five lines
+
+```
+arb_ARA = API2 (CIF ARA) − API4 (FOB Richards Bay) − freight(C4) − financing − ETS
+```
+
+The textbook says this arb can't stay wide open: competition and freight pull it back
+toward zero. Since 2022, South African coal has been going to India rather than Europe,
+so the marginal Richards Bay cargo is no longer priced off Rotterdam. The equation lost
+its binding term. Since the CFR India price is licensed data, price equality isn't
+proven directly: the reorientation is shown in **flow**, and presented as the weaker
+result it is.
+
+### The control that decides everything
+
+2022 is also the year of the European gas shock. Attributing the break to India without
+controlling for TTF is getting the mechanism wrong. On the synthetic set — whose true
+post-break slope is **0.15** by construction — the regression gives:
+
+| | coefficient on freight, post-break |
 |---|---|
-| sans contrôle | **0,71** — on conclurait que le fret contraint encore |
-| avec contrôle TTF | **0,18** — proche de la vérité, le fret ne contraint plus |
+| without control | **0.71** — the conclusion would be that freight still binds |
+| with TTF control | **0.18** — close to the truth, freight no longer binds |
 
-Le contrôle n'est pas un raffinement d'économètre : sans lui, la conclusion est inversée.
+The control isn't an econometrician's refinement: without it, the conclusion is
+reversed.
 
-### Les deux couches techniques
+### The two technical layers
 
-**Pouvoir calorifique.** API2 et API4 sont tous deux des références 6 000 kcal/kg NAR :
-l'arb de référence est neutre en CV **par construction** et reste juste. Le problème est
-qu'il a cessé de décrire la cargaison physique, dont le CV réel a dérivé vers
-~5 700-5 800. Le fret se paie à la tonne, le charbon se vend au kcal : à 5 750 kcal, le
-fret par tonne-équivalent-6 000 vaut 1,0435× le fret affiché.
+**Calorific value.** API2 and API4 are both 6,000 kcal/kg NAR reference grades: the
+reference arb is CV-neutral **by construction** and stays correct. The problem is it has
+stopped describing the physical cargo, whose real CV has drifted to ~5,700-5,800. Freight
+is paid per tonne, coal is sold per kcal: at 5,750 kcal, freight per
+tonne-equivalent-6,000 is worth 1.0435× the quoted freight.
 
-**ETS maritime.** Depuis 2024, un voyage dont une extrémité est hors UE — Richards Bay →
-Rotterdam — est couvert à 50 % des émissions, avec une montée en charge de 40 % en 2024,
-70 % en 2025 et 100 % à partir de 2026. Couverture effective : 20 %, 35 %, 50 %. Le quota
-est coté en EUR et l'arb en USD, donc le change est un terme du calcul.
+**Maritime ETS.** Since 2024, a voyage with one end outside the EU — Richards Bay →
+Rotterdam — is covered on 50% of emissions, phased in at 40% in 2024, 70% in 2025 and
+100% from 2026. Effective coverage: 20%, 35%, 50%. The allowance is quoted in EUR and the
+arb in USD, so FX is a term in the calculation.
 
-**Ordre de grandeur, à ne pas survendre :** avec des paramètres réalistes, ce terme vaut
-de l'ordre de 0,2 $/t en 2024 et jusqu'à ~0,9 $/t à pleine montée en charge. Sur un arb de
-quelques dollars, c'est significatif sans être dominant. C'est un terme que **personne
-n'intègre**, ce qui n'est pas la même chose qu'un terme qui décide de tout.
+**Order of magnitude, not to be oversold:** with realistic parameters, this term is worth
+on the order of 0.2 $/t in 2024 and up to ~0.9 $/t at full phase-in. On an arb of a few
+dollars, that's significant without being dominant. It's a term **nobody prices in**,
+which is not the same thing as a term that decides everything.
 
 ---
 
-## Projet C — la thèse en cinq lignes
+## Project C — the thesis in five lines
 
 ```
-arb = P_ARA($/t) − P_USGC($/t) − fret($/t) − pont_spec − financement − pertes
-      avec  P_USGC($/t) = P_USGC($/gal) × 42 × bbl_par_tonne
-      et    fret($/t)   = WS/100 × flat_rate(route, année)
+arb = P_ARA($/t) − P_USGC($/t) − freight($/t) − spec_bridge − financing − losses
+      with  P_USGC($/t) = P_USGC($/gal) × 42 × bbl_per_tonne
+      and   freight($/t) = WS/100 × flat_rate(route, year)
 ```
 
-Depuis 2022 l'Europe a perdu le diesel russe : le flux transatlantique s'est inversé et
-allongé en tonne-mille. Deux termes de cette ligne ne sont pas ce qu'ils paraissent.
+Since 2022 Europe has lost Russian diesel: the transatlantic flow reversed and lengthened
+in tonne-miles. Two terms in this line aren't what they look like.
 
-### Le volume n'est pas la masse
+### Volume is not mass
 
-La jambe américaine se cote en $/gallon, l'européenne en $/tonne. La conversion passe par
-une densité, ~7,45 bbl/t. Sur une jambe à ~780 $/t, passer de 7,45 à 7,50 déplace le prix de
-**5,25 $/t** — souvent plus que l'arb tout entier. **Le facteur de conversion que tout le
-monde traite comme une constante pèse autant que le signal.**
+The US leg is quoted in $/gallon, the European leg in $/tonne. The conversion runs
+through a density, ~7.45 bbl/t. On a leg at ~780 $/t, moving from 7.45 to 7.50 shifts the
+price by **5.25 $/t** — often more than the whole arb. **The conversion factor everyone
+treats as a constant weighs as much as the signal.**
 
-### Les points Worldscale ne sont pas un coût
+### Worldscale points are not a cost
 
-Le flat rate est réinitialisé chaque 1er janvier. La décomposition est une identité exacte :
+The flat rate resets every January 1st. The decomposition is an exact identity:
 
 ```
-Δfret = [ ΔWS·FR_prev  +  WS_prev·ΔFR  +  ΔWS·ΔFR ] / 100
-          └ marché ┘      └ réglage ┘     └ croisé ┘
+Δfreight = [ ΔWS·FR_prev  +  WS_prev·ΔFR  +  ΔWS·ΔFR ] / 100
+             └ market ┘      └ reset ┘       └ cross ┘
 ```
 
-À points WS constants, WS 150 et un flat rate qui passe de 20 à 24 donnent **+6,00 $/t** de
-coût, dont zéro de marché. Sur le jeu synthétique, la plus grosse marche vaut **11,78 $/t**
-dont **11,96 de réglage** et **−0,13 de marché**, pour un arb dont la moyenne est de
-−1,02 $/t : le réglage pèse dix fois le signal, et il est invisible pour qui regarde les
-points.
+At constant WS points, WS 150 and a flat rate moving from 20 to 24 give **+6.00 $/t** of
+cost, none of it market. On the synthetic set, the largest jump is worth **11.78 $/t**,
+of which **11.96 is reset** and **−0.13 is market**, against an arb whose mean is
+−1.02 $/t: the reset weighs ten times the signal, and it's invisible to anyone just
+watching the points.
 
-`signals/worldscale.py` refuse par construction de convertir des points en $/t sans flat
-rate daté — il lève plutôt que de se rabattre sur l'année précédente.
+`signals/worldscale.py` refuses by construction to convert points into $/t without a
+dated flat rate — it raises rather than falling back on the previous year.
 
-### Si les flat rates manquent, le projet tient quand même
+### If flat rates are missing, the project still holds
 
-- **C-3** : les deux jambes prix restent gratuites et exchange-traded, l'arb se construit.
-- **C-2** : on inverse le moteur TCE pour reconstruire le fret depuis l'économie du voyage
-  — distances, consommation cubique, soutes, jours de port. `voyage/tce.py` cesse enfin
-  d'être de l'infrastructure morte. Un test vérifie que la boucle
-  freight → TCE → freight ferme exactement.
+- **C-3**: both price legs stay free and exchange-traded, the arb can still be built.
+- **C-2**: invert the TCE engine to reconstruct freight from voyage economics — distances,
+  cubic consumption, bunkers, port days. `voyage/tce.py` finally stops being dead
+  infrastructure. A test verifies that the freight → TCE → freight loop closes exactly.
 
 ---
 
@@ -160,68 +157,68 @@ rate daté — il lève plutôt que de se rabattre sur l'année précédente.
 
 ```
 src/freight/
-  portfolio.py           registre du portefeuille — seule source lue par app/Home.py ;
-                        un Project de plus ici suffit à le faire apparaître sur la plateforme
-  chains/ironore.py     projet A : humidité, décomposition, variance expliquée,
-                        épisodes de résidu négatif, effet de couverture, portage
-  chains/coal.py        projet B : arb ARA, couche ETS avec montée en charge et change,
-                        base énergétique CV, MCO à contrôles, test de rupture
-  chains/products.py    projet C : conversion volume/masse, décomposition Worldscale,
-                        illusion des jours ouverts, inversion TCE
-  ingest/contract.py    contrat de données — rien n'entre sans contrat rempli
-  ingest/loader.py      exports bruts -> format long canonique (date, ticker, valeur)
-  ingest/series.py      format long -> séries, + tableau de couverture
-  ingest/fixture.py     GÉNÉRATEUR SYNTHÉTIQUE projet A, tickers préfixés SYNTH_
-  ingest/fixture_coal.py  idem projet B — la rupture 2022 y est IMPOSÉE à la main
-  ingest/fixture_products.py  idem projet C — les marches de flat rate sont IMPOSÉES
-  ingest/audit.py       audit de couverture sur data/raw/
-  voyage/               TCE, consommation, distances, indifférence armateur C3*/C5*
-  backtest/             moteur d'exécution, attribution, sensibilité paramétrique
-  signals/worldscale.py conversion points WS -> USD/t (en attente des flat rates)
-  events/               gabarit de post-mortem d'événement
-app/Home.py             page d'accueil du portefeuille, groupée par secteur, générée
-                        depuis src/freight/portfolio.py — jamais éditée à la main
-app/pages/               un dashboard Streamlit par chaîne prête
-docs/NOUVELLE_CHAINE.md  gabarit des sept fichiers que touche une nouvelle chaîne
-tests/                  golden tests, valeurs calculées à la main, aucune donnée requise
-scripts/smoke_*.py    pipeline de bout en bout sur données synthétiques
-data/raw/               exports bruts, immuables, jamais modifiés à la main
+  portfolio.py           portfolio registry — the only source app/Home.py reads;
+                        one more Project here is enough to make it appear on the platform
+  chains/ironore.py     project A: moisture, decomposition, variance explained,
+                        negative-residual episodes, hedging effect, carry
+  chains/coal.py        project B: ARA arb, ETS layer with phase-in and FX, CV energy
+                        basis, controlled MCO, break test
+  chains/products.py    project C: volume/mass conversion, Worldscale decomposition,
+                        open-days illusion, TCE inversion
+  ingest/contract.py    data contract — nothing goes in without a filled-in contract
+  ingest/loader.py      raw exports -> canonical long format (date, ticker, value)
+  ingest/series.py      long format -> series, + coverage table
+  ingest/fixture.py     SYNTHETIC GENERATOR for project A, tickers prefixed SYNTH_
+  ingest/fixture_coal.py  same for project B — the 2022 break is IMPOSED by hand
+  ingest/fixture_products.py  same for project C — the flat-rate jumps are IMPOSED
+  ingest/audit.py       coverage audit over data/raw/
+  voyage/               TCE, consumption, distances, owner's indifference C3*/C5*
+  backtest/             execution engine, attribution, parameter sensitivity
+  signals/worldscale.py WS-points -> USD/t conversion (waiting on flat rates)
+  events/               event post-mortem template
+app/Home.py             portfolio home page, grouped by sector, generated
+                        from src/freight/portfolio.py — never hand-edited
+app/pages/               one Streamlit dashboard per ready chain
+docs/NOUVELLE_CHAINE.md  template for the seven files a new chain touches
+tests/                  golden tests, hand-computed values, no data required
+scripts/smoke_*.py    end-to-end pipeline on synthetic data
+data/raw/               raw exports, immutable, never hand-edited
 ```
 
-## Lancer
+## Running it
 
 ```bash
-make install   # venv + install editable, moteur + dashboard
-make test      # golden tests — aucune donnée nécessaire, à lancer n'importe quand
-make smoke     # pipeline complet des deux projets sur les jeux SYNTHÉTIQUES
-make app       # dashboard Streamlit
-make audit     # une fois data/raw/ rempli et data_dictionary.csv complété
+make install   # venv + editable install, engine + dashboard
+make test      # golden tests — no data needed, safe to run any time
+make smoke     # full pipeline for both projects on SYNTHETIC datasets
+make app       # Streamlit dashboard
+make audit     # once data/raw/ is filled and data_dictionary.csv is complete
 ```
 
-## Règles de méthode
+## Method rules
 
-- **Un trou de données est une information**, pas du bruit à lisser. Aucun forward-fill
-  avant l'étape d'audit. `gap_policy` n'accepte que `none` — le refus est codé, pas
-  seulement écrit.
-- **Aucune série n'entre dans un calcul sans contrat rempli** : ticker, unité native,
-  fréquence, source, plus un drapeau `verified` daté. Les colonnes `exchange_code` et
-  `bbg_ticker` sont séparées volontairement : le code de contrat de la bourse est
-  vérifiable publiquement, le ticker Bloomberg doit être confirmé sur le terminal via
-  `CTM` puis `DES`. **Aucun ticker Bloomberg n'est écrit dans ce repo sans avoir été vu.**
-- **L'alignement des calendriers est explicite.** La décomposition travaille sur
-  l'intersection des quatre séries et affiche combien de dates ont survécu.
-- **Le mode synthétique est signalé en rouge** dans le dashboard, et ses tickers sont
-  préfixés `SYNTH_`. Aucun chiffre produit dans ce mode ne doit sortir du repo.
+- **A data gap is information**, not noise to smooth over. No forward-fill before the
+  audit step. `gap_policy` accepts only `none` — the refusal is coded, not just written
+  down.
+- **No series enters a calculation without a filled-in contract**: ticker, native unit,
+  frequency, source, plus a dated `verified` flag. The `exchange_code` and `bbg_ticker`
+  columns are deliberately separate: the exchange's contract code is publicly verifiable,
+  the Bloomberg ticker has to be confirmed on the terminal via `CTM` then `DES`. **No
+  Bloomberg ticker gets written into this repo without having been seen.**
+- **Calendar alignment is explicit.** The decomposition works on the intersection of the
+  four series and shows how many dates survived.
+- **Synthetic mode is flagged in red** in the dashboard, and its tickers are prefixed
+  `SYNTH_`. No number produced in this mode should leave the repo.
 
-## État des tests
+## Test status
 
-90 tests, tous verts, sans aucune donnée de marché : 16 pour le projet A, 22 pour B, 20 pour
-C, le reste pour le socle. Chaque valeur attendue est calculée à la main dans le commentaire
-qui la précède. Trois tests portent leur propre argument :
+90 tests, all green, with no market data at all: 16 for project A, 22 for B, 20 for C,
+the rest for the shared base. Every expected value is hand-computed in the comment
+preceding it. Three tests carry their own argument:
 
-- `test_omitting_the_control_biases_the_freight_coefficient` — pourquoi le TTF est
-  obligatoire dans le projet B
-- `test_reset_moves_cost_with_zero_market_move` — le résultat Worldscale du projet C, dans
-  sa forme la plus nue
-- `test_implied_freight_round_trips_through_the_tce_engine` — si cette boucle ne ferme pas,
-  toute la variante C-2 s'écroule
+- `test_omitting_the_control_biases_the_freight_coefficient` — why TTF is mandatory in
+  project B
+- `test_reset_moves_cost_with_zero_market_move` — project C's Worldscale result, in its
+  barest form
+- `test_implied_freight_round_trips_through_the_tce_engine` — if this loop doesn't close,
+  the whole C-2 variant collapses

@@ -1,8 +1,8 @@
-"""Golden tests T1-2 — le coût complet de la couverture.
+"""Golden tests T1-2 — the full cost of hedging.
 
-Le test le plus important du fichier est `test_roll_sign_*` : un roll mal signé transforme
-un coût de couverture en revenu de couverture **sans rien casser**, et fait mentir toute
-la page dans le sens le plus flatteur.
+The file's most important test is `test_roll_sign_*`: a wrongly signed roll turns a
+hedging cost into hedging income **without breaking anything**, and makes the whole
+page lie in the most flattering direction.
 """
 from __future__ import annotations
 
@@ -31,27 +31,27 @@ from agri.fixtures.hedge_cost import PEAK_DATE, WINDOWS, build
 
 
 # ===========================================================================
-# LE SIGNE DU ROLL — le test qui protège toute la page
+# THE ROLL'S SIGN — the test that protects the whole page
 # ===========================================================================
 def test_roll_sign_backwardation_costs_the_short():
-    """Front 10 000, déféré 9 600 : le short rachète haut et se retrouve court à 9 600.
+    """Front 10,000, deferred 9,600: the short buys back high and ends up short at 9,600.
 
-    Le contrat converge ensuite vers le spot, donc remonte : il perd.
-        coût = +1 x (10 000 - 9 600) = +400 $/t
-    C'est le cas Barry Callebaut : short futures contre physique long, backwardation
-    rapportée comme un coût.
+    The contract then converges toward spot, i.e. rises: they lose.
+        cost = +1 x (10,000 - 9,600) = +400 $/t
+    This is the Barry Callebaut case: short futures against long physical,
+    backwardation reported as a cost.
     """
     assert roll_cost_usd_t(10_000.0, 9_600.0, side=SHORT_HEDGE) == pytest.approx(400.0)
     assert roll_pnl_usd_t(10_000.0, 9_600.0, side=SHORT_HEDGE) == pytest.approx(-400.0)
 
 
 def test_roll_sign_backwardation_pays_the_long():
-    """Symétrique exact : ce que le short paie, le long l'encaisse."""
+    """Exact mirror: what the short pays, the long pockets."""
     assert roll_cost_usd_t(10_000.0, 9_600.0, side=LONG_HEDGE) == pytest.approx(-400.0)
 
 
 def test_roll_sign_contango_pays_the_short():
-    # front 2 400, déféré 2 450 : le short est court plus haut, le prix redescend -> il gagne
+    # front 2,400, deferred 2,450: the short is short at a higher price, price falls -> they gain
     assert roll_cost_usd_t(2_400.0, 2_450.0, side=SHORT_HEDGE) == pytest.approx(-50.0)
 
 
@@ -76,7 +76,7 @@ def test_invalid_side_is_rejected():
 
 
 # ===========================================================================
-# Marge initiale
+# Initial margin
 # ===========================================================================
 def test_im_proxy_scales_with_volatility_and_price():
     index = pd.date_range("2024-01-01", periods=60, freq="B")
@@ -93,7 +93,7 @@ def test_im_proxy_scales_with_volatility_and_price():
 
 
 def test_im_proxy_calibration_recovers_a_known_k():
-    """H-H2 : `k` est calibré sur des points publiés, jamais posé au doigt mouillé."""
+    """H-H2: `k` is calibrated against published data points, never guessed."""
     rng = np.random.default_rng(1)
     index = pd.date_range("2024-01-01", periods=200, freq="B")
     price = pd.Series(2_000.0 * np.exp(np.cumsum(rng.normal(scale=0.02, size=200))), index=index)
@@ -109,28 +109,28 @@ def test_negative_k_is_rejected():
 
 
 # ===========================================================================
-# La simulation, terme à terme
+# The simulation, term by term
 # ===========================================================================
 @pytest.fixture
 def tiny_simulation() -> pd.DataFrame:
-    """Trois jours, tout calculé à la main.
+    """Three days, everything hand-computed.
 
-        front     = [1 000, 1 100, 1 050]
-        déféré    = [  990, 1 080, 1 040]        (backwardation partout)
+        front     = [1,000, 1,100, 1,050]
+        deferred  = [  990, 1,080, 1,040]        (backwardation throughout)
         im_usd_t  = [   50,    60,    55]
-        Q = 1 000 t, lot 10 t -> 100 lots
+        Q = 1,000 t, lot 10 t -> 100 lots
 
-        im_usd     = im_usd_t x 10 x 100        = [50 000, 60 000, 55 000]
-        vm_usd     = -1 x 1 000 x diff(front)   = [0, -100 000, +50 000]
-        cumul      =                              [0, -100 000,  -50 000]
-        cum_loss   = max(0, -cumul)             = [0,  100 000,   50 000]
-        cash       = im + cum_loss              = [50 000, 160 000, 105 000]
+        im_usd     = im_usd_t x 10 x 100        = [50,000, 60,000, 55,000]
+        vm_usd     = -1 x 1,000 x diff(front)   = [0, -100,000, +50,000]
+        cumulative =                              [0, -100,000,  -50,000]
+        cum_loss   = max(0, -cumulative)        = [0,  100,000,   50,000]
+        cash       = im + cum_loss              = [50,000, 160,000, 105,000]
 
-        taux 5 % + 250 bps = 7,5 %
-        financement = cash x 0,075 / 360        = [10,4167, 33,3333, 21,875]
+        rate 5% + 250 bps = 7.5%
+        financing = cash x 0.075 / 360          = [10.4167, 33.3333, 21.875]
 
-        roll au jour 2 : +1 x (1 100 - 1 080) x 1 000 = 20 000
-        liquidité au jour 2 : 1 000 x 4              =  4 000
+        roll on day 2: +1 x (1,100 - 1,080) x 1,000 = 20,000
+        liquidity on day 2: 1,000 x 4                =  4,000
     """
     index = pd.date_range("2024-01-01", periods=3, freq="D")
     front = pd.Series([1_000.0, 1_100.0, 1_050.0], index=index)
@@ -175,22 +175,23 @@ def test_roll_and_liquidity_hit_only_on_roll_dates(tiny_simulation):
 
 
 def test_cumulative_cost_hand_computed(tiny_simulation):
-    # 10,4167 + (33,3333 + 20 000 + 4 000) + 21,875 = 24 065,625 sur 1 000 t
+    # 10.4167 + (33.3333 + 20,000 + 4,000) + 21.875 = 24,065.625 on 1,000 t
     assert tiny_simulation["hedge_cost_cum_usd"].iloc[-1] == pytest.approx(24_065.625, abs=1e-3)
     assert tiny_simulation["hedge_cost_cum_usd_t"].iloc[-1] == pytest.approx(24.065625, abs=1e-6)
 
 
 def test_variation_margin_is_not_counted_as_a_cost(tiny_simulation):
-    """La VM est un transfert, pas un coût. Ce qui coûte, c'est de la financer."""
+    """VM is a transfer, not a cost. What costs money is financing it."""
     total = tiny_simulation["hedge_cost_cum_usd"].iloc[-1]
     assert abs(total) < abs(tiny_simulation["vm_usd"]).sum()
 
 
 def test_a_rate_series_starting_late_is_rejected():
-    """Un taux qui démarre après les prix laisse un trou en tête, que le report ne comble pas.
+    """A rate that starts after the prices leaves a gap at the front that carrying
+    forward doesn't fill.
 
-    C'est le cas dangereux : reporter en arrière un taux qu'on ne connaissait pas encore
-    inventerait un coût de financement. Le report ne va que vers l'avant.
+    This is the dangerous case: carrying a rate backward before it was known would
+    invent a financing cost. Carry-forward only ever goes forward.
     """
     index = pd.date_range("2024-01-01", periods=3, freq="D")
     rate = pd.Series([0.05], index=index[-1:])
@@ -213,13 +214,13 @@ def test_simulation_rejects_disjoint_calendars():
 
 
 # ===========================================================================
-# Capacité de couverture — le cœur du projet
+# Hedging capacity — the project's core
 # ===========================================================================
 def test_hedge_capacity_hand_computed(tiny_simulation):
     """Q*(t) = B / cash_t(1 tonne).
 
-    Au jour 2, cash = 160 000 $ pour 1 000 t, soit 160 $/t. Avec 10 M$ de lignes :
-        Q* = 10 000 000 / 160 = 62 500 t
+    On day 2, cash = 160,000 $ for 1,000 t, i.e. 160 $/t. With 10 M$ of lines:
+        Q* = 10,000,000 / 160 = 62,500 t
     """
     out = hedge_capacity(tiny_simulation, credit_line_usd=10_000_000.0, book_size_t=1_000.0)
     assert out.capacity_t.iloc[1] == pytest.approx(62_500.0)
@@ -233,11 +234,11 @@ def test_capacity_contracts_exactly_when_cash_peaks(tiny_simulation):
 
 
 def test_capacity_is_binding_when_the_line_is_too_small(tiny_simulation):
-    """Au pic, le cash vaut 160 $/t. La ligne contraint dès qu'elle passe sous 160 k$
-    pour un book de 1 000 t.
+    """At the peak, cash is worth 160 $/t. The line binds as soon as it drops below
+    160 k$ for a 1,000 t book.
 
-        100 000 / 160 = 625 t couvrables < 1 000 t de book  -> contraignante
-        1 000 000 / 160 = 6 250 t                            -> non contraignante
+        100,000 / 160 = 625 t coverable < 1,000 t book  -> binding
+        1,000,000 / 160 = 6,250 t                        -> not binding
     """
     tight = hedge_capacity(tiny_simulation, credit_line_usd=100_000.0, book_size_t=1_000.0)
     assert tight.min_capacity_t == pytest.approx(625.0)
@@ -249,14 +250,14 @@ def test_capacity_is_binding_when_the_line_is_too_small(tiny_simulation):
 
 
 def test_margin_breakeven_hand_computed():
-    """IM* = lignes / book. 250 M$ pour 100 kt -> 2 500 $/t de marge initiale."""
+    """IM* = lines / book. 250 M$ for 100 kt -> 2,500 $/t of initial margin."""
     assert margin_breakeven_im_usd_t(
         credit_line_usd=250_000_000.0, book_size_t=100_000.0
     ) == pytest.approx(2_500.0)
 
 
 def test_margin_breakeven_falls_as_losses_accumulate():
-    """Les pertes cumulées mangent la ligne : le seuil de marge tolérable s'effondre."""
+    """Accumulated losses eat into the line: the tolerable margin threshold collapses."""
     fresh = margin_breakeven_im_usd_t(credit_line_usd=250e6, book_size_t=100_000.0)
     bruised = margin_breakeven_im_usd_t(
         credit_line_usd=250e6, book_size_t=100_000.0, cumulative_loss_usd=200e6
@@ -277,7 +278,7 @@ def test_zero_credit_line_is_rejected(tiny_simulation):
 
 
 # ===========================================================================
-# Sur le jeu synthétique complet
+# On the full synthetic dataset
 # ===========================================================================
 @pytest.fixture(scope="module")
 def full():
@@ -291,7 +292,7 @@ def full():
 
 
 def test_hedging_the_2024_cocoa_market_costs_money_not_makes_it(full):
-    """Contrôle de sens global. Un coût cumulé négatif signalerait un roll mal signé."""
+    """Global sign check. A negative cumulative cost would signal a wrongly signed roll."""
     _, _, _, simulation = full
     assert simulation["hedge_cost_cum_usd_t"].iloc[-1] > 0
 
@@ -305,8 +306,8 @@ def test_all_three_cost_components_are_material(full):
 
 
 def test_margin_is_procyclical(full):
-    """La marge initiale monte quand le prix monte : le coût explose quand la couverture
-    est le plus nécessaire. C'est l'insulte finale de la thèse."""
+    """Initial margin rises when the price rises: the cost explodes exactly when the
+    hedge is most needed. That's the thesis's final insult."""
     _, _, _, simulation = full
     stats = procyclicality(simulation)
     assert stats["corr_delta_im_delta_price"] > 0.2
@@ -329,11 +330,11 @@ def test_the_credit_line_binds_on_the_2024_book(full):
 
 
 def test_both_sides_are_punished_in_their_own_window(full):
-    """LA thèse du projet : la couverture a puni les deux camps, à quatorze mois d'écart.
+    """THE project's thesis: hedging punished both camps, fourteen months apart.
 
-    Sur la hausse, c'est le short qui mobilise le plus de trésorerie ; sur la baisse,
-    c'est le long. Le coût par tonne ne suffit pas à le voir — c'est le **cash au pic**
-    qui contraint, et c'est lui qui bascule d'un camp à l'autre.
+    During the rally, it's the short who mobilises the most cash; during the decline,
+    it's the long. Cost per tonne isn't enough to see it — it's the **cash at the
+    peak** that binds, and that's what flips from one camp to the other.
     """
     data, im, params, _ = full
     table = compare_sides(
@@ -345,8 +346,8 @@ def test_both_sides_are_punished_in_their_own_window(full):
         params=params,
         windows=WINDOWS,
     )
-    rise = table[table["window"].str.startswith("hausse")].set_index("side")
-    fall = table[table["window"].str.startswith("baisse")].set_index("side")
+    rise = table[table["window"].str.startswith("2023-24 rally")].set_index("side")
+    fall = table[table["window"].str.startswith("2025-26 decline")].set_index("side")
 
     assert rise.loc["short (trader)", "peak_cash_usd"] > rise.loc["long (manufacturer)", "peak_cash_usd"]
     assert fall.loc["long (manufacturer)", "peak_cash_usd"] > fall.loc["short (trader)", "peak_cash_usd"]
@@ -365,10 +366,10 @@ def test_fixture_imposes_a_price_collapse(full):
 
 
 # ===========================================================================
-# Sur données réelles (export Bloomberg de l'utilisateur) — crise cacao 2022-2024
+# On real data (the user's Bloomberg export) — the 2022-2024 cocoa crisis
 # ===========================================================================
 pytestmark_real = pytest.mark.skipif(
-    not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}"
+    not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}"
 )
 
 
@@ -378,36 +379,38 @@ def real_cacao():
     return load_real_hedge_frame("cacao_ny", params=params), params
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_cocoa_peak_matches_the_actual_2024_crisis(real_cacao):
-    """Le prix reel du cacao ICE NY a culmine a 12 565 USD/t le 18 decembre 2024 —
-    verifie a la main contre le fichier source, pas contre le code qui le lit."""
+    """The real ICE NY cocoa price peaked at 12,565 USD/t on 18 December 2024 —
+    verified by hand against the source file, not against the code that reads it."""
     sim, _ = real_cacao
     assert sim["front"].max() == pytest.approx(12565.0)
     assert sim["front"].idxmax() == pd.Timestamp("2024-12-18")
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_cash_mobilised_exceeds_one_billion_at_the_peak(real_cacao):
-    """Au pic reel, le cash mobilise depasse 1 milliard USD sur un book de 100 kt — un
-    chiffre que Barry Callebaut n'a pas invente, et que ce calcul retrouve independamment."""
+    """At the real peak, mobilised cash exceeds 1 billion USD on a 100 kt book — a
+    number Barry Callebaut didn't invent, and that this calculation recovers
+    independently."""
     sim, _ = real_cacao
     peak_cash = sim.loc[sim["front"].idxmax(), "cash_usd"]
     assert peak_cash == pytest.approx(1_079_501_592.69, rel=1e-6)
     assert peak_cash > 1e9
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_roll_cost_is_explicitly_zero_not_estimated(real_cacao):
-    """Limite de donnee assumee : sans echeance differee reelle, le roll est neutralise
-    (deferred = front), pas approxime sur une hypothese de structure par terme inventee."""
+    """Assumed data limitation: without a real deferred maturity, the roll is
+    neutralised (deferred = front), not approximated on an invented term-structure
+    assumption."""
     sim, _ = real_cacao
     assert (sim["roll_usd"] == 0.0).all()
     assert (sim["liquidity_usd"] == 0.0).all()
     assert sim.attrs["roll_cost_omitted"] is True
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_credit_line_binds_at_the_actual_peak(real_cacao):
     sim, params = real_cacao
     capacity = hedge_capacity(sim, credit_line_usd=params.credit_line_usd, book_size_t=params.book_size_t)
@@ -415,26 +418,26 @@ def test_real_credit_line_binds_at_the_actual_peak(real_cacao):
     assert capacity.peak_cash_date == pd.Timestamp("2024-12-18")
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_coffee_price_hits_its_genuine_historical_record():
-    """Le cafe arabica ICE a reellement depasse 400 c/lb en 2025 — record historique, pas
-    un artefact de synthese."""
+    """ICE arabica coffee genuinely broke above 400 c/lb in 2025 — a historical
+    record, not a synthesis artefact."""
     sim = load_real_hedge_frame("cafe_arabica")
     assert sim["front"].max() > 400.0
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_frame_starts_at_sofr_coverage():
-    """start par defaut cale sur le debut de couverture SOFR (2018-04-02) : au-dela, le
-    taux de financement reel ne couvre pas la periode."""
+    """The default start is pinned to SOFR's coverage start (2018-04-02): before that,
+    the real financing rate doesn't cover the period."""
     sim = load_real_hedge_frame("cacao_ny")
     assert sim.index.min() >= pd.Timestamp("2018-04-02")
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_unknown_commodity_alias_falls_back_to_raw_bloomberg_key():
-    """Un alias non reconnu est essaye tel quel comme cle bloomberg_loader — permet de
-    passer 'coffee_robusta' directement sans devoir l'ajouter a REAL_COMMODITY_KEYS."""
+    """An unrecognised alias is tried as-is as a bloomberg_loader key — allows passing
+    'coffee_robusta' directly without having to add it to REAL_COMMODITY_KEYS."""
     sim = load_real_hedge_frame("coffee_robusta")
     assert len(sim) > 100
 

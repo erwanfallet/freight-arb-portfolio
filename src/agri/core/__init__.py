@@ -1,9 +1,9 @@
-"""Socle technique commun aux pages agri — et réutilisable par les pages métaux.
+"""Shared technical base for the agri pages — and reusable by the metals pages.
 
-Codé une fois, appelé partout. Contient les conversions d'unités, les règles de
-rééchantillonnage qui décident de la validité d'un test, la boîte à outils
-statistique, et le solveur de point de bascule qui est le livrable de chaque page.
+Written once, called everywhere. Contains the unit conversions, the resampling rules
+that decide whether a test is valid, the statistics toolkit, and the tipping-point
+solver that is every page's deliverable.
 
-Rien ici ne connaît une commodité en particulier : `chains/` fait les modèles,
-`core/` fait l'arithmétique et la statistique.
+Nothing here knows about any particular commodity: `chains/` builds the models,
+`core/` does the arithmetic and the statistics.
 """

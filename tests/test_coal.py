@@ -1,4 +1,4 @@
-"""Golden tests du projet B — valeurs calculées à la main dans les commentaires."""
+"""Golden tests for project B — values hand-computed in the comments."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,12 +24,12 @@ def _dates(n: int, start: str = "2021-01-01") -> pd.DatetimeIndex:
     return pd.bdate_range(start, periods=n)
 
 
-# ------------------------------------------------------------- pouvoir calorifique
+# ------------------------------------------------------------- calorific value
 def test_energy_basis_golden():
-    """5 700 kcal/kg contre une référence 6 000 : facteur 6000/5700 = 1,052631578...
+    """5,700 kcal/kg against a 6,000 reference: factor 6000/5700 = 1.052631578...
 
-    Un prix de 90 $/t devient 94,736842105 $ par tonne-équivalent-6 000.
-    Un fret de 12 $/t devient 12,631578947 par tonne-équivalent-6 000, soit +5,3 %.
+    A price of 90 $/t becomes 94.736842105 $ per tonne-equivalent-6,000.
+    A freight rate of 12 $/t becomes 12.631578947 per tonne-equivalent-6,000, i.e. +5.3%.
     """
     assert to_energy_basis(90.0, 5700.0) == pytest.approx(94.73684210526316, rel=1e-12)
     assert to_energy_basis(12.0, 5700.0) == pytest.approx(12.631578947368421, rel=1e-12)
@@ -40,7 +40,7 @@ def test_energy_basis_at_benchmark_is_identity():
 
 
 def test_energy_basis_penalises_low_cv():
-    """Plus le CV réel est bas, plus le coût par unité d'énergie est élevé."""
+    """The lower the real CV, the higher the cost per unit of energy."""
     assert to_energy_basis(12.0, 5500.0) > to_energy_basis(12.0, 5800.0) > 12.0
 
 
@@ -53,7 +53,7 @@ def test_energy_basis_rejects_bad_cv():
 
 # ---------------------------------------------------------------------------- ETS
 def test_phase_in_factor_golden():
-    """Montée en charge de l'ETS maritime : rien avant 2024, puis 40 %, 70 %, 100 %."""
+    """Maritime ETS phase-in: nothing before 2024, then 40%, 70%, 100%."""
     assert phase_in_factor(2023) == 0.0
     assert phase_in_factor(2024) == pytest.approx(0.40)
     assert phase_in_factor(2025) == pytest.approx(0.70)
@@ -62,9 +62,9 @@ def test_phase_in_factor_golden():
 
 
 def test_effective_extra_eu_coverage_is_20_35_50():
-    """Pour un voyage dont une extrémité est hors UE — Richards Bay -> Rotterdam — la
-    couverture effective est portée × montée en charge, soit 20 % en 2024, 35 % en 2025
-    et 50 % à partir de 2026.
+    """For a voyage with one end outside the EU — Richards Bay -> Rotterdam — the
+    effective coverage is scope × phase-in, i.e. 20% in 2024, 35% in 2025 and 50% from
+    2026.
     """
     assert EXTRA_EU_SCOPE_FACTOR * phase_in_factor(2024) == pytest.approx(0.20)
     assert EXTRA_EU_SCOPE_FACTOR * phase_in_factor(2025) == pytest.approx(0.35)
@@ -78,20 +78,20 @@ def test_phase_in_series_follows_calendar_year():
 
 
 def test_voyage_emissions_golden():
-    """480 t de combustible × 3,114 tCO2/t = 1 494,72 tCO2."""
+    """480 t of fuel × 3.114 tCO2/t = 1,494.72 tCO2."""
     assert voyage_emissions_t_co2(480.0) == pytest.approx(1494.72, rel=1e-12)
     assert voyage_emissions_t_co2(480.0, DEFAULT_EMISSION_FACTOR) == pytest.approx(1494.72)
 
 
 def test_ets_cost_golden():
-    """Calcul complet, à la main :
+    """Full calculation, by hand:
 
-    émissions            1 494,72 tCO2
-    × portée 0,50        =   747,36
-    × montée 0,40 (2024) =   298,944 quotas dus
-    × 70 EUR             = 20 926,08 EUR
-    × 1,10 EURUSD        = 23 018,688 USD
-    / 150 000 t          =     0,15345792 USD/t
+    emissions              1,494.72 tCO2
+    × scope 0.50          =   747.36
+    × phase-in 0.40 (2024) =   298.944 allowances due
+    × 70 EUR               = 20,926.08 EUR
+    × 1.10 EURUSD          = 23,018.688 USD
+    / 150,000 t            =     0.15345792 USD/t
     """
     cost = ets_cost_per_cargo_tonne(
         eua_price_eur=70.0,
@@ -109,7 +109,7 @@ def test_ets_cost_scales_with_phase_in():
     )
     c2024 = ets_cost_per_cargo_tonne(phase_in=0.40, **kwargs)
     c2026 = ets_cost_per_cargo_tonne(phase_in=1.00, **kwargs)
-    # 100 % / 40 % = 2,5x
+    # 100% / 40% = 2.5x
     assert c2026 / c2024 == pytest.approx(2.5, rel=1e-12)
 
 
@@ -123,16 +123,16 @@ def test_ets_cost_rejects_bad_inputs():
 
 # ---------------------------------------------------------------------------- arb
 def test_financing_cost_golden():
-    """90 $/t × 6 % × 20/365 = 0,295890410958904 $/t."""
+    """90 $/t × 6% × 20/365 = 0.295890410958904 $/t."""
     assert financing_cost(90.0, 20.0, 0.06) == pytest.approx(0.2958904109589041, rel=1e-12)
 
 
 def test_arb_reconstruction_golden():
-    """API2 110, API4 90, fret 12, 20 jours à 6 %, ETS 0,15345792 :
+    """API2 110, API4 90, freight 12, 20 days at 6%, ETS 0.15345792:
 
-    spread     = 20,00
-    financement=  0,295890411
-    arb        = 20 − 12 − 0,295890411 − 0,15345792 = 7,550651669
+    spread     = 20.00
+    financing  =  0.295890411
+    arb        = 20 − 12 − 0.295890411 − 0.15345792 = 7.550651669
     """
     idx = _dates(1)
     frame = reconstruct_ara_arb(
@@ -151,7 +151,7 @@ def test_arb_reconstruction_golden():
 
 
 def test_arb_requires_common_dates():
-    with pytest.raises(ValueError, match="aucune date commune"):
+    with pytest.raises(ValueError, match="no common date"):
         reconstruct_ara_arb(
             api2=pd.Series([110.0], index=pd.DatetimeIndex(["2024-01-01"])),
             api4=pd.Series([90.0], index=pd.DatetimeIndex(["2024-01-02"])),
@@ -160,9 +160,10 @@ def test_arb_requires_common_dates():
 
 
 def test_arb_rejects_ets_series_with_gaps():
-    """Une série ETS qui ne couvre pas tout l'arb doit lever, pas trouer le calcul."""
+    """An ETS series that doesn't cover the whole arb must raise, not punch holes in
+    the calculation."""
     idx = _dates(5)
-    with pytest.raises(ValueError, match="ne couvre pas toutes les dates"):
+    with pytest.raises(ValueError, match="doesn't cover every date"):
         reconstruct_ara_arb(
             api2=pd.Series(110.0, index=idx),
             api4=pd.Series(90.0, index=idx),
@@ -171,12 +172,12 @@ def test_arb_rejects_ets_series_with_gaps():
         )
 
 
-# --------------------------------------------------------------------------- MCO
+# --------------------------------------------------------------------------- OLS
 def test_ols_recovers_exact_coefficients():
-    """y = 1 + 2·x1 + 3·x2 exactement -> constante 1, pentes 2 et 3, R² = 1.
+    """y = 1 + 2·x1 + 3·x2 exactly -> constant 1, slopes 2 and 3, R² = 1.
 
-    Ajustement parfait : l'écart-type est nul et le t n'est pas défini. Le code doit
-    renvoyer NaN plutôt qu'un infini qui contaminerait un tableau.
+    Perfect fit: the standard error is zero and the t-stat is undefined. The code must
+    return NaN rather than an infinity that would contaminate a table.
     """
     idx = _dates(50)
     x1 = pd.Series(np.linspace(1, 10, 50), index=idx)
@@ -193,30 +194,30 @@ def test_ols_recovers_exact_coefficients():
 
 def test_ols_needs_enough_observations():
     idx = _dates(2)
-    with pytest.raises(ValueError, match="pas assez d'observations"):
+    with pytest.raises(ValueError, match="not enough observations"):
         ols(pd.Series([1.0, 2.0], index=idx), {"x": pd.Series([1.0, 2.0], index=idx)})
 
 
 def test_ols_requires_a_regressor():
     idx = _dates(10)
-    with pytest.raises(ValueError, match="au moins un régresseur"):
+    with pytest.raises(ValueError, match="at least one regressor"):
         ols(pd.Series(np.arange(10.0), index=idx), {})
 
 
 def test_omitting_the_control_biases_the_freight_coefficient():
-    """LE test qui justifie l'existence de `ols` à plusieurs régresseurs.
+    """THE test that justifies `ols` taking multiple regressors.
 
-    Construction : un facteur commun z, `freight = z + a`, `ttf = z + b`, avec a et b
-    indépendants et de même variance que z. La vérité est y = 1·freight + 5·ttf.
+    Construction: a common factor z, `freight = z + a`, `ttf = z + b`, with a and b
+    independent and of the same variance as z. The truth is y = 1·freight + 5·ttf.
 
-    Régression simple sur le fret seul :
-        coef = 1 + 5 · cov(ttf, freight)/var(freight) = 1 + 5 · (1/2) = 3,5
-    Le fret hérite de la moitié de l'effet du TTF. Avec le contrôle, on retrouve 1 et 5
-    exactement.
+    Simple regression on freight alone:
+        coef = 1 + 5 · cov(ttf, freight)/var(freight) = 1 + 5 · (1/2) = 3.5
+    Freight inherits half of TTF's effect. With the control, 1 and 5 are recovered
+    exactly.
 
-    Autrement dit : sans contrôler par le TTF, on attribuerait au fret un effet 3,5 fois
-    trop grand — et le raisonnement symétrique s'applique à l'attribution du décrochage
-    post-2022 à l'Inde.
+    In other words: without controlling for TTF, freight would be credited with an
+    effect 3.5 times too large — and the symmetric reasoning applies to attributing the
+    post-2022 break to India.
     """
     idx = _dates(600)
     rng = np.random.default_rng(5)
@@ -228,15 +229,15 @@ def test_omitting_the_control_biases_the_freight_coefficient():
     naive = ols(y, {"freight": freight})
     controlled = ols(y, {"freight": freight, "ttf": ttf})
 
-    assert naive.coefficients["freight"] > 2.5  # biaisé, ~3,5
+    assert naive.coefficients["freight"] > 2.5  # biased, ~3.5
     assert controlled.coefficients["freight"] == pytest.approx(1.0, abs=1e-8)
     assert controlled.coefficients["ttf"] == pytest.approx(5.0, abs=1e-8)
 
 
-# ------------------------------------------------------------------------ régimes
+# ------------------------------------------------------------------------ regimes
 def test_regime_stats_splits_and_measures_persistence():
-    """Avant la rupture : arb alterné, jamais deux jours de suite ouverts.
-    Après : arb positif tous les jours, donc une séquence ouverte de 10 jours.
+    """Before the break: arb alternates, never two days open in a row.
+    After: arb positive every day, so a 10-day open run.
     """
     idx = _dates(20, start="2021-12-20")
     arb = np.where(np.arange(20) % 2 == 0, 1.0, -1.0)
@@ -264,8 +265,8 @@ def test_regime_stats_handles_empty_side():
 
 
 def test_freight_binding_test_detects_a_collapsing_coefficient():
-    """Avant la rupture, spread = 1,0 × fret (le fret est la contrainte).
-    Après, spread = 0,1 × fret + un niveau (le fret ne contraint plus).
+    """Before the break, spread = 1.0 × freight (freight is the constraint).
+    After, spread = 0.1 × freight + a level (freight no longer constrains).
     """
     idx = _dates(400, start="2021-01-01")
     rng = np.random.default_rng(9)

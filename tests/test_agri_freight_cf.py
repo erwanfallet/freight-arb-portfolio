@@ -1,12 +1,12 @@
-"""Golden tests T1-1 — le fret dans le calcul C&F.
+"""Golden tests T1-1 — freight inside the C&F calculation.
 
-Le fret sur le voyage de référence (Panamax, Santos -> Qingdao, TCE 15 000, VLSFO 500,
-MGO 700) est **linéaire en ballast_share** :
+Freight on the reference voyage (Panamax, Santos -> Qingdao, TCE 15,000, VLSFO 500,
+MGO 700) is **linear in ballast_share**:
 
-    freight(b) = 20,610258 + b x 15,816610   $/t
+    freight(b) = 20.610258 + b x 15.816610   $/t
 
-C'est cette linéarité qui rend le point de bascule calculable à la main, et c'est elle qui
-est vérifiée en premier ci-dessous.
+It's this linearity that makes the tipping point computable by hand, and it's the first
+thing verified below.
 """
 from __future__ import annotations
 
@@ -44,19 +44,19 @@ def frame() -> pd.DataFrame:
 
 
 # ===========================================================================
-# L'identité comptable
+# The accounting identity
 # ===========================================================================
 def test_financing_uses_a_360_day_base():
-    # (440 + 36) x 5,5 % x (78 + 30) / 360 = 476 x 0,055 x 0,3 = 7,854
+    # (440 + 36) x 5.5% x (78 + 30) / 360 = 476 x 0.055 x 0.3 = 7.854
     assert financing_cost_usd_t(
         440.0, 36.0, annual_rate=0.055, voyage_days=78.0, credit_days=30.0
     ) == pytest.approx(7.854, abs=1e-3)
 
 
 def test_arb_identity_is_a_plain_subtraction():
-    # 500 - 440 - 36 - financing - 0,85
-    # financing = (440 + 36) x 0,055 x (78 + 30)/360 = 7,854
-    # arb = 500 - 440 - 36 - 7,854 - 0,85 = 15,296
+    # 500 - 440 - 36 - financing - 0.85
+    # financing = (440 + 36) x 0.055 x (78 + 30)/360 = 7.854
+    # arb = 500 - 440 - 36 - 7.854 - 0.85 = 15.296
     index = pd.date_range("2024-01-01", periods=3, freq="B")
     out = arb_usd_t(
         pd.Series(500.0, index=index),
@@ -76,10 +76,10 @@ def test_negative_financing_rate_is_rejected():
 
 
 # ===========================================================================
-# Les trois conventions
+# The three conventions
 # ===========================================================================
 def test_freight_is_linear_in_ballast_share():
-    """La propriété qui rend le point de bascule calculable à la main."""
+    """The property that makes the tipping point computable by hand."""
     from agri.core.voyage import voyage_freight_usd_t
 
     for share in (0.0, 0.25, 0.5, 0.75, 1.0):
@@ -96,24 +96,24 @@ def test_freight_is_linear_in_ballast_share():
 
 
 def test_full_is_always_above_index(frame):
-    """L'invariant central : le ballast ne peut que renchérir, jamais l'inverse.
+    """The central invariant: ballast can only make it more expensive, never the reverse.
 
-    Un `freight_full < freight_index` persistant serait une erreur de modèle de voyage,
-    pas une opportunité — c'est le premier mode de défaillance listé par la spec.
+    A persistent `freight_full < freight_index` would be a voyage-model error, not an
+    opportunity — it's the first failure mode listed in the spec.
     """
     assert (frame["freight_full"] > frame["freight_index"]).all()
     assert (frame["spread_full_index"] > 0).all()
 
 
 def test_internal_convention_lags_the_full_one(frame):
-    """La convention interne est stable *donc* en retard — c'est tout son intérêt et tout son défaut."""
+    """The internal convention is stable *because* it lags — that's its whole appeal and its whole flaw."""
     assert frame["freight_internal"].std() < frame["freight_full"].std()
     correlation = frame["freight_internal"].corr(frame["freight_full"])
     assert 0.0 < correlation < 0.99
 
 
 def test_internal_convention_refuses_a_partial_window():
-    """Une moyenne « interne » sur trois points n'est pas une moyenne interne."""
+    """An "internal" average over three points is not an internal average."""
     series = build(periods=200, seed=1)
     out = build_conventions(
         series["tce"],
@@ -126,12 +126,12 @@ def test_internal_convention_refuses_a_partial_window():
         params=VoyageParams(),
         internal_window_days=90,
     )
-    # 200 jours d'entree - 89 manges par la fenetre = 111 jours exploitables
+    # 200 input days - 89 eaten by the window = 111 usable days
     assert len(out) == 111
 
 
 def test_arb_is_more_generous_under_the_index_convention(frame):
-    """Le desk trading voit systématiquement un arb plus ouvert. C'est le désaccord."""
+    """The trading desk systematically sees a more open arb. That's the disagreement."""
     assert (frame["arb_index"] > frame["arb_full"]).all()
     assert frame["arb_index"].mean() - frame["arb_full"].mean() == pytest.approx(
         frame["spread_full_index"].mean(), abs=0.5
@@ -146,17 +146,17 @@ def test_disagreement_flag_marks_sign_conflicts(frame):
 
 
 # ===========================================================================
-# S4 — le panneau de désaccord
+# S4 — the disagreement panel
 # ===========================================================================
 def test_sign_flip_rate_carries_an_exact_interval(frame):
     out = sign_flip_rate(frame)
     assert 0.0 < out.point < 1.0
     assert out.lo < out.point < out.hi
-    assert "IC 95" in out.summary
+    assert "95% CI" in out.summary
 
 
 def test_sign_flip_rate_is_zero_when_conventions_agree():
-    """Sur un arb largement ouvert, les conventions s'accordent — et il faut le dire."""
+    """On a widely open arb, the conventions agree — and that has to be said."""
     index = pd.date_range("2024-01-01", periods=120, freq="B")
     wide = pd.DataFrame(
         {"arb_index": pd.Series(80.0, index=index), "arb_full": pd.Series(60.0, index=index)}
@@ -165,7 +165,7 @@ def test_sign_flip_rate_is_zero_when_conventions_agree():
 
 
 def test_spread_distribution_reports_median_and_iqr_not_just_the_mean(frame):
-    """La distribution est bornée à gauche par construction : une moyenne seule ment."""
+    """The distribution is bounded on the left by construction: a mean alone lies."""
     stats = spread_distribution(frame)
     assert stats["min"] > 0
     assert stats["q1"] < stats["median"] < stats["q3"]
@@ -186,7 +186,7 @@ def test_disagreement_episodes_are_dated_and_measurable(frame):
 
 
 # ===========================================================================
-# S5 — la zone de décision marginale : le chiffre du mail
+# S5 — the marginal decision zone: the number for the email
 # ===========================================================================
 def test_marginal_zone_produces_the_headline(frame):
     zone = marginal_decision_zone(frame, band_usd_t=5.0)
@@ -221,15 +221,15 @@ def test_zero_band_is_rejected():
 
 
 # ===========================================================================
-# Point de bascule — ballast_share*
+# Tipping point — ballast_share*
 # ===========================================================================
 def test_ballast_breakeven_hand_computed():
-    """Sans financement ni assurance, l'arb est affine en ballast et le seuil est exact.
+    """Without financing or insurance, the arb is affine in ballast and the threshold is exact.
 
-        arb(b) = (CIF - FOB) - 20,610258 - b x 15,816610
+        arb(b) = (CIF - FOB) - 20.610258 - b x 15.816610
 
-    En posant CIF - FOB = 28,518563, la racine tombe exactement à b* = 0,50 :
-        (28,518563 - 20,610258) / 15,816610 = 7,908305 / 15,816610 = 0,500000
+    Setting CIF - FOB = 28.518563, the root lands exactly at b* = 0.50:
+        (28.518563 - 20.610258) / 15.816610 = 7.908305 / 15.816610 = 0.500000
     """
     out = ballast_breakeven(
         15_000.0,
@@ -244,7 +244,7 @@ def test_ballast_breakeven_hand_computed():
         insurance_usd_t=0.0,
     )
     assert out.theta_star == pytest.approx(0.5, abs=1e-6)
-    # la sensibilité est la pente du fret, au signe près : -15,8166 $/t par unité de ballast
+    # the sensitivity is the freight slope, up to sign: -15.8166 $/t per unit of ballast
     assert out.sensitivity == pytest.approx(-FREIGHT_SLOPE_PER_BALLAST, abs=1e-3)
 
 
@@ -265,7 +265,7 @@ def test_breakeven_summary_is_the_mail_sentence():
 
 
 def test_financing_pushes_the_breakeven_down():
-    """Le financement est un coût de plus : il ferme l'arb plus tôt, donc à moins de ballast."""
+    """Financing is one more cost: it closes the arb sooner, i.e. at less ballast."""
     kwargs = dict(
         cif_usd_t=468.518563,
         fob_usd_t=440.0,
@@ -280,29 +280,29 @@ def test_financing_pushes_the_breakeven_down():
 
 
 def test_a_wide_open_arb_has_no_breakeven_and_that_is_the_result():
-    """« Même en facturant 100 % du ballast, l'arb reste ouvert » est une affirmation publiable."""
+    """"Even charging 100% of ballast, the arb stays open" is a publishable claim."""
     with pytest.raises(NoBreakevenInRange) as excinfo:
         ballast_breakeven(
             15_000.0,
             500.0,
             700.0,
-            cif_usd_t=560.0,      # 120 $/t d'écart : très au-dessus de tout fret plausible
+            cif_usd_t=560.0,      # 120 $/t gap: well above any plausible freight
             fob_usd_t=440.0,
             vessel=PANAMAX,
             route=SANTOS_QINGDAO,
             params=VoyageParams(),
         )
     assert excinfo.value.margin_lo > 0
-    assert "reste positive" in str(excinfo.value)
+    assert "stays positive" in str(excinfo.value)
 
 
 def test_a_shut_arb_has_no_breakeven_either():
-    with pytest.raises(NoBreakevenInRange, match="reste négative"):
+    with pytest.raises(NoBreakevenInRange, match="stays negative"):
         ballast_breakeven(
             15_000.0,
             500.0,
             700.0,
-            cif_usd_t=445.0,      # 5 $/t d'écart : fermé même sans facturer de ballast
+            cif_usd_t=445.0,      # 5 $/t gap: shut even with zero ballast charged
             fob_usd_t=440.0,
             vessel=PANAMAX,
             route=SANTOS_QINGDAO,
@@ -327,11 +327,11 @@ def test_breakeven_reports_distance_in_sigmas_when_history_is_given():
     )
     assert out.theta_current == 0.8
     assert out.distance_sigmas is not None
-    assert out.distance_sigmas < 0      # le seuil est en dessous du niveau retenu
+    assert out.distance_sigmas < 0      # the threshold is below the level used
 
 
 # ===========================================================================
-# S6 — sensibilité croisée
+# S6 — cross sensitivity
 # ===========================================================================
 def test_sensitivity_grid_shape_and_monotonicity():
     grid = sensitivity_grid(
@@ -347,19 +347,19 @@ def test_sensitivity_grid_shape_and_monotonicity():
         bunker_shifts_pct=np.array([-0.2, 0.0, 0.2]),
     )
     assert len(grid) == 9
-    # a decalage de soutes fixe, plus de ballast = arb plus ferme
+    # at a fixed bunker shift, more ballast = firmer (lower) arb
     at_zero_shift = grid[grid["bunker_shift_pct"] == 0.0].sort_values("ballast_share")
     assert at_zero_shift["arb_usd_t"].is_monotonic_decreasing
-    # a ballast fixe, soutes plus cheres = arb plus ferme
+    # at fixed ballast, pricier bunkers = firmer (lower) arb
     at_full_ballast = grid[grid["ballast_share"] == 1.0].sort_values("bunker_shift_pct")
     assert at_full_ballast["arb_usd_t"].is_monotonic_decreasing
 
 
 # ===========================================================================
-# S7 — attribution de P&L
+# S7 — P&L attribution
 # ===========================================================================
 def test_pnl_attribution_sign_convention(frame):
-    """Signe positif = le département fret a facturé au-dessus de son coût du jour."""
+    """Positive sign = the freight department charged above its cost of the day."""
     out = pnl_attribution(frame, cargo_t=66_000.0)
     assert (out["gap_usd_t"] * 66_000.0).equals(out["pnl_shifted_usd"])
     positive = out[out["gap_usd_t"] > 0]
@@ -379,10 +379,10 @@ def test_zero_cargo_is_rejected(frame):
 
 
 # ===========================================================================
-# Le jeu synthétique impose bien le phénomène
+# The synthetic dataset does impose the phenomenon
 # ===========================================================================
 def test_fixture_puts_a_large_share_of_days_in_the_marginal_band(frame):
-    """Sans cette propriété, la page n'aurait rien à montrer — c'est le point du fixture."""
+    """Without this property, the page would have nothing to show — that's the fixture's point."""
     zone = marginal_decision_zone(frame, band_usd_t=5.0)
     assert zone.share_of_sample > 0.3
 

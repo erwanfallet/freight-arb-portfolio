@@ -1,13 +1,12 @@
-"""Lecteur de l'export Bloomberg reel de l'utilisateur.
+"""Reader for the user's real Bloomberg export.
 
-Chaque onglet Bloomberg est un bloc Date/Valeur (parfois plusieurs par onglet, cote a
-cote). Ce module localise le bloc, verifie l'unite attendue, et rend une pd.Series
-propre — sans jamais deviner un ticker : la correspondance onglet -> serie est explicite
-dans `SERIES_SPECS`, construite a partir de l'inspection reelle du fichier (pas d'un nom
-suppose).
+Every Bloomberg sheet is a Date/Value block (sometimes several per sheet, side by side).
+This module locates the block, checks the expected unit, and returns a clean pd.Series —
+never guessing a ticker: the sheet -> series mapping is explicit in `SERIES_SPECS`, built
+from actually inspecting the file (not from an assumed name).
 
-Aucun forward-fill ici : c'est une lecture, pas une modelisation. Un trou reste un trou,
-meme regle qu'`ingest/contract.py` du portefeuille fret.
+No forward-fill here: this is a read, not a modelling step. A gap stays a gap, the same
+rule as the freight portfolio's `ingest/contract.py`.
 """
 from __future__ import annotations
 
@@ -22,27 +21,27 @@ DEFAULT_PATH = Path("/Users/erwanfallet/Desktop/Data Bloomberg.xlsx")
 
 
 class BloombergLoaderError(ValueError):
-    """Onglet ou bloc introuvable, ou lecture incoherente."""
+    """Sheet or block not found, or inconsistent read."""
 
 
 @dataclass(frozen=True)
 class SeriesSpec:
-    """Un bloc Date/Valeur identifie dans l'export, avec son unite declaree.
+    """A Date/Value block identified in the export, with its declared unit.
 
-    `block_index` distingue plusieurs series dans un meme onglet (ex. l'onglet "JET"
-    contient le swap M1 en bloc 0 et le prompt spot en bloc 1).
+    `block_index` distinguishes several series within the same sheet (e.g. the "JET"
+    sheet has the M1 swap in block 0 and the prompt spot in block 1).
 
-    `scale` corrige un facteur de cotation connu et verifie a la main — jamais devine.
-    Les futures grains CBOT (soja/mais/ble) sont cotes en **cents par boisseau** dans cet
-    export (ex. 1156.50 = 11,565 USD/bu, verifie contre le niveau de marche reel) ; sans
-    diviser par 100, toute formule attendant un prix en USD/bu (board_crush_usd_bu,
-    financing_cost_usd_t...) sort un resultat cent fois trop grand — le genre d'erreur qui
-    ne plante jamais.
+    `scale` corrects a known quoting factor, verified by hand — never guessed. The CBOT
+    grain futures (soybean/corn/wheat) are quoted in **cents per bushel** in this export
+    (e.g. 1156.50 = 11.565 USD/bu, verified against the real market level); without
+    dividing by 100, any formula expecting a price in USD/bu (board_crush_usd_bu,
+    financing_cost_usd_t...) comes out a hundred times too large — the kind of error
+    that never crashes.
 
-    `valid_from` ecarte une periode dont l'unite economique a change dans le temps.
-    USDBRL avant juillet 1994 cote le cruzeiro/cruzeiro real d'avant le Plano Real
-    (hyperinflation bresilienne, valeurs ~0,0004 en 1992) : une monnaie differente, pas
-    une valeur aberrante a corriger — on l'exclut plutot que de la reechelonner.
+    `valid_from` excludes a period whose economic unit changed over time. USDBRL before
+    July 1994 quotes the pre-Plano Real cruzeiro/cruzeiro real (Brazilian
+    hyperinflation, values ~0.0004 in 1992): a different currency, not an outlier to
+    correct — it's excluded rather than rescaled.
     """
 
     sheet: str
@@ -56,43 +55,44 @@ class SeriesSpec:
     min_valid: float | None = None
 
 
-# Construit a partir de l'inspection reelle du fichier (dump exhaustif des onglets),
-# jamais d'un nom de ticker suppose. Voir DEMANDE_DONNEES.md et data_coverage.json pour
-# la tracabilite complete.
+# Built from actually inspecting the file (an exhaustive dump of the sheets), never from
+# an assumed ticker name. See DEMANDE_DONNEES.md and data_coverage.json for full
+# traceability.
 SERIES_SPECS: dict[str, SeriesSpec] = {
     "jet_swap_m1": SeriesSpec(
-        sheet="JET", block_index=0, unit="c/gal MAIS CONVENTION INSTABLE",
+        sheet="JET", block_index=0, unit="c/gal BUT UNSTABLE CONVENTION",
         real_id="US Gulf Coast Jet Fuel 54 Grade Swap M1",
         note=(
-            "DEFAUT DE DONNEE CONFIRME : la serie alterne entre USD/gal (valeurs ~3-4) et "
-            "c/gal (valeurs ~300-400) a plusieurs reprises dans son historique (sauts "
-            "detectes en 2019-02, 2019-03, 2020-08/09/11, 2023-07, 2026-05). Ne pas "
-            "utiliser telle quelle pour un calcul de spread — soit normaliser via "
-            "`normalize_unit_jumps`, soit preferer 'jet_spot' qui est propre."
+            "CONFIRMED DATA DEFECT: the series alternates between USD/gal (values ~3-4) "
+            "and c/gal (values ~300-400) several times across its history (jumps "
+            "detected in 2019-02, 2019-03, 2020-08/09/11, 2023-07, 2026-05). Do not use "
+            "as-is for a spread calculation — either normalise via "
+            "`normalize_unit_jumps`, or prefer 'jet_spot' which is clean."
         ),
     ),
     "jet_spot": SeriesSpec(
         sheet="JET", block_index=1, unit="c/gal",
         real_id="US Gulf Coast Jet Fuel 54 Prompt Spot",
-        note="Verifie propre : aucun saut de convention detecte sur 8542 observations (1990-2026).",
+        note="Verified clean: no convention jump detected over 8542 observations (1990-2026).",
     ),
     "ulsd": SeriesSpec(
         sheet="HO1 Comdty", block_index=0, unit="c/gal",
         real_id="NYMEX ULSD / Heating Oil front month",
         note=(
-            "COTE EN CENTS PAR GALLON — donc en VOLUME. La jambe europeenne (ice_gasoil) "
-            "est en USD par TONNE, donc en MASSE. Le facteur entre les deux est une "
-            "densite, pas une constante : voir `freight.chains.products`, ou l'incertitude "
-            "sur cette densite vaut 91 % de la variabilite de l'arb qu'elle sert a calculer."
+            "QUOTED IN CENTS PER GALLON — i.e. by VOLUME. The European leg (ice_gasoil) "
+            "is in USD per TONNE, i.e. by MASS. The factor between the two is a "
+            "density, not a constant: see `freight.chains.products`, where the "
+            "uncertainty on this density is worth 91% of the variability of the arb it "
+            "is used to compute."
         ),
     ),
     "ice_gasoil": SeriesSpec(
         sheet="QS1 Comdty", block_index=0, unit="USD/t",
         real_id="ICE Gasoil (Low Sulphur) front month",
         note=(
-            "Jambe europeenne de l'arb distillat transatlantique, cotee a la TONNE. Sert "
-            "aussi de proxy MGO dans `agri.chains.freight_cf` faute d'assessment bunker "
-            "port par port — deux usages, une seule serie, et les deux sont documentes."
+            "European leg of the transatlantic distillate arb, quoted per tonne. Also "
+            "used as an MGO proxy in `agri.chains.freight_cf` for lack of a port-by-port "
+            "bunker assessment — two uses, one series, and both are documented."
         ),
     ),
     "ttf": SeriesSpec(
@@ -104,7 +104,7 @@ SERIES_SPECS: dict[str, SeriesSpec] = {
         real_id="NYMEX Henry Hub Natural Gas front month",
     ),
     "eurusd": SeriesSpec(
-        sheet="EUR USD", block_index=0, unit="EUR par USD (verifier le sens)",
+        sheet="EUR USD", block_index=0, unit="EUR per USD (check the direction)",
         real_id="EURUSD",
     ),
     "brent": SeriesSpec(
@@ -118,21 +118,21 @@ SERIES_SPECS: dict[str, SeriesSpec] = {
         real_id="Middle East Dubai Crude FOB Fateh Cargo Spot",
     ),
     "sofr": SeriesSpec(
-        sheet="SOFRRATE Index", block_index=0, unit="fraction décimale (0,0433 = 4,33 %)",
+        sheet="SOFRRATE Index", block_index=0, unit="decimal fraction (0.0433 = 4.33%)",
         real_id="SOFR", scale=0.01,
         note=(
-            "DEFAUT TROUVE ET CORRIGE : Bloomberg cote le SOFR en POURCENTS (5,40 au pic "
-            "du resserrement 2023), pas en fraction decimale. Additionne tel quel a un "
-            "spread deja exprime en decimal (250 bps -> 0,025), il produisait un taux "
-            "tout compris de 243 % et gonflait le cout de financement d'un facteur ~100. "
-            "`scale=0.01` rend le contrat du loader uniforme : **tout taux sort en "
-            "fraction decimale**, prete a multiplier un montant."
+            "DEFECT FOUND AND FIXED: Bloomberg quotes SOFR in PERCENT (5.40 at the peak "
+            "of the 2023 tightening), not as a decimal fraction. Added as-is to a "
+            "spread already expressed in decimal (250 bps -> 0.025), it produced an "
+            "all-in rate of 243% and inflated the financing cost by a factor of ~100. "
+            "`scale=0.01` makes the loader's contract uniform: **every rate comes out "
+            "as a decimal fraction**, ready to multiply an amount."
         ),
     ),
-    # --- Softs ICE : cacao, cafe, sucre. Tous verifies sans saut de convention. ---
+    # --- ICE softs: cocoa, coffee, sugar. All verified with no convention jump. ---
     "cocoa_ny": SeriesSpec(
         sheet="CC1 Comdty", block_index=0, unit="USD/t", real_id="ICE Cocoa New York front month",
-        note="Max observe 12 565 USD/t — coincide avec le pic reel d'avril 2024, confirme que la serie n'est pas re-echelonnee.",
+        note="Max observed 12,565 USD/t — matches the real April 2024 peak, confirming the series isn't rescaled.",
     ),
     "cocoa_london": SeriesSpec(
         sheet="QC1 Comdty", block_index=0, unit="GBP/t", real_id="ICE Cocoa London front month",
@@ -143,99 +143,100 @@ SERIES_SPECS: dict[str, SeriesSpec] = {
     "coffee_robusta": SeriesSpec(
         sheet="DF1 Comdty", block_index=0, unit="USD/t", real_id="ICE Robusta Coffee front month",
         note=(
-            "Identite deduite de la position dans la sequence CC1/QC1/KC1/DF1/SB1/QW1, "
-            "PAS confirmee via DES. Coherence de niveau : max 5817 USD/t proche du record "
-            "reel robusta 2024 (~5800 USD/t) — plausible mais a verifier avant usage engageant."
+            "Identity inferred from its position in the CC1/QC1/KC1/DF1/SB1/QW1 "
+            "sequence, NOT confirmed via DES. Level consistency: max 5817 USD/t close "
+            "to the real 2024 robusta record (~5800 USD/t) — plausible but to verify "
+            "before any binding use."
         ),
     ),
     "sugar_no11": SeriesSpec(
-        sheet="SB1 Comdty", block_index=0, unit="c/lb, base 96 pol", real_id="ICE Sugar No.11 front month",
+        sheet="SB1 Comdty", block_index=0, unit="c/lb, 96 pol basis", real_id="ICE Sugar No.11 front month",
     ),
     "sugar_no5": SeriesSpec(
         sheet="QW1 Comdty", block_index=0, unit="USD/t", real_id="ICE Sugar No.5 (white) front month",
     ),
-    # --- CBOT grains : COTES EN CENTS/BOISSEAU dans cet export, scale=0.01 (voir SeriesSpec.scale) ---
+    # --- CBOT grains: QUOTED IN CENTS/BUSHEL in this export, scale=0.01 (see SeriesSpec.scale) ---
     "cbot_soybean": SeriesSpec(
         sheet="S 1 Comdty", block_index=0, unit="USD/bu", real_id="CBOT Soybean front month",
-        scale=0.01, note="Brut en c/bu (ex. 1156.50) ; scale=0.01 -> 11,565 USD/bu.",
+        scale=0.01, note="Raw in c/bu (e.g. 1156.50); scale=0.01 -> 11.565 USD/bu.",
     ),
     "cbot_corn": SeriesSpec(
         sheet="C 1 Comdty", block_index=0, unit="USD/bu", real_id="CBOT Corn front month",
-        scale=0.01, note="Brut en c/bu ; scale=0.01.",
+        scale=0.01, note="Raw in c/bu; scale=0.01.",
     ),
     "cbot_wheat": SeriesSpec(
         sheet="W 1 Comdty", block_index=0, unit="USD/bu", real_id="CBOT Wheat (SRW) front month",
-        scale=0.01, note="Brut en c/bu ; scale=0.01.",
+        scale=0.01, note="Raw in c/bu; scale=0.01.",
     ),
     "cbot_soymeal": SeriesSpec(
         sheet="SM1 Comdty", block_index=0, unit="USD/short ton", real_id="CBOT Soybean Meal front month",
-        note="Deja en USD/short ton natif — pas de scale (niveaux 120-550 coherents sans conversion).",
+        note="Already in native USD/short ton — no scale (levels 120-550 consistent with no conversion).",
     ),
     "cbot_soyoil": SeriesSpec(
         sheet="BO1 Comdty", block_index=0, unit="c/lb", real_id="CBOT Soybean Oil front month",
-        note="Deja en c/lb natif — pas de scale (niveaux 14-90 coherents sans conversion).",
+        note="Already in native c/lb — no scale (levels 14-90 consistent with no conversion).",
     ),
     "palm_oil_myr": SeriesSpec(
         sheet="KO1 Comdty", block_index=0, unit="MYR/t", real_id="Bursa Malaysia Crude Palm Oil front month",
         note=(
-            "COTEE EN RINGGITS MALAIS, pas en dollars. Niveaux 657-8163 sur 1995-2026, "
-            "coherents avec du MYR/tonne (la palme en USD/t vaut 400-1500 sur la meme "
-            "periode). L'export ne contient AUCUNE serie USDMYR : tout spread palme-soja "
-            "melangerait donc deux devises, ce qui est exactement l'erreur que ce "
-            "portefeuille traque. Voir `oil_substitution` : la seule fenetre exploitable "
-            "est celle de la parite fixe 1998-2005, ou le change est une constante connue."
+            "QUOTED IN MALAYSIAN RINGGIT, not dollars. Levels 657-8163 over 1995-2026, "
+            "consistent with MYR/tonne (palm oil in USD/t is worth 400-1500 over the "
+            "same period). The export contains NO USDMYR series at all: any palm-soy "
+            "spread would therefore mix two currencies, which is exactly the error this "
+            "portfolio tracks. See `oil_substitution`: the only usable window is the "
+            "1998-2005 fixed-peg period, where the FX rate is a known constant."
         ),
     ),
-    # --- DCE Chine ---
+    # --- China DCE ---
     "dce_soymeal": SeriesSpec(
         sheet="AE1 Comdty", block_index=0, unit="CNY/t", real_id="DCE Soybean Meal front month",
     ),
     "dce_soyoil": SeriesSpec(
         sheet="SH1 Comdty", block_index=0, unit="CNY/t", real_id="DCE Soybean Oil front month",
     ),
-    # --- Change ---
+    # --- FX ---
     "usdbrl": SeriesSpec(
-        sheet="USDBRL Curncy", block_index=0, unit="BRL par USD", real_id="USDBRL",
+        sheet="USDBRL Curncy", block_index=0, unit="BRL per USD", real_id="USDBRL",
         valid_from="1994-07-01",
-        note="Avant juillet 1994 : cruzeiro/cruzeiro real pre-Plano Real (hyperinflation) — monnaie differente, exclue plutot que reechelonnee.",
+        note="Before July 1994: pre-Plano Real cruzeiro/cruzeiro real (hyperinflation) — a different currency, excluded rather than rescaled.",
     ),
     "usdcny": SeriesSpec(
-        sheet="USDCNY Curncy", block_index=0, unit="CNY par USD", real_id="USDCNY",
+        sheet="USDCNY Curncy", block_index=0, unit="CNY per USD", real_id="USDCNY",
     ),
-    # --- Fret sec : la route P8 est coupee en DEUX REGIMES D'UNITE ---
-    # C'est le meme defaut que 'jet_swap_m1', mais il tombe ici sur le sujet meme de la
-    # page T1-1 : la confusion entre un TCE en USD/JOUR et un taux de voyage en USD/TONNE.
+    # --- Dry freight: the P8 route is split across TWO UNIT REGIMES ---
+    # Same defect as 'jet_swap_m1', but here it lands on page T1-1's very subject: the
+    # confusion between a TCE in USD/DAY and a voyage rate in USD/TONNE.
     "p8_route_usd_t": SeriesSpec(
         sheet="P8 FFA 66kt Santos to Qingdao M", block_index=0, unit="USD/t",
-        real_id="P8 FFA 66kt Santos->Qingdao M0, segment taux de voyage",
+        real_id="P8 FFA 66kt Santos->Qingdao M0, voyage-rate segment",
         valid_from="2021-11-18", min_valid=5.0,
         note=(
-            "SEGMENT USD/TONNE UNIQUEMENT (2021-11-18 -> 2026-08-08, 774 prints, "
-            "35,8-84,5 USD/t). Avant cette date la meme cellule cote un TCE en USD/JOUR "
-            "(2021-07-01 -> 2021-10-30, 103 prints, 24 500-38 000). Les deux segments "
-            "n'ont AUCUNE date commune et sont separes par 19 jours de trou : le facteur "
-            "de conversion ne peut donc pas etre calibre sur la jonction, le marche ayant "
-            "bouge entre les deux. Un print nul au 2022-04-30 est ecarte par min_valid."
+            "USD/TONNE SEGMENT ONLY (2021-11-18 -> 2026-08-08, 774 prints, "
+            "35.8-84.5 USD/t). Before that date the same cell quotes a TCE in USD/DAY "
+            "(2021-07-01 -> 2021-10-30, 103 prints, 24,500-38,000). The two segments "
+            "share NO common date and are separated by a 19-day gap: the conversion "
+            "factor therefore cannot be calibrated at the junction, since the market "
+            "moved between the two. A zero print on 2022-04-30 is dropped by min_valid."
         ),
     ),
     "p8_route_tce_2021": SeriesSpec(
-        sheet="P8 FFA 66kt Santos to Qingdao M", block_index=0, unit="USD/jour (TCE)",
-        real_id="P8 FFA 66kt Santos->Qingdao M0, segment TCE",
+        sheet="P8 FFA 66kt Santos to Qingdao M", block_index=0, unit="USD/day (TCE)",
+        real_id="P8 FFA 66kt Santos->Qingdao M0, TCE segment",
         valid_to="2021-10-30",
         note=(
-            "Le segment amont de la MEME cellule, en USD/jour. Conserve separement parce "
-            "qu'un TCE est l'entree naturelle du modele de voyage, alors qu'un taux en "
-            "USD/t en est la sortie — les melanger est exactement l'erreur que T1-1 mesure."
+            "The upstream segment of the SAME cell, in USD/day. Kept separate because "
+            "a TCE is the voyage model's natural input, while a USD/t rate is its "
+            "output — mixing them is exactly the error T1-1 measures."
         ),
     ),
     "bpi": SeriesSpec(
-        sheet="BPI Baltic Exchange Panamax Ind", block_index=0, unit="points d'indice",
-        real_id="Baltic Panamax Index (moyenne TC P1A/P2A/P3A/P4)",
+        sheet="BPI Baltic Exchange Panamax Ind", block_index=0, unit="index points",
+        real_id="Baltic Panamax Index (average of TC P1A/P2A/P3A/P4)",
         note=(
-            "POINTS D'INDICE, pas des USD : le BPI est une moyenne ponderee de quatre "
-            "routes timecharter, publiee en points. Il ne se convertit pas en USD/t sans "
-            "passer par le 5TC en USD/jour, absent de l'export. Utilise ici comme "
-            "contexte de cycle, jamais comme terme d'un calcul de cout."
+            "INDEX POINTS, not USD: the BPI is a weighted average of four timecharter "
+            "routes, published in points. It doesn't convert to USD/t without going "
+            "through the 5TC in USD/day, absent from the export. Used here as cycle "
+            "context, never as a term in a cost calculation."
         ),
     ),
     "vlsfo_singapore": SeriesSpec(
@@ -246,8 +247,8 @@ SERIES_SPECS: dict[str, SeriesSpec] = {
 
 
 def _find_date_blocks(rows: list[tuple]) -> list[tuple[int, int]]:
-    """Toutes les positions (ligne, colonne) ou une cellule 'Date' apparait, dans les 12
-    premieres lignes — un onglet peut porter plusieurs series cote a cote."""
+    """Every (row, column) position where a 'Date' cell appears, in the first 12
+    rows — a sheet can carry several series side by side."""
     blocks = []
     for i, row in enumerate(rows[:12]):
         for j, cell in enumerate(row):
@@ -259,25 +260,25 @@ def _find_date_blocks(rows: list[tuple]) -> list[tuple[int, int]]:
 def load_raw_series(
     key: str, *, path: Path = DEFAULT_PATH, dropna: bool = True
 ) -> pd.Series:
-    """Charge une serie par sa cle dans `SERIES_SPECS`. Aucun ffill, aucune interpolation.
+    """Loads a series by its key in `SERIES_SPECS`. No ffill, no interpolation.
 
-    `dropna=True` (par defaut) retire les dates sans valeur — frequent en tete de fichier
-    Bloomberg (ex. une ligne datee sans print encore arrive). Passer False pour voir les
-    trous bruts.
+    `dropna=True` (default) drops dates with no value — common at the top of a
+    Bloomberg file (e.g. a dated row whose print hasn't landed yet). Pass False to see
+    the raw gaps.
     """
     if key not in SERIES_SPECS:
         raise BloombergLoaderError(
-            f"cle inconnue : {key!r}. Cles disponibles : {sorted(SERIES_SPECS)}"
+            f"unknown key: {key!r}. Available keys: {sorted(SERIES_SPECS)}"
         )
     spec = SERIES_SPECS[key]
     if not path.exists():
-        raise BloombergLoaderError(f"fichier introuvable : {path}")
+        raise BloombergLoaderError(f"file not found: {path}")
 
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     if spec.sheet not in wb.sheetnames:
         raise BloombergLoaderError(
-            f"onglet {spec.sheet!r} absent du fichier — l'export a-t-il change depuis "
-            f"data_coverage.json ? Onglets disponibles : {wb.sheetnames}"
+            f"sheet {spec.sheet!r} missing from the file — has the export changed "
+            f"since data_coverage.json? Available sheets: {wb.sheetnames}"
         )
 
     ws = wb[spec.sheet]
@@ -285,8 +286,8 @@ def load_raw_series(
     blocks = _find_date_blocks(rows)
     if spec.block_index >= len(blocks):
         raise BloombergLoaderError(
-            f"bloc {spec.block_index} demande mais l'onglet {spec.sheet!r} n'en contient "
-            f"que {len(blocks)}"
+            f"block {spec.block_index} requested but sheet {spec.sheet!r} only "
+            f"contains {len(blocks)}"
         )
     header_row, col = blocks[spec.block_index]
 
@@ -309,9 +310,9 @@ def load_raw_series(
     if spec.valid_to is not None:
         series = series.loc[: pd.Timestamp(spec.valid_to)]
     if spec.min_valid is not None:
-        # Un print physiquement impossible (un fret nul, un prix negatif) est ecarte
-        # plutot que laisse circuler : il ne represente pas un etat du marche, et il
-        # casse silencieusement toute division en aval.
+        # A physically impossible print (zero freight, a negative price) is dropped
+        # rather than let through: it doesn't represent a market state, and it
+        # silently breaks every downstream division.
         series = series[series > spec.min_valid]
     if dropna:
         series = series.dropna()
@@ -319,27 +320,27 @@ def load_raw_series(
 
 
 def load(key: str, *, path: Path = DEFAULT_PATH) -> pd.Series:
-    """Raccourci standard : `load('ttf')`, `load('henry_hub')`, etc."""
+    """Standard shortcut: `load('ttf')`, `load('henry_hub')`, etc."""
     return load_raw_series(key, path=path)
 
 
 def detect_unit_jumps(series: pd.Series, *, factor_threshold: float = 20.0) -> pd.Series:
-    """Detecte les sauts de convention d'unite : jour a jour, un facteur > 20x ou < 0.05x.
+    """Detects unit-convention jumps: day over day, a factor > 20x or < 0.05x.
 
-    Un vrai mouvement de marche ne multiplie jamais un prix par 100 du jour au lendemain ;
-    un changement de convention d'affichage (USD vs cents) le fait. C'est le controle qui
-    a permis de trouver le defaut de 'jet_swap_m1' : la serie alterne entre les deux
-    conventions plusieurs fois dans son historique. Renvoie les dates ou le saut se
-    produit, avec le ratio observe — vide si la serie est propre.
+    A real market move never multiplies a price by 100 overnight; a display-convention
+    change (USD vs cents) does. This is the check that found the 'jet_swap_m1' defect:
+    the series alternates between the two conventions several times across its history.
+    Returns the dates where the jump occurs, with the observed ratio — empty if the
+    series is clean.
     """
     ratio = series / series.shift(1)
     return ratio[(ratio > factor_threshold) | (ratio < 1.0 / factor_threshold)]
 
 
 def available_range(key: str, *, path: Path = DEFAULT_PATH) -> tuple[pd.Timestamp, pd.Timestamp, int]:
-    """Premiere date, derniere date, nombre d'observations non nulles — pour le panneau
-    de diagnostics d'une page (staleness, profondeur d'historique)."""
+    """First date, last date, number of non-null observations — for a page's
+    diagnostics panel (staleness, history depth)."""
     series = load_raw_series(key, path=path)
     if series.empty:
-        raise BloombergLoaderError(f"serie {key!r} vide apres lecture")
+        raise BloombergLoaderError(f"series {key!r} empty after reading")
     return series.index.min(), series.index.max(), len(series)

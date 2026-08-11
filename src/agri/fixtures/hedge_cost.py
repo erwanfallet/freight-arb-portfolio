@@ -1,16 +1,16 @@
-"""Jeu synthétique T1-2 — le cycle cacao 2022-2026, avec ses deux punitions.
+"""T1-2 synthetic dataset — the 2022-2026 cocoa cycle, with its two punishments.
 
-Trois propriétés **imposées**, vérifiées par les golden tests :
+Three properties **imposed**, verified by the golden tests:
 
-1. le prix monte d'environ x5 jusqu'à un pic en décembre 2024, puis s'effondre — c'est le
-   retournement qui rend le projet neuf ;
-2. la courbe est en **backwardation pendant la hausse** (le déféré sous le front) et en
-   contango dans les phases calmes — donc le short paie le roll exactement quand il paie
-   déjà les appels de marge ;
-3. la volatilité, donc la marge initiale, est multipliée par un facteur proche de neuf au
-   pic — l'ancrage Barry Callebaut.
+1. the price rises roughly x5 to a December 2024 peak, then collapses — that's the
+   reversal that makes the project new;
+2. the curve is in **backwardation during the rally** (the deferred below the front) and
+   in contango during the calm phases — so the short pays the roll exactly when they're
+   already paying margin calls;
+3. volatility, and therefore the initial margin, is multiplied by a factor close to nine
+   at the peak — the Barry Callebaut anchor.
 
-Tickers préfixés `SYNTH_`.
+Tickers prefixed `SYNTH_`.
 """
 from __future__ import annotations
 
@@ -21,21 +21,21 @@ DEFAULT_START = "2022-01-03"
 DEFAULT_END = "2026-06-30"
 
 PEAK_DATE = pd.Timestamp("2024-12-16")
-CALM_PRICE = 2_400.0            # USD/t, régime d'avant-crise
-PEAK_PRICE = 11_500.0           # USD/t, ordre de grandeur du pic
-TROUGH_PRICE = 5_200.0          # USD/t, après l'effondrement
+CALM_PRICE = 2_400.0            # USD/t, pre-crisis regime
+PEAK_PRICE = 11_500.0           # USD/t, order of magnitude of the peak
+TROUGH_PRICE = 5_200.0          # USD/t, after the collapse
 
-# Fenêtres d'analyse pour le graphe en miroir de la section S6.
+# Analysis windows for the S6 section's mirror chart.
 WINDOWS = {
-    "hausse 2023-24 (le short paie)": ("2023-06-01", "2024-12-16"),
-    "baisse 2025-26 (le long paie)": ("2025-01-02", "2026-06-30"),
+    "2023-24 rally (the short pays)": ("2023-06-01", "2024-12-16"),
+    "2025-26 decline (the long pays)": ("2025-01-02", "2026-06-30"),
 }
 
 
 def build(
     *, start: str = DEFAULT_START, end: str = DEFAULT_END, seed: int = 0
 ) -> dict:
-    """Séries d'entrée de T1-2 : front, déféré, volatilité implicite du régime, taux, rolls."""
+    """T1-2's input series: front, deferred, regime implied volatility, rate, rolls."""
     rng = np.random.default_rng(seed)
     index = pd.date_range(start, end, freq="B")
     n = len(index)
@@ -44,33 +44,33 @@ def build(
     peak_day = float((PEAK_DATE - index[0]).days)
     total_days = days[-1]
 
-    # --- trajectoire de prix : montée exponentielle puis effondrement ---
+    # --- price path: exponential rise then collapse ---
     ramp = np.clip(days / peak_day, 0.0, 1.0) ** 2.2
     fall = np.clip((days - peak_day) / (total_days - peak_day), 0.0, 1.0) ** 0.8
     trend = CALM_PRICE + (PEAK_PRICE - CALM_PRICE) * ramp - (PEAK_PRICE - TROUGH_PRICE) * fall
 
-    # volatilité du régime : faible au calme, x3 sur l'emballement
-    stress = np.exp(-(((days - peak_day) / 210.0) ** 2))       # cloche centrée sur le pic
+    # regime volatility: low when calm, x3 during the frenzy
+    stress = np.exp(-(((days - peak_day) / 210.0) ** 2))       # bell centred on the peak
     daily_vol = 0.010 + 0.024 * stress
     noise = np.cumsum(rng.normal(scale=daily_vol, size=n))
     front = pd.Series(trend * np.exp(noise - noise.mean() * 0.0), index=index, name="SYNTH_COCOA_FRONT")
     front = front.clip(lower=800.0)
 
-    # --- structure par terme : backwardation pendant le stress, contango au calme ---
-    # spread = deferred - front. Negatif = backwardation.
+    # --- term structure: backwardation under stress, contango when calm ---
+    # spread = deferred - front. Negative = backwardation.
     spread = -front * (0.045 * stress) + front * (0.008 * (1.0 - stress))
     deferred = pd.Series(
         (front + spread).to_numpy(), index=index, name="SYNTH_COCOA_DEFERRED"
     ).clip(lower=700.0)
 
-    # --- taux de financement : remontée 2022-2023 puis plateau ---
+    # --- financing rate: rising through 2022-2023 then plateauing ---
     rate = pd.Series(
         np.clip(0.005 + 0.045 * np.clip(days / 400.0, 0.0, 1.0), 0.005, 0.055),
         index=index,
         name="SYNTH_SOFR",
     )
 
-    # --- dates de roll : le 15 de chaque mois, ramené au jour ouvré précédent ---
+    # --- roll dates: the 15th of each month, rolled back to the previous business day ---
     month_starts = pd.date_range(index[0], index[-1], freq="MS")
     candidates = month_starts + pd.Timedelta(days=14)
     roll_dates = pd.DatetimeIndex(

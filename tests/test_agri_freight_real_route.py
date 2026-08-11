@@ -1,10 +1,10 @@
-"""Golden tests T1-1 sur la route P8 réelle — et l'arbitrage du désaccord de ballast.
+"""Golden tests T1-1 on the real P8 route — and arbitrating the ballast disagreement.
 
-Le résultat central de la page : la série P8 de l'export contient **deux régimes
-d'unité**, un TCE en USD/jour (jul-oct 2021) puis un taux de voyage en USD/tonne
-(nov 2021 →). Le premier, qu'il a fallu isoler comme défaut de données, sert ensuite de
-banc d'essai au second : il donne le niveau de TCE réellement coté sur cette route au
-**pic** du boom vraquier, donc un plafond de plausibilité.
+The page's central result: the export's P8 series contains **two unit regimes**, a TCE
+in USD/day (Jul-Oct 2021) then a voyage rate in USD/tonne (Nov 2021 onward). The first,
+which had to be isolated as a data defect, then serves as a testbed for the second: it
+gives the TCE level actually quoted on this route at the **peak** of the dry bulk boom,
+i.e. a plausibility ceiling.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from agri.core.voyage import ROUTES, VESSELS, VoyageParams
 from agri.data.bloomberg_loader import DEFAULT_PATH, load
 
 pytestmark = pytest.mark.skipif(
-    not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}"
+    not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}"
 )
 
 PANAMAX = VESSELS["panamax"]
@@ -29,12 +29,12 @@ SANTOS_QINGDAO = ROUTES["santos_qingdao"]
 
 
 # ===========================================================================
-# Le défaut de donnée : deux régimes d'unité dans la même cellule
+# The data defect: two unit regimes in the same cell
 # ===========================================================================
 def test_p8_splits_into_two_unit_regimes_with_no_overlap():
-    """Le segment USD/jour s'arrête le 30/10/2021, le segment USD/t reprend le 18/11/2021 :
-    19 jours de trou et **aucune date commune**. Le facteur de conversion ne peut donc pas
-    être calibré sur la jonction — le marché a bougé entre les deux."""
+    """The USD/day segment stops on 30/10/2021, the USD/t segment resumes on
+    18/11/2021: a 19-day gap and **no common date**. The conversion factor therefore
+    can't be calibrated at the junction — the market moved between the two."""
     tce = load("p8_route_tce_2021")
     rate = load("p8_route_usd_t")
 
@@ -45,9 +45,9 @@ def test_p8_splits_into_two_unit_regimes_with_no_overlap():
 
 
 def test_each_segment_is_internally_plausible_in_its_own_unit():
-    """Un TCE Panamax de 24 500-38 000 USD/jour est le pic réel du boom 2021 ; un taux de
-    voyage Santos-Qingdao de 36-85 USD/t est l'ordre de grandeur normal. Chaque segment
-    est cohérent **dans son unité** — c'est leur juxtaposition qui ne l'est pas."""
+    """A Panamax TCE of 24,500-38,000 USD/day is the real peak of the 2021 boom; a
+    Santos-Qingdao voyage rate of 36-85 USD/t is the normal order of magnitude. Each
+    segment is consistent **in its own unit** — it's their juxtaposition that isn't."""
     tce = load("p8_route_tce_2021")
     rate = load("p8_route_usd_t")
 
@@ -56,15 +56,15 @@ def test_each_segment_is_internally_plausible_in_its_own_unit():
 
 
 def test_the_impossible_zero_print_is_dropped():
-    """Un fret nul au 30/04/2022 : physiquement impossible, et il casserait toute division
-    en aval. Écarté par `min_valid` plutôt que laissé circuler."""
+    """A zero freight print on 30/04/2022: physically impossible, and it would break
+    every downstream division. Dropped by `min_valid` rather than left to circulate."""
     rate = load("p8_route_usd_t")
     assert pd.Timestamp("2022-04-30") not in rate.index
     assert (rate > 0).all()
 
 
 # ===========================================================================
-# L'inversion : le même print, deux conventions
+# The inversion: the same print, two conventions
 # ===========================================================================
 @pytest.fixture(scope="module")
 def spread():
@@ -72,30 +72,33 @@ def spread():
 
 
 def test_no_ballast_reading_always_implies_a_higher_tce(spread):
-    """Invariant : à revenu identique, ne pas facturer le repositionnement à vide écrase
-    la durée du cycle, donc gonfle le TCE dégagé. L'écart est strictement positif partout."""
+    """Invariant: at identical revenue, not charging empty repositioning crushes the
+    cycle's duration, thus inflating the resulting TCE. The gap is strictly positive
+    everywhere."""
     assert (spread.tce_no_ballast > spread.tce_full_ballast).all()
     assert (spread.spread > 0).all()
 
 
 def test_the_gap_is_large_enough_to_be_the_whole_argument(spread):
-    """L'écart médian entre les deux lectures dépasse 30 000 USD/jour — du même ordre que
-    le TCE lui-même. Ce n'est pas un raffinement de modèle, c'est la question."""
+    """The median gap between the two readings exceeds 30,000 USD/day — the same
+    order of magnitude as the TCE itself. This isn't a model refinement, it's the
+    question."""
     assert spread.spread.median() > 25_000
     assert "in the freight department's unit" in spread.headline
 
 
 # ===========================================================================
-# LE RÉSULTAT — le segment défectueux arbitre le désaccord
+# THE RESULT — the defective segment settles the disagreement
 # ===========================================================================
 def test_the_no_ballast_reading_implies_an_impossible_market(spread):
-    """LE test de la page.
+    """THE page's test.
 
-    Le segment TCE de 2021 donne le niveau réellement coté sur cette route au **pic** du
-    boom vraquier : 38 000 USD/jour au plus haut. Lire le taux publié sans facturer le
-    ballast implique un TCE supérieur à ce pic **quasiment tout le temps** sur 2021-2026 —
-    ce qui reviendrait à dire que le marché a passé cinq ans au-dessus de son propre
-    sommet. La lecture du desk trading est donc arithmétiquement intenable.
+    The 2021 TCE segment gives the level actually quoted on this route at the
+    **peak** of the dry bulk boom: 38,000 USD/day at the top. Reading the published
+    rate without charging ballast implies a TCE above that peak **almost the entire
+    time** over 2021-2026 — which would amount to saying the market spent five years
+    above its own high. The trading desk's reading is therefore arithmetically
+    untenable.
     """
     boom_peak = float(load("p8_route_tce_2021").max())
     share_above = float((spread.tce_no_ballast > boom_peak).mean())
@@ -103,9 +106,9 @@ def test_the_no_ballast_reading_implies_an_impossible_market(spread):
 
 
 def test_the_full_ballast_reading_is_plausible(spread):
-    """Contraste direct : la même inversion en facturant le ballast reste sous le pic du
-    boom presque tout le temps. C'est ce qui fait pencher la balance du côté du
-    département fret — pas un argument d'autorité, une borne de plausibilité."""
+    """Direct contrast: the same inversion charging ballast stays below the boom's
+    peak almost all the time. That's what tips the balance toward the freight
+    department's side — not an argument from authority, a plausibility bound."""
     boom_peak = float(load("p8_route_tce_2021").max())
     share_above = float((spread.tce_full_ballast > boom_peak).mean())
     assert share_above < 0.10
@@ -118,11 +121,11 @@ def test_full_ballast_median_sits_below_the_2021_peak(spread):
 
 
 # ===========================================================================
-# La part de ballast que le marché price
+# The ballast share the market prices in
 # ===========================================================================
 def test_market_implied_ballast_share_recovers_a_known_input():
-    """Contrôle de cohérence de l'inversion : on fabrique un taux avec une part de
-    ballast connue, puis on vérifie que le solveur la retrouve."""
+    """Inversion consistency check: a rate is built with a known ballast share, then
+    the solver is checked to recover it."""
     from agri.core.voyage import voyage_freight_usd_t
 
     known_share = 0.6
@@ -141,10 +144,10 @@ def test_market_implied_ballast_share_recovers_a_known_input():
 
 
 def test_a_rate_above_the_model_range_names_the_binding_end():
-    """Un taux publié que le modèle ne peut pas produire est un signal d'hypothèse de
-    voyage à revoir — et le message doit nommer la borne **contraignante**, pas la plus
-    éloignée. L'écart étant décroissant en ballast, un taux trop haut est celui qui
-    dépasse le modèle même à 100 % de ballast."""
+    """A published rate the model can't produce signals a voyage assumption to
+    revisit — and the message must name the **binding** bound, not the furthest one.
+    Since the gap decreases in ballast, a rate that's too high is one that exceeds the
+    model even at 100% ballast."""
     result = market_implied_ballast_share(
         500.0, 15_000.0, 500.0, 700.0,
         vessel=PANAMAX, route=SANTOS_QINGDAO, params=VoyageParams(),
@@ -165,8 +168,8 @@ def test_a_rate_below_the_model_range_names_the_other_end():
 
 
 def test_implied_share_is_monotone_in_the_published_rate():
-    """Le fret est affine croissant en ballast, donc un taux publié plus élevé implique
-    une part de ballast plus élevée. C'est ce qui garantit l'unicité de la racine."""
+    """Freight is affine increasing in ballast, so a higher published rate implies a
+    higher ballast share. That's what guarantees the root's uniqueness."""
     shares = [
         market_implied_ballast_share(
             rate, 15_000.0, 500.0, 700.0,

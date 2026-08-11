@@ -1,13 +1,12 @@
-"""Golden tests du simulateur de politique T2-5 et de l'inversion.
+"""Golden tests for the T2-5 policy simulator and its inversion.
 
-Le chemin de marge de référence, utilisé pour tous les calculs à la main :
+The reference margin path, used for every hand-computed calculation:
 
-    margin = [10, -5, -5, -5, -5, 10, 10, 10, 10]      (9 périodes)
-    coûts  : redémarrage 100, arrêt 50, maintien 1/période
+    margin = [10, -5, -5, -5, -5, 10, 10, 10, 10]      (9 periods)
+    costs  : restart 100, shutdown 50, idle 1/period
 
-Il est construit pour que la règle de persistance N=4 déclenche exactement une fois, au
-5e point : c'est la première date où les quatre valeurs qui précèdent (indice compris)
-sont toutes négatives.
+It's built so the N=4 persistence rule fires exactly once, at the 5th point: that's
+the first date where the four preceding values (inclusive) are all negative.
 """
 from __future__ import annotations
 
@@ -40,18 +39,18 @@ def path() -> pd.Series:
 
 
 # ===========================================================================
-# Le simulateur, calculé à la main
+# The simulator, hand-computed
 # ===========================================================================
 def test_heuristic_policy_hand_computed(path):
-    """Règle « marge < 0 pendant 4 périodes », symétrique au redémarrage.
+    """Rule "margin < 0 for 4 periods," symmetric on restart.
 
-    Arrêt au 5e point (indice 4) : c'est la première fenêtre de 4 toutes négatives.
-    Redémarrage au 9e (indice 8) : première fenêtre de 4 toutes positives.
+    Shutdown at the 5th point (index 4): the first window of 4 all-negative values.
+    Restart at the 9th (index 8): the first window of 4 all-positive values.
 
-        exploitation = 10 - 5 - 5 - 5 - 5        = -10   (5 périodes en marche)
-        switch       = 50 (arrêt) + 100 (redém.) = 150
-        maintien     = 4 périodes x 1            =   4
-        total        = -10 - 150 - 4             = -164
+        operating = 10 - 5 - 5 - 5 - 5           = -10   (5 periods running)
+        switch    = 50 (shutdown) + 100 (restart) = 150
+        idle      = 4 periods x 1                 =   4
+        total     = -10 - 150 - 4                 = -164
     """
     result = run_heuristic_policy(path, threshold=0.0, n_periods=4, **COSTS)
     assert result.n_stops == 1
@@ -65,26 +64,26 @@ def test_heuristic_policy_hand_computed(path):
 
 
 def test_persistence_rule_does_not_fire_before_n_periods(path):
-    """Le 4e point est négatif mais la fenêtre contient encore le +10 initial : pas d'arrêt.
+    """The 4th point is negative but the window still contains the initial +10: no shutdown.
 
-    C'est exactement ce que la persistance achète — et c'est aussi pourquoi la règle
-    arrête à un niveau de marge plus bas que son seuil affiché.
+    This is exactly what persistence buys — and it's also why the rule stops at a
+    margin level lower than its displayed threshold.
     """
     result = run_heuristic_policy(path, threshold=0.0, n_periods=4, **COSTS)
     assert result.stop_margins == [-5.0]
-    # l'arret a lieu a la 5e periode, pas a la 4e
+    # the shutdown happens at the 5th period, not the 4th
     assert bool(result.state.iloc[3]) is True
     assert bool(result.state.iloc[4]) is False
 
 
 def test_band_policy_hand_computed(path):
-    """Bande [-3, +5] : arrêt instantané au premier point sous -3, redémarrage au premier
-    point au-dessus de +5.
+    """Band [-3, +5]: instant shutdown at the first point below -3, restart at the
+    first point above +5.
 
-        exploitation = 10 - 5 + 10 + 10 + 10 = 35
-        switch       = 50 + 100              = 150
-        maintien     = 4 x 1                 =   4
-        total        = 35 - 150 - 4          = -119
+        operating = 10 - 5 + 10 + 10 + 10 = 35
+        switch    = 50 + 100              = 150
+        idle      = 4 x 1                 =   4
+        total     = 35 - 150 - 4          = -119
     """
     band = HysteresisBand(
         m_off=-3.0, m_on=5.0, grid=np.linspace(-20, 20, 5),
@@ -98,12 +97,12 @@ def test_band_policy_hand_computed(path):
 
 
 def test_always_on_is_the_counterfactual(path):
-    """Contrefactuel : somme brute du chemin, aucun coût de switch ni de maintien.
+    """Counterfactual: the path's raw sum, no switching or idle cost at all.
 
         10 + 4 x (-5) + 4 x 10 = 10 - 20 + 40 = +30
 
-    Il bat les deux règles sur ce chemin — un rappel que s'arrêter n'est pas
-    gratuitement bon, et que la comparaison doit toujours inclure ce cas.
+    It beats both rules on this path — a reminder that stopping isn't costlessly
+    good, and that the comparison must always include this case.
     """
     result = run_always_on_policy(path, **COSTS)
     assert result.n_stops == 0
@@ -113,7 +112,7 @@ def test_always_on_is_the_counterfactual(path):
 
 
 # ===========================================================================
-# La bande dégénérée — refuser plutôt que substituer
+# The degenerate band — refuse rather than substitute
 # ===========================================================================
 def test_degenerate_band_is_detected():
     band = HysteresisBand(
@@ -125,9 +124,9 @@ def test_degenerate_band_is_detected():
 
 
 def test_degenerate_band_refuses_to_run_rather_than_substituting(path):
-    """Le point de discipline : appliquer M_on < M_off ferait osciller l'usine à chaque
-    période, et lui substituer une politique de repli reviendrait à comparer une règle
-    que le modèle n'a pas produite."""
+    """The discipline point: applying M_on < M_off would make the plant oscillate
+    every period, and substituting a fallback policy would amount to comparing a rule
+    the model never produced."""
     band = HysteresisBand(
         m_off=10.0, m_on=-10.0, grid=np.linspace(-20, 20, 5),
         value_on=np.zeros(5), value_off=np.zeros(5), n_iterations=1, converged=True,
@@ -137,8 +136,8 @@ def test_degenerate_band_refuses_to_run_rather_than_substituting(path):
 
 
 def test_comparison_continues_without_the_band_when_degenerate(path):
-    """La comparaison ne s'interrompt pas : règle à seuil contre contrefactuel reste
-    informatif, et le headline dit pourquoi la bande manque."""
+    """The comparison doesn't stop: threshold rule against counterfactual stays
+    informative, and the headline says why the band is missing."""
     band = HysteresisBand(
         m_off=10.0, m_on=-10.0, grid=np.linspace(-20, 20, 5),
         value_on=np.zeros(5), value_off=np.zeros(5), n_iterations=1, converged=True,
@@ -147,30 +146,30 @@ def test_comparison_continues_without_the_band_when_degenerate(path):
     assert not comparison.band_is_available
     assert np.isnan(comparison.gap_vs_band)
     assert "No exercise boundary" in comparison.headline
-    # le contrefactuel reste calculable : -164 (heuristique) - 30 (jamais d'arret)
+    # the counterfactual is still computable: -164 (heuristic) - 30 (never stop)
     assert comparison.heuristic_flexibility_value == pytest.approx(-194.0)
     assert len(comparison.to_frame()) == 2
 
 
 # ===========================================================================
-# L'inversion, sur la vraie marge de crush chinoise
+# The inversion, on the real Chinese crush margin
 # ===========================================================================
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_chinese_crush_margin_is_the_right_anchor():
-    """Pourquoi cette page s'ancre sur la marge chinoise et non sur le board crush US :
-    elle passe réellement sous zéro (41 % du temps, jusqu'à -865 CNY/t) et elle est
-    stationnaire, donc la calibration OU y est légitime et la question du curtailment
-    y est vivante."""
+    """Why this page anchors on the Chinese margin rather than the US board crush: it
+    genuinely goes below zero (41% of the time, down to -865 CNY/t) and it's
+    stationary, so the OU calibration is legitimate there and the curtailment
+    question is alive there."""
     margin = load_real_crush_frame()["margin"]
     assert (margin < 0).mean() > 0.35
     assert margin.min() < -500
     assert calibrate_ou(margin, strict=False).stationarity.verdict == "stationary"
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_implied_switching_cost_is_the_deliverable():
-    """LE chiffre du mail : la règle N=4 arrête et redémarre à des niveaux précis, donc
-    elle suppose un coût d'aller-retour précis — ici ~143 CNY/t de fève triturée."""
+    """THE number for the email: the N=4 rule stops and restarts at precise levels,
+    so it assumes a precise round-trip cost — here ~143 CNY/t of bean crushed."""
     margin = load_real_crush_frame()["margin"]
     ou = calibrate_ou(margin, strict=False)
     implied = implied_switching_cost(margin, ou, cost_idle=2.0)
@@ -181,21 +180,22 @@ def test_implied_switching_cost_is_the_deliverable():
     assert "assumes without saying so" in implied.headline
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_rule_stops_below_its_own_threshold():
-    """La persistance déplace le point d'arrêt : la règle affiche un seuil de 0 mais
-    arrête en réalité bien en dessous. C'est ce décalage qui la rend équivalente à une
-    bande, donc traduisible en coût de switch."""
+    """Persistence shifts the stopping point: the rule displays a threshold of 0 but
+    actually stops well below it. It's this gap that makes it equivalent to a band,
+    and therefore translatable into a switching cost."""
     margin = load_real_crush_frame()["margin"]
     ou = calibrate_ou(margin, strict=False)
     implied = implied_switching_cost(margin, ou, cost_idle=2.0)
     assert implied.effective_m_off < -10.0
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_sensitivity_marks_degenerate_rows_instead_of_negative_widths():
-    """Régression du défaut trouvé en construisant la page : à faible coût de switch la
-    bande s'inverse, et une largeur négative se lisait comme une bande étroite."""
+    """Regression test for a defect found while building the page: at a low
+    switching cost the band inverts, and a negative width used to read as a narrow
+    band."""
     margin = load_real_crush_frame()["margin"]
     ou = calibrate_ou(margin, strict=False)
     table = switching_cost_sensitivity(
@@ -207,9 +207,9 @@ def test_sensitivity_marks_degenerate_rows_instead_of_negative_widths():
     assert table.loc[table["degenerate"], "band_width"].isna().all()
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_band_width_grows_with_switching_cost():
-    """Monotonie attendue — c'est elle qui autorise l'interpolation de l'inversion."""
+    """Expected monotonicity — it's what licenses interpolating the inversion."""
     margin = load_real_crush_frame()["margin"]
     ou = calibrate_ou(margin, strict=False)
     table = switching_cost_sensitivity(
@@ -219,12 +219,12 @@ def test_band_width_grows_with_switching_cost():
     assert valid["band_width"].is_monotonic_increasing
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_flexibility_is_worth_far_more_than_the_rule_choice():
-    """Hiérarchie des enjeux, à dire dans cet ordre : pouvoir s'arrêter vaut beaucoup
-    (~125 000 CNY/t cumulés contre ne jamais s'arrêter), choisir la bonne règle d'arrêt
-    vaut nettement moins (~3 000). Inverser cet ordre dans la présentation ferait passer
-    un raffinement pour le sujet principal."""
+    """Hierarchy of stakes, to be stated in this order: being able to stop is worth a
+    lot (~125,000 CNY/t cumulative against never stopping), picking the right
+    stopping rule is worth noticeably less (~3,000). Reversing this order in the
+    presentation would make a refinement look like the main subject."""
     margin = load_real_crush_frame()["margin"]
     ou = calibrate_ou(margin, strict=False)
     band = solve_hysteresis(ou, cost_restart=96.0, cost_shutdown=47.0, cost_idle=2.0)

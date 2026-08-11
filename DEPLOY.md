@@ -1,41 +1,41 @@
-# Déployer le dashboard sur Streamlit Community Cloud
+# Deploying the dashboard on Streamlit Community Cloud
 
-Le repo est prêt côté code (`requirements.txt` à la racine, testé dans un venv propre).
-Ce qui reste est hors de ce que je peux faire moi-même : ça passe par **ton** compte
-GitHub et **ton** compte Streamlit — je ne crée pas de comptes et je ne publie pas de
-contenu public en ton nom sans confirmation explicite.
+The repo is ready on the code side (`requirements.txt` at the root, tested in a clean
+venv). What's left is outside what I can do myself: it goes through **your** GitHub
+account and **your** Streamlit account — I don't create accounts and I don't publish
+public content on your behalf without explicit confirmation.
 
-**`gh` (CLI GitHub) est installé sur cette machine mais le token est expiré** — il faudra
-de toute façon repasser par toi pour `gh auth login` ou par l'interface web GitHub.
+**`gh` (the GitHub CLI) is installed on this machine but the token has expired** — either
+way you'll need to run `gh auth login` yourself, or go through the GitHub web interface.
 
-## Option 1 — Rapide, mais public
+## Option 1 — Fast, but public
 
-Le tiers gratuit de Streamlit Community Cloud exige un dépôt GitHub **public**. N'importe
-qui avec le lien (ou qui tombe dessus en cherchant) peut lire `PROJECT_NOTES.md`, les
-thèses, la méthode — tout ce qui est le cœur de la démarche de cold outreach.
+The free tier of Streamlit Community Cloud requires a **public** GitHub repo. Anyone with
+the link (or who stumbles on it while searching) can read `PROJECT_NOTES.md`, the
+theses, the method — everything at the heart of the cold-outreach approach.
 
-1. Créer un repo GitHub (public), par exemple `freight-arb-portfolio`
-2. Depuis `freight-project/` :
+1. Create a GitHub repo (public), e.g. `freight-arb-portfolio`
+2. From `freight-project/`:
    ```bash
-   git remote add origin https://github.com/<ton-user>/freight-arb-portfolio.git
+   git remote add origin https://github.com/<your-user>/freight-arb-portfolio.git
    git add -A
-   git commit -m "Portefeuille A/B/C + plateforme"
+   git commit -m "A/B/C portfolio + platform"
    git push -u origin main
    ```
-3. Sur [share.streamlit.io](https://share.streamlit.io) : se connecter avec GitHub, "New app",
-   choisir le repo, branche `main`, fichier principal `app/Home.py`, déployer.
+3. On [share.streamlit.io](https://share.streamlit.io): sign in with GitHub, "New app",
+   pick the repo, branch `main`, main file `app/Home.py`, deploy.
 
-## Option 2 — Privé
+## Option 2 — Private
 
-Deux façons de garder ça privé :
+Two ways to keep this private:
 
-- **Repo GitHub privé + Streamlit Cloud payant** (le tiers gratuit ne déploie pas depuis
-  un repo privé)
-- **Rester en local** : `make app` lance le dashboard sur `localhost:8501` — largement
-  suffisant pour un partage en visio ou un screenshare, sans rien publier
+- **Private GitHub repo + paid Streamlit Cloud** (the free tier doesn't deploy from a
+  private repo)
+- **Stay local**: `make app` launches the dashboard on `localhost:8501` — plenty for a
+  video call or screen share, without publishing anything
 
-## Ce qui est déjà prêt, quel que soit le choix
+## What's already ready, whichever option you pick
 
-- `requirements.txt` — vérifié dans un venv propre, installe le paquet et l'app d'un coup
-- `app/Home.py` comme point d'entrée, déjà celui que `make app` utilise en local
-- 90 tests verts, rien de cassé par l'ajout de la plateforme
+- `requirements.txt` — verified in a clean venv, installs the package and the app in one shot
+- `app/Home.py` as the entry point, already what `make app` uses locally
+- 90 tests green, nothing broken by adding the platform

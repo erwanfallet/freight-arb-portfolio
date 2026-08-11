@@ -60,7 +60,7 @@ def test_consecana_sensitivity_moves_the_parity():
     data = tier3.sugar_prices()
     table = consecana_sensitivity(data["ny11"], data["hydrous"], data["usdbrl"])
     assert table["atr_sugar"].is_monotonic_increasing
-    # un ATR sucre plus eleve renchérit l'equivalent ethanol -> comprime le gap
+    # a higher sugar ATR raises the ethanol equivalent -> compresses the gap
     assert table["mean_parity_gap"].iloc[0] > table["mean_parity_gap"].iloc[-1]
 
 
@@ -135,18 +135,18 @@ def test_signature_test_needs_enough_variation():
 
 
 # ===========================================================================
-# T3-4 sur données réelles — marge de crush chinoise, 3 jambes sur 4 réelles
+# T3-4 on real data — Chinese crush margin, 3 of 4 legs real
 # ===========================================================================
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_china_crush_margin_on_2026_08_07_hand_computed():
-    """CBOT 11,565 USD/bu, DCE tourteau 3109 CNY/t, DCE huile 8372 CNY/t, USDCNY 6,7454,
-    basis 70 c/bu et fret 45 USD/t parametres :
-        fob_usd_bu    = 11,565 + 0,70                    = 12,265
-        bean_cnf      = 12,265 x 36,7437103 + 45          = 495,661607
-        revenue_gross = 0,785 x 3109 + 0,185 x 8372       = 3989,385
-        revenue_ex_vat= 3989,385 / 1,09                    = 3659,986239
-        bean_cost     = 495,661607 x 6,7454 x 1,03         = 3443,738880
-        margin        = 3659,986239 - 3443,738880 - 120    = 96,247359
+    """CBOT 11.565 USD/bu, DCE meal 3109 CNY/t, DCE oil 8372 CNY/t, USDCNY 6.7454,
+    parameterised basis 70 c/bu and freight 45 USD/t:
+        fob_usd_bu    = 11.565 + 0.70                    = 12.265
+        bean_cnf      = 12.265 x 36.7437103 + 45          = 495.661607
+        revenue_gross = 0.785 x 3109 + 0.185 x 8372       = 3989.385
+        revenue_ex_vat= 3989.385 / 1.09                    = 3659.986239
+        bean_cost     = 495.661607 x 6.7454 x 1.03         = 3443.738880
+        margin        = 3659.986239 - 3443.738880 - 120    = 96.247359
     """
     frame = load_real_crush_frame()
     assert frame.loc["2026-08-07", "margin"] == pytest.approx(96.247359, abs=1e-3)
@@ -154,10 +154,10 @@ def test_real_china_crush_margin_on_2026_08_07_hand_computed():
     assert frame.loc["2026-08-07", "bean_cost"] == pytest.approx(3443.738880, abs=1e-3)
 
 
-@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}")
+@pytest.mark.skipif(not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}")
 def test_real_crush_frame_documents_which_legs_are_real():
-    """Trois jambes réelles (CBOT, DCE x2, USDCNY), une paramétrée (basis+fret) — le
-    partage doit être déclaré dans les attrs, pas seulement dans la docstring."""
+    """Three real legs (CBOT, DCE x2, USDCNY), one parameterised (basis+freight) — the
+    split must be declared in the attrs, not only in the docstring."""
     frame = load_real_crush_frame()
     assert set(frame.attrs["real_legs"]) == {"cbot_soybean", "dce_soymeal", "dce_soyoil", "usdcny"}
     assert "basis_cents_bu" in frame.attrs["parametrized_legs"]

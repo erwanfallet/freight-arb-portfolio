@@ -1,12 +1,12 @@
-"""GÉNÉRATEUR DE DONNÉES SYNTHÉTIQUES POUR LE PROJET C — AUCUNE VALEUR ÉCONOMIQUE.
+"""SYNTHETIC DATA GENERATOR FOR PROJECT C — NO ECONOMIC VALUE.
 
-Comme pour le projet B, la structure est imposée : les marches de flat rate au 1er janvier
-sont écrites à la main dans `SYNTHETIC_FLAT_RATES`. Le dashboard montrera donc un saut de
-coût au 1er janvier parce que je l'ai mis là, pas parce que la Worldscale Association l'a
-fait cette année-là.
+As with project B, the structure is imposed: the January 1st flat-rate jumps are
+hand-written into `SYNTHETIC_FLAT_RATES`. The dashboard will therefore show a cost jump
+on January 1st because it was put there, not because the Worldscale Association made
+one that year.
 
-Ce jeu sert à vérifier que la décomposition marché / réglage / croisé, l'illusion des jours
-ouverts et l'inversion TCE tournent. Rien d'autre.
+This dataset exists to verify the market/reset/cross decomposition, the open-days
+illusion, and the TCE inversion all run. Nothing else.
 """
 from __future__ import annotations
 
@@ -25,24 +25,24 @@ SYNTHETIC_TICKERS = {
 
 ROUTE = "TC14"
 
-# Marches annuelles imposées. La marche 2022 -> 2023 est volontairement grosse, pour
-# reproduire l'effet d'un environnement de soutes qui a bondi l'année précédente.
+# Imposed annual steps. The 2022 -> 2023 jump is deliberately large, to reproduce the
+# effect of a bunker environment that spiked the year before.
 SYNTHETIC_FLAT_RATES = FlatRateTable(
     rates={ROUTE: {2022: 18.0, 2023: 24.5, 2024: 25.8, 2025: 25.1, 2026: 27.3}}
 )
 
 
 def synthetic_products(seed: int = 23) -> pd.DataFrame:
-    """Cinq séries synthétiques en format long canonique (date, ticker, valeur)."""
+    """Five synthetic series in the canonical long format (date, ticker, valeur)."""
     rng = np.random.default_rng(seed)
     idx = pd.bdate_range("2022-01-03", "2026-06-30")
     n = len(idx)
 
-    # jambe US en $/gal, autour de 2,40
+    # US leg in $/gal, around 2.40
     p_usgc = 2.40 + np.cumsum(rng.normal(0, 0.012, n))
     p_usgc = np.clip(p_usgc, 1.20, 4.50)
 
-    # jambe européenne en $/t : la jambe US convertie, plus un spread saisonnier
+    # European leg in $/t: the converted US leg, plus a seasonal spread
     seasonal = 12.0 * np.cos(2 * np.pi * (idx.dayofyear.to_numpy() - 15) / 365.25)
     p_ara = p_usgc * 42.0 * 7.45 + 18.0 + seasonal + np.cumsum(rng.normal(0, 1.6, n))
 

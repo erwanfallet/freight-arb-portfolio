@@ -1,48 +1,47 @@
-"""Estimation de voyage : d'un index de fret à un coût par tonne sur *ta* route.
+"""Voyage estimation: from a freight index to a cost per tonne on *your* route.
 
-LE PIÈGE D'UNITÉ DU PORTEFEUILLE, APPLIQUÉ AU FRET
----------------------------------------------------
-Un index de fret dry bulk se cote en **USD/jour** (timecharter equivalent) ou en USD/t sur
-une route de référence qui n'est pas la tienne. L'unité économique dont tu as besoin dans
-un calcul C&F est **USD/tonne sur ta route à ta date**. Le passage de l'une à l'autre
-n'est pas une conversion : c'est une **estimation de voyage**, et chacun de ses paramètres
-est un point de désaccord légitime entre un desk de trading et un département fret.
+THE PORTFOLIO'S UNIT TRAP, APPLIED TO FREIGHT
+-------------------------------------------------
+A dry bulk freight index is quoted in **USD/day** (timecharter equivalent) or in USD/t on
+a reference route that isn't yours. The economic unit needed in a C&F calculation is
+**USD/tonne on your route on your date**. Getting from one to the other isn't a
+conversion: it's a **voyage estimate**, and every one of its parameters is a legitimate
+point of disagreement between a trading desk and a freight department.
 
-C'est la même famille que tonne sèche/tonne humide ou gallon/tonne : l'unité de cotation
-n'est pas l'unité économique. Sauf qu'ici le facteur de conversion n'est pas une constante
-physique — c'est un modèle, avec des hypothèses contestables. D'où la page.
+This is the same family as dry tonne/wet tonne or gallon/tonne: the quoted unit is not
+the economic unit. Except here the conversion factor isn't a physical constant — it's a
+model, with contestable assumptions. Hence the page.
 
-MODÈLE
-------
+MODEL
+-----
     freight_usd_t =
         [ TCE_usd_day × (D_laden + D_ballast + D_port + D_wait)
-        + P_vlsfo × conso_mer × (D_laden + D_ballast)
-        + P_mgo   × conso_port × D_port
+        + P_vlsfo × sea_consumption × (D_laden + D_ballast)
+        + P_mgo   × port_consumption × D_port
         + port_costs + canal_dues ]
         / ( cargo_t × (1 − broker_comm) )
 
     D_laden   = distance_laden_nm  / (speed_laden_kn   × 24)
     D_ballast = ballast_share × distance_ballast_nm / (speed_ballast_kn × 24)
 
-HYPOTHÈSES
-----------
-V-H1  `ballast_share` — la fraction du repositionnement à vide imputée à ce voyage.
-      **C'est le désaccord central de T1-1.** Le desk trading raisonne à 0 (« le navire
-      était déjà là »), le département fret à 1 (« quelqu'un paie le ballast »).
-      Aucune des deux positions n'est absurde ; le chiffre qui compte est le seuil où
-      elles cessent de donner le même signal d'arb.
-V-H2  La consommation varie au cube de la vitesse : conso = conso_ref × (v/v_ref)³.
-      Approximation d'ingénierie standard, valable dans une plage étroite autour de la
-      vitesse de référence. Au-delà de ±3 nœuds elle devient douteuse — d'où les bornes
-      des sliders.
-V-H3  Les soutes sont valorisées à une date de choix (fixture, moyenne de voyage, spot).
-      **C'est le second désaccord de T1-1** : un voyage de 40 jours sur un marché
-      soutes volatil peut porter plusieurs dollars par tonne d'écart selon la convention.
-V-H4  Les frais de port et les droits de canal sont forfaitaires par route. Dans la
-      réalité ils dépendent du terminal et du tirant d'eau. Paramétrés, jamais figés.
-V-H5  Le TCE fourni est celui d'une classe de navire cohérente avec la cargaison. Charger
-      un TCE Capesize dans un voyage Panamax produit un fret absurde sans lever d'erreur —
-      d'où le contrôle de plausibilité en sortie.
+ASSUMPTIONS
+-----------
+V-H1  `ballast_share` — the fraction of empty repositioning charged to this voyage.
+      **This is T1-1's central disagreement.** The trading desk reasons at 0 ("the ship
+      was already there"), the freight department at 1 ("someone pays for the
+      ballast"). Neither position is absurd; the number that matters is the threshold
+      where they stop giving the same arb signal.
+V-H2  Consumption varies with the cube of speed: consumption = ref_consumption ×
+      (v/v_ref)³. Standard engineering approximation, valid in a narrow band around the
+      reference speed. Beyond ±3 knots it becomes doubtful — hence the slider bounds.
+V-H3  Bunkers are valued at a chosen date (fixture, voyage average, spot). **This is
+      T1-1's second disagreement**: a 40-day voyage in a volatile bunker market can carry
+      several dollars per tonne of difference depending on the convention.
+V-H4  Port costs and canal dues are flat per route. In reality they depend on the
+      terminal and the draft. Parameterised, never fixed.
+V-H5  The supplied TCE is for a vessel class consistent with the cargo. Loading a
+      Capesize TCE into a Panamax voyage produces an absurd freight without raising any
+      error — hence the plausibility check on the output.
 """
 from __future__ import annotations
 
@@ -55,27 +54,27 @@ HOURS_PER_DAY = 24.0
 
 
 class VoyageError(ValueError):
-    """Voyage mal spécifié — toujours une erreur d'appelant."""
+    """Mis-specified voyage — always a caller error."""
 
 
 # ---------------------------------------------------------------------------
-# Classes de navire (V-H2, V-H5)
+# Vessel classes (V-H2, V-H5)
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class VesselClass:
-    """Consommations de référence à la vitesse de référence, en tonnes par jour."""
+    """Reference consumptions at the reference speed, in tonnes per day."""
 
     name: str
     cargo_t: float
     consumption_laden_t_day: float
     consumption_ballast_t_day: float
-    consumption_port_t_day: float      # MGO au port, pas VLSFO
+    consumption_port_t_day: float      # MGO in port, not VLSFO
     reference_speed_kn: float = 12.5
 
     def sea_consumption(self, speed_kn: float, *, laden: bool) -> float:
-        """Consommation journalière à la vitesse donnée, loi cubique (V-H2)."""
+        """Daily consumption at the given speed, cubic law (V-H2)."""
         if speed_kn <= 0:
-            raise VoyageError(f"la vitesse doit être > 0, reçu {speed_kn}")
+            raise VoyageError(f"speed must be > 0, got {speed_kn}")
         base = self.consumption_laden_t_day if laden else self.consumption_ballast_t_day
         return base * (speed_kn / self.reference_speed_kn) ** 3
 
@@ -88,8 +87,8 @@ VESSELS: dict[str, VesselClass] = {
 
 
 # ---------------------------------------------------------------------------
-# Routes (V-H4). Distances en milles nautiques, ordres de grandeur à revérifier
-# avant tout usage sur données réelles — elles sont ici pour faire tourner le modèle.
+# Routes (V-H4). Distances in nautical miles, orders of magnitude to double-check
+# before any use on real data — they're here to make the model runnable.
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class Route:
@@ -113,20 +112,20 @@ ROUTES: dict[str, Route] = {
         "PNW -> Qingdao", "PNW", "Qingdao", 5_100, 5_100, 160_000, 0.0
     ),
     "novo_alexandria": Route(
-        "Novorossiysk -> Alexandrie", "Novorossiysk", "Alexandrie", 1_000, 1_000, 90_000, 0.0
+        "Novorossiysk -> Alexandria", "Novorossiysk", "Alexandria", 1_000, 1_000, 90_000, 0.0
     ),
     "rouen_alexandria": Route(
-        "Rouen -> Alexandrie", "Rouen", "Alexandrie", 2_700, 2_700, 110_000, 0.0
+        "Rouen -> Alexandria", "Rouen", "Alexandria", 2_700, 2_700, 110_000, 0.0
     ),
 }
 
 
 # ---------------------------------------------------------------------------
-# Paramètres de voyage
+# Voyage parameters
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class VoyageParams:
-    """Les paramètres contestables. `ballast_share` est le sujet de T1-1."""
+    """The contestable parameters. `ballast_share` is T1-1's subject."""
 
     ballast_share: float = 1.0
     speed_laden_kn: float = 12.5
@@ -138,22 +137,22 @@ class VoyageParams:
     def __post_init__(self) -> None:
         if not 0.0 <= self.ballast_share <= 1.0:
             raise VoyageError(
-                f"ballast_share doit être dans [0, 1], reçu {self.ballast_share} — "
-                "au-delà de 1 on facturerait plus de ballast qu'il n'y a de route"
+                f"ballast_share must be in [0, 1], got {self.ballast_share} — "
+                "beyond 1 more ballast would be charged than the route has"
             )
         if not 0.0 <= self.broker_commission < 0.25:
-            raise VoyageError(f"commission hors plage plausible : {self.broker_commission}")
+            raise VoyageError(f"commission outside the plausible range: {self.broker_commission}")
         if self.port_days < 0 or self.wait_days < 0:
-            raise VoyageError("les jours de port et d'attente doivent être >= 0")
+            raise VoyageError("port days and wait days must be >= 0")
 
     def with_ballast(self, share: float) -> "VoyageParams":
-        """Copie avec un autre ballast — c'est le balayage de la page T1-1."""
+        """Copy with a different ballast — this is the T1-1 page's sweep."""
         return replace(self, ballast_share=share)
 
 
 @dataclass(frozen=True)
 class VoyageBreakdown:
-    """Décomposition terme à terme. Chaque champ est une ligne du waterfall du dashboard."""
+    """Term-by-term decomposition. Every field is a line in the dashboard's waterfall."""
 
     laden_days: float
     ballast_days: float
@@ -171,14 +170,14 @@ class VoyageBreakdown:
 
     @property
     def waterfall(self) -> dict[str, float]:
-        """Les postes en USD/t, pour la section « d'où vient le taux »."""
+        """The line items in USD/t, for the "where the rate comes from" section."""
         payable = self.cargo_t
         return {
-            "affrètement": self.hire_usd / payable,
-            "soutes mer": self.bunker_sea_usd / payable,
-            "soutes port": self.bunker_port_usd / payable,
-            "frais de port": self.port_costs_usd / payable,
-            "droits de canal": self.canal_dues_usd / payable,
+            "hire": self.hire_usd / payable,
+            "sea bunkers": self.bunker_sea_usd / payable,
+            "port bunkers": self.bunker_port_usd / payable,
+            "port costs": self.port_costs_usd / payable,
+            "canal dues": self.canal_dues_usd / payable,
         }
 
 
@@ -191,19 +190,19 @@ def voyage_freight_usd_t(
     route: Route,
     params: VoyageParams,
 ) -> VoyageBreakdown:
-    """Convertit un TCE en USD/jour en un fret en USD/tonne sur une route donnée.
+    """Converts a TCE in USD/day into a freight in USD/tonne on a given route.
 
-    C'est l'opération que le desk trading croit être une lecture d'index et que le
-    département fret sait être une estimation. Tous les termes sont renvoyés séparément
-    pour que la page puisse montrer lequel porte le désaccord.
+    This is the operation the trading desk believes is reading an index and that the
+    freight department knows is an estimate. Every term is returned separately so the
+    page can show which one carries the disagreement.
     """
     if tce_usd_day < 0:
         raise VoyageError(
-            f"TCE négatif ({tce_usd_day}) — possible en marché déprimé mais suspect : "
-            "vérifier l'unité de l'index avant de continuer"
+            f"negative TCE ({tce_usd_day}) — possible in a depressed market but "
+            "suspicious: check the index's unit before continuing"
         )
     if vlsfo_usd_t <= 0 or mgo_usd_t <= 0:
-        raise VoyageError("les prix de soutes doivent être > 0")
+        raise VoyageError("bunker prices must be > 0")
 
     laden_days = route.distance_laden_nm / (params.speed_laden_kn * HOURS_PER_DAY)
     ballast_days = (
@@ -250,15 +249,15 @@ def voyage_freight_series(
     route: Route,
     params: VoyageParams,
 ) -> pd.Series:
-    """`voyage_freight_usd_t` appliqué jour par jour, sur les dates communes aux trois séries.
+    """`voyage_freight_usd_t` applied day by day, on the dates common to all three series.
 
-    Intersection stricte, aucun forward-fill : le prix des soutes à la date de fixture est
-    précisément l'objet du désaccord V-H3, le combler le ferait disparaître.
+    Strict intersection, no forward-fill: the bunker price on the fixture date is
+    precisely what V-H3's disagreement is about, filling it in would make it disappear.
     """
     aligned = pd.concat({"tce": tce, "vlsfo": vlsfo, "mgo": mgo}, axis=1).dropna()
     if aligned.empty:
         raise VoyageError(
-            "aucune date commune au TCE et aux deux soutes — vérifier les calendriers"
+            "no common date across the TCE and the two bunker series — check the calendars"
         )
     values = [
         voyage_freight_usd_t(
@@ -278,36 +277,37 @@ def implied_tce_from_freight(
     route: Route,
     params: VoyageParams,
 ) -> float:
-    """L'inverse : d'un taux de route publié en USD/t vers le TCE qu'il implique.
+    """The inverse: from a published route rate in USD/t to the TCE it implies.
 
-    Sert au repli du gate T1-1. Quand les routes Baltic en USD/t sont accessibles mais pas
-    le TCE, ou l'inverse, on passe de l'un à l'autre — et l'écart entre le TCE impliqué par
-    un taux de route publié et le TCE coté est **lui-même** une mesure du désaccord.
+    Used as the T1-1 gate's fallback. When the Baltic routes are accessible in USD/t but
+    not the TCE, or the reverse, one is converted to the other — and the gap between the
+    TCE implied by a published route rate and the quoted TCE is **itself** a measure of
+    the disagreement.
     """
     reference = voyage_freight_usd_t(
         0.0, vlsfo_usd_t, mgo_usd_t, vessel=vessel, route=route, params=params
     )
-    costs_only = reference.freight_usd_t          # fret à TCE nul = coûts seuls, par tonne
+    costs_only = reference.freight_usd_t          # freight at zero TCE = costs alone, per tonne
     if reference.total_days <= 0:
-        raise VoyageError("durée de voyage nulle — route ou vitesses incohérentes")
+        raise VoyageError("zero voyage duration — inconsistent route or speeds")
     return (freight_usd_t - costs_only) * reference.cargo_t / reference.total_days
 
 
 def plausibility_warnings(breakdown: VoyageBreakdown) -> list[str]:
-    """Contrôles d'invariants (V-H5). Un print aberrant est un diagnostic de données.
+    """Invariant checks (V-H5). An outlandish print is a data diagnosis.
 
-    Rien ici n'est un signal de marché : ce sont les cas où le résultat ne peut pas être
-    lu du tout, et où la page doit afficher un avertissement plutôt qu'un chiffre.
+    Nothing here is a market signal: these are the cases where the result can't be read
+    at all, and where the page must show a warning instead of a number.
     """
     warnings: list[str] = []
     if breakdown.freight_usd_t <= 0:
         warnings.append(
-            f"fret négatif ou nul ({breakdown.freight_usd_t:.2f} USD/t) — impossible : "
-            "erreur d'unité sur le TCE ou sur les soutes"
+            f"negative or zero freight ({breakdown.freight_usd_t:.2f} USD/t) — "
+            "impossible: unit error on the TCE or the bunkers"
         )
     if breakdown.total_days > 120:
         warnings.append(
-            f"voyage de {breakdown.total_days:.0f} jours — vérifier la distance et la vitesse"
+            f"{breakdown.total_days:.0f}-day voyage — check the distance and the speed"
         )
     bunker_share = (
         (breakdown.bunker_sea_usd + breakdown.bunker_port_usd) / breakdown.total_cost_usd
@@ -316,7 +316,7 @@ def plausibility_warnings(breakdown: VoyageBreakdown) -> list[str]:
     )
     if np.isfinite(bunker_share) and bunker_share > 0.75:
         warnings.append(
-            f"les soutes pèsent {bunker_share:.0%} du coût total — plausible en pic de "
-            "bunker, mais vérifier la classe de navire avant de conclure"
+            f"bunkers weigh {bunker_share:.0%} of the total cost — plausible at a bunker "
+            "price peak, but check the vessel class before concluding"
         )
     return warnings

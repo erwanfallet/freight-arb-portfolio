@@ -1,26 +1,26 @@
-"""Module T1-M — régime ou skill.
+"""Module T1-M — regime or skill.
 
-Origine du désaccord : Halsall, Commodity Conversations, 25 nov. 2024. À propos des
-maisons qui battaient des records sur le cacao, il demande si c'est parce qu'on trade
-mieux ou à cause des conditions de marché, et note qu'on juge le succès au chiffre absolu
-plutôt qu'à la performance relative aux conditions.
+Origin of the disagreement: Halsall, Commodity Conversations, 25 Nov 2024. About the
+houses posting record cocoa numbers, he asks whether it's because they trade better or
+because of market conditions, and notes that success gets judged on the absolute number
+rather than on performance relative to conditions.
 
-Ce n'est pas une page autonome : c'est une section à insérer dans **chaque** page, et la
-spec impose qu'elle tourne par défaut, pas en option — y compris quand le résultat est
-défavorable. C'est précisément quand il est défavorable qu'il vaut quelque chose.
+This isn't a standalone page: it's a section to insert into **every** page, and the spec
+requires it to run by default, not as an option — including when the result is
+unfavourable. It's precisely when it's unfavourable that it's worth something.
 
-DEUX SORTIES, ET LA SECONDE EST CELLE QUI VA DANS LE MAIL
----------------------------------------------------------
-1. `attribute_pnl_to_regime` : régresse le P&L par trade sur des variables de régime. Le
-   fit donne le « P&L attendu du régime », le résidu est l'alpha présumé, et l'IC sur
-   l'alpha dit si cet alpha est distinguable de zéro.
-2. `honest_win_rate` : corrige le nombre de trades du chevauchement des positions, puis
-   calcule l'IC exact du win rate sur ce n effectif.
+TWO OUTPUTS, AND THE SECOND IS THE ONE THAT GOES IN THE EMAIL
+----------------------------------------------------------------
+1. `attribute_pnl_to_regime`: regresses per-trade P&L on regime variables. The fit gives
+   the "P&L expected from the regime," the residual is the presumed alpha, and the CI on
+   the alpha says whether that alpha is distinguishable from zero.
+2. `honest_win_rate`: corrects the trade count for position overlap, then computes the
+   exact CI of the win rate on that effective n.
 
-La seconde est la plus rentable. Écrire soi-même « mon win rate de 100 % sur 18 trades
-n'est pas distinguable d'un processus à 60 % » avant que le destinataire ne le pense est
-le geste de crédibilité le moins cher disponible — et c'est exactement ce qu'il allait
-penser en silence.
+The second is the more valuable one. Writing "my 100% win rate on 18 trades is not
+distinguishable from a 60% process" yourself before the recipient thinks it is the
+cheapest credibility move available — and it's exactly what they were going to think in
+silence.
 """
 from __future__ import annotations
 
@@ -39,9 +39,8 @@ from agri.core.stats import (
     stationary_bootstrap_indices,
 )
 
-# Variables de régime attendues par défaut. Chaque page les nomme dans ses propres
-# termes (dispersion inter-origines pour un grain, inter-régions pour du sucre), mais la
-# structure ne change pas.
+# Default regime variables expected. Every page names them in its own terms (cross-origin
+# dispersion for a grain, cross-region for sugar), but the structure doesn't change.
 DEFAULT_REGIME_COLUMNS = (
     "vol_realised",
     "term_structure_width",
@@ -51,15 +50,15 @@ DEFAULT_REGIME_COLUMNS = (
 
 
 class RegimeError(ValueError):
-    """Attribution mal spécifiée — colonnes manquantes ou échantillon insuffisant."""
+    """Mis-specified attribution — missing columns or insufficient sample."""
 
 
 # ===========================================================================
-# 1. Attribution du P&L au régime
+# 1. Attributing P&L to the regime
 # ===========================================================================
 @dataclass(frozen=True)
 class RegimeAttribution:
-    """Ce que le régime explique, ce qu'il reste, et si ce reste est distinguable de zéro."""
+    """What the regime explains, what's left, and whether that remainder is distinguishable from zero."""
 
     regression: HacRegression
     alpha_ci: BootstrapCI
@@ -68,12 +67,12 @@ class RegimeAttribution:
 
     @property
     def r_squared(self) -> float:
-        """Part du P&L expliquée par les conditions de marché seules."""
+        """Share of P&L explained by market conditions alone."""
         return self.regression.r_squared
 
     @property
     def alpha(self) -> float:
-        """P&L moyen par trade non expliqué par le régime."""
+        """Average per-trade P&L not explained by the regime."""
         return float(self.regression.params["const"])
 
     @property
@@ -82,11 +81,11 @@ class RegimeAttribution:
 
     @property
     def is_overfit(self) -> bool:
-        """Trop de paramètres pour le n effectif.
+        """Too many parameters for the effective n.
 
-        Seuil retenu : moins de 3 observations indépendantes par paramètre estimé. En
-        dessous, le R² mesure la souplesse du modèle, pas une régularité du marché — et
-        il faut le dire au lieu d'afficher un R² flatteur.
+        Threshold used: fewer than 3 independent observations per estimated parameter.
+        Below that, R² measures the model's flexibility, not a market regularity — and
+        that has to be said instead of showing off a flattering R².
         """
         n_params = len(self.regime_columns) + 1
         return self.sample.n_eff < 3 * n_params
@@ -94,36 +93,36 @@ class RegimeAttribution:
     @property
     def verdict(self) -> str:
         if self.is_overfit:
-            return "non interprétable"
+            return "not interpretable"
         if self.alpha_is_distinguishable_from_zero:
-            return "alpha présumé"
-        return "indistinguable du régime"
+            return "presumed alpha"
+        return "indistinguishable from the regime"
 
     @property
     def mail_sentence(self) -> str:
-        """La phrase chiffrée, générée depuis les données — jamais recopiée à la main."""
+        """The numeric sentence, generated from the data — never copied by hand."""
         if self.is_overfit:
             n_params = len(self.regime_columns) + 1
             return (
-                f"Le régime explique {self.r_squared:.0%} de la variance du P&L, mais sur "
-                f"{self.sample.n_eff:.1f} observations indépendantes pour {n_params} "
-                "paramètres, ce chiffre mesure la souplesse du modèle et pas une "
-                "régularité du marché. Je ne le lis pas."
+                f"The regime explains {self.r_squared:.0%} of the P&L variance, but on "
+                f"{self.sample.n_eff:.1f} independent observations for {n_params} "
+                "parameters, this number measures the model's flexibility, not a "
+                "market regularity. I don't read into it."
             )
         if self.alpha_is_distinguishable_from_zero:
             return (
-                f"Les conditions de marché expliquent {self.r_squared:.0%} du P&L. "
-                f"Le résidu vaut {self.alpha:+.2f} par trade, "
-                f"IC {self.alpha_ci.confidence:.0%} [{self.alpha_ci.lo:+.2f}, "
-                f"{self.alpha_ci.hi:+.2f}] : il ne contient pas zéro, "
-                f"sur n_eff = {self.sample.n_eff:.1f}."
+                f"Market conditions explain {self.r_squared:.0%} of the P&L. "
+                f"The residual is worth {self.alpha:+.2f} per trade, "
+                f"{self.alpha_ci.confidence:.0%} CI [{self.alpha_ci.lo:+.2f}, "
+                f"{self.alpha_ci.hi:+.2f}]: it does not contain zero, "
+                f"on n_eff = {self.sample.n_eff:.1f}."
             )
         return (
-            f"Les conditions de marché expliquent {self.r_squared:.0%} du P&L. Ce qui "
-            f"reste — {self.alpha:+.2f} par trade — a un IC "
-            f"[{self.alpha_ci.lo:+.2f}, {self.alpha_ci.hi:+.2f}] qui contient zéro : "
-            f"sur n_eff = {self.sample.n_eff:.1f}, je ne peux pas distinguer ce résultat "
-            "du régime de marché."
+            f"Market conditions explain {self.r_squared:.0%} of the P&L. What's left — "
+            f"{self.alpha:+.2f} per trade — has a CI "
+            f"[{self.alpha_ci.lo:+.2f}, {self.alpha_ci.hi:+.2f}] that contains zero: "
+            f"on n_eff = {self.sample.n_eff:.1f}, this result can't be distinguished "
+            "from the market regime."
         )
 
 
@@ -137,34 +136,34 @@ def attribute_pnl_to_regime(
     confidence: float = 0.95,
     seed: int = 0,
 ) -> RegimeAttribution:
-    """Régresse le P&L par trade sur les variables de régime.
+    """Regresses per-trade P&L on the regime variables.
 
-    `trades` est indexé par **date d'entrée** (c'est ce qui permet de mesurer le
-    chevauchement réel) et contient au minimum `pnl_column` et les colonnes de régime.
+    `trades` is indexed by **entry date** (that's what allows the real overlap to be
+    measured) and contains at least `pnl_column` and the regime columns.
 
-    La longueur de bloc du bootstrap est fixée à la période de hold : c'est la durée sur
-    laquelle deux trades restent dépendants.
+    The bootstrap block length is set to the holding period: that's the duration over
+    which two trades stay dependent.
     """
     columns = tuple(regime_columns) if regime_columns is not None else DEFAULT_REGIME_COLUMNS
     if pnl_column not in trades.columns:
-        raise RegimeError(f"colonne P&L absente : {pnl_column!r}")
+        raise RegimeError(f"missing P&L column: {pnl_column!r}")
     missing = [c for c in columns if c not in trades.columns]
     if missing:
         raise RegimeError(
-            f"colonnes de régime absentes : {missing}. Chaque page nomme ses propres "
-            "variables de régime — les passer via regime_columns."
+            f"missing regime columns: {missing}. Each page names its own regime "
+            "variables — pass them via regime_columns."
         )
 
     clean = trades[[pnl_column, *columns]].dropna()
     if len(clean) < len(columns) + 3:
         raise RegimeError(
-            f"pas assez de trades : n={len(clean)} pour {len(columns)} variables de régime"
+            f"not enough trades: n={len(clean)} for {len(columns)} regime variables"
         )
 
     regression = hac_ols(clean[pnl_column], clean[list(columns)])
     sample = effective_n_from_trades(pd.DatetimeIndex(clean.index), hold_days)
 
-    # IC sur l'alpha : le résidu moyen, rééchantillonné en blocs de la longueur du hold.
+    # CI on the alpha: the average residual, block-bootstrapped at the holding-period length.
     block_len = min(float(hold_days), float(len(clean)))
     alpha_ci = _bootstrap_intercept(
         y=clean[pnl_column].to_numpy(dtype=float),
@@ -195,22 +194,22 @@ def _bootstrap_intercept(
     seed: int,
     chunk: int = 500,
 ) -> BootstrapCI:
-    """IC bootstrap par blocs sur l'intercept, **avec refit complet** de la régression.
+    """Block-bootstrap CI on the intercept, **with a full refit** of the regression.
 
-    Pourquoi le refit plutôt que le rééchantillonnage des résidus, qui serait dix fois
-    moins cher : l'intercept vaut `ȳ − Σ β̂ⱼ x̄ⱼ`. Bootstrapper les résidus à β̂ figé
-    traite les pentes comme connues et ignore la façon dont leur erreur d'estimation se
-    propage dans l'intercept, amplifiée par la moyenne de chaque régresseur. Sur une
-    variable de régime centrée loin de zéro — une durée de hold moyenne de 30 jours, par
-    exemple — une erreur de 0,003 sur la pente déplace l'alpha de 0,09. L'IC sortirait
-    beaucoup trop étroit, et conclurait à un alpha là où il n'y a que du bruit
-    d'estimation : exactement le travers que ce module existe pour empêcher.
+    Why refit rather than resampling the residuals, which would be ten times cheaper:
+    the intercept is `ȳ − Σ β̂ⱼ x̄ⱼ`. Bootstrapping the residuals with β̂ held fixed
+    treats the slopes as known and ignores how their estimation error propagates into
+    the intercept, amplified by each regressor's mean. On a regime variable centred far
+    from zero — an average 30-day holding period, say — a 0.003 error on the slope
+    shifts alpha by 0.09. The CI would come out far too narrow, and would conclude
+    there's an alpha where there is only estimation noise: exactly the failure mode
+    this module exists to prevent.
 
-    Le calcul est fait par paquets pour borner la mémoire : (n_iter, n, k) en un bloc
-    dépasserait le gigaoctet sur un backtest de taille normale.
+    The computation is chunked to bound memory: (n_iter, n, k) as a single block would
+    exceed a gigabyte on a normally sized backtest.
     """
     n, k = regressors.shape
-    design = np.column_stack([np.ones(n), regressors])   # l'intercept est la colonne 0
+    design = np.column_stack([np.ones(n), regressors])   # the intercept is column 0
     rng = np.random.default_rng(seed)
     indices = stationary_bootstrap_indices(n, block_len, n_iter, rng)
 
@@ -222,12 +221,12 @@ def _bootstrap_intercept(
         xtx = np.einsum("cni,cnj->cij", x_b, x_b)
         xty = np.einsum("cni,cn->ci", x_b, y_b)
         try:
-            # xty porte un axe supplémentaire : sous numpy 2, un second opérande en 2-D
-            # est lu comme une matrice (m, n) et non comme un lot de vecteurs
+            # xty carries an extra axis: under numpy 2, a 2-D second operand is read as
+            # a single (m, n) matrix rather than as a batch of vectors
             beta = np.linalg.solve(xtx, xty[..., None])[..., 0]
         except np.linalg.LinAlgError:
-            # un rééchantillon peut être dégénéré (un bloc unique répété) : la
-            # pseudo-inverse le traite sans faire tomber tout le bootstrap
+            # a resample can be degenerate (a single block repeated): the pseudo-inverse
+            # handles it without taking down the whole bootstrap
             beta = np.einsum("cij,cj->ci", np.linalg.pinv(xtx), xty)
         intercepts[start : start + chunk] = beta[:, 0]
 
@@ -244,11 +243,11 @@ def _bootstrap_intercept(
 
 
 # ===========================================================================
-# 2. Le win rate honnête — la phrase du mail
+# 2. The honest win rate — the sentence for the email
 # ===========================================================================
 @dataclass(frozen=True)
 class WinRateHonesty:
-    """Win rate affiché contre win rate défendable, et l'écart entre les deux."""
+    """Displayed win rate against defensible win rate, and the gap between the two."""
 
     n_trades: int
     n_wins: int
@@ -259,23 +258,22 @@ class WinRateHonesty:
 
     @property
     def lower_bound_cost(self) -> float:
-        """Points de borne basse perdus en corrigeant du chevauchement."""
+        """Points of lower bound lost by correcting for overlap."""
         return self.naive.lo - self.honest.lo
 
     @property
     def mail_sentence(self) -> str:
-        """La phrase d'auto-critique préemptive, chiffrée depuis le backtest lui-même."""
+        """The pre-emptive self-critique sentence, computed straight from the backtest."""
         equivalent = self.honest.lo
         return (
-            f"Sur {self.n_trades} positions tenues {self.hold_days} jours, le "
-            f"chevauchement ({self.sample.overlap:.1f} positions ouvertes en moyenne) "
-            f"ramène l'échantillon à {self.sample.n_eff:.1f} tirages indépendants. "
-            f"Le win rate de {self.naive.point:.0%} a alors un IC exact de "
-            f"[{equivalent:.0%}, {self.honest.hi:.0%}] : il n'est pas distinguable d'un "
-            f"processus qui réussit {equivalent * 10:.0f} fois sur 10. "
-            f"Annoncer la borne à {self.naive.lo:.0%} en ignorant le chevauchement "
-            f"surestimerait ce que ce backtest démontre de "
-            f"{self.lower_bound_cost * 100:.0f} points."
+            f"Over {self.n_trades} positions held {self.hold_days} days, the overlap "
+            f"({self.sample.overlap:.1f} positions open on average) reduces the sample "
+            f"to {self.sample.n_eff:.1f} independent draws. The {self.naive.point:.0%} "
+            f"win rate then has an exact CI of [{equivalent:.0%}, {self.honest.hi:.0%}]: "
+            f"it is not distinguishable from a process that succeeds "
+            f"{equivalent * 10:.0f} times out of 10. Announcing the "
+            f"{self.naive.lo:.0%} bound while ignoring the overlap would overstate what "
+            f"this backtest demonstrates by {self.lower_bound_cost * 100:.0f} points."
         )
 
 
@@ -286,30 +284,30 @@ def honest_win_rate(
     hold_days: int,
     confidence: float = 0.95,
 ) -> WinRateHonesty:
-    """Win rate avec IC exact calculé sur le **n effectif**, pas sur le nombre de trades.
+    """Win rate with an exact CI computed on the **effective n**, not the trade count.
 
-    C'est le calcul à passer sur le backtest cuivre avant d'envoyer quoi que ce soit.
-    18 positions tenues 30 jours avec plusieurs trades simultanés ne valent pas 18
-    tirages indépendants, et un win rate de 100 % sur ~7 tirages a une borne basse aux
-    alentours de 59 % — très loin de ce que « 100 % sur 18 trades » laisse entendre.
+    This is the computation to run on the copper backtest before sending anything. 18
+    positions held 30 days with several simultaneous trades are not 18 independent
+    draws, and a 100% win rate on ~7 draws has a lower bound around 59% — far from what
+    "100% on 18 trades" implies.
     """
     entries = pd.DatetimeIndex(entry_dates)
     outcomes = np.asarray(pd.Series(list(wins)).astype(bool))
     if len(outcomes) != len(entries):
         raise RegimeError(
-            f"{len(entries)} dates d'entrée pour {len(outcomes)} résultats — "
-            "les deux doivent correspondre trade à trade"
+            f"{len(entries)} entry dates for {len(outcomes)} outcomes — "
+            "the two must correspond trade for trade"
         )
     if len(entries) == 0:
-        raise RegimeError("aucun trade")
+        raise RegimeError("no trades")
 
     sample = effective_n_from_trades(entries, hold_days)
     n_wins = int(outcomes.sum())
     win_share = n_wins / len(outcomes)
 
-    # On conserve la PROPORTION observée en la reportant sur le n effectif, plutôt que de
-    # garder le compte brut de succès : c'est le nombre d'observations qui est réduit par
-    # le chevauchement, pas le taux de réussite.
+    # The observed PROPORTION is carried over onto the effective n, rather than keeping
+    # the raw win count: it's the number of observations that overlap reduces, not the
+    # success rate.
     effective_wins = int(round(win_share * np.floor(sample.n_eff)))
 
     return WinRateHonesty(

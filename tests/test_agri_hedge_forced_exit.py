@@ -1,14 +1,14 @@
-"""Golden tests T1-2 — le prix auquel le bilan force la sortie.
+"""Golden tests T1-2 — the price at which the balance sheet forces an exit.
 
-Le livrable de la page est une forme fermée, donc entièrement vérifiable à la main :
+The page's deliverable is a closed form, therefore fully verifiable by hand:
 
     P* = (B/Q + P0) / (1 + im_rate)
 
-Avec B = 250 M USD, Q = 100 kt, P0 = 2 572 USD/t (cacao au 03/01/2023) et un taux de
-marge implicite de 4,4988 % :
+With B = 250 M USD, Q = 100 kt, P0 = 2,572 USD/t (cocoa on 03/01/2023) and an implied
+margin rate of 4.4988%:
 
-    B/Q = 2 500
-    P*  = (2 500 + 2 572) / 1,044988 = 5 072 / 1,044988 = 4 853,64 USD/t
+    B/Q = 2,500
+    P*  = (2,500 + 2,572) / 1.044988 = 5,072 / 1.044988 = 4,853.64 USD/t
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from agri.chains.hedge_cost import (
 from agri.data.bloomberg_loader import DEFAULT_PATH, load
 
 pytestmark = pytest.mark.skipif(
-    not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}"
+    not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}"
 )
 
 BOOK_T = 100_000.0
@@ -48,10 +48,10 @@ def margin_rate() -> float:
 
 
 # ===========================================================================
-# La forme fermée
+# The closed form
 # ===========================================================================
 def test_closed_form_hand_computed():
-    """Sur une série synthétique minimale, pour isoler l'algèbre du bruit de marché."""
+    """On a minimal synthetic series, to isolate the algebra from market noise."""
     price = pd.Series(
         [2572.0, 3000.0, 6000.0], index=pd.to_datetime(["2023-01-03", "2023-06-01", "2024-02-01"])
     )
@@ -65,9 +65,9 @@ def test_closed_form_hand_computed():
 
 
 def test_exit_price_scales_with_the_credit_line():
-    """Doubler la ligne recule le seuil de B/Q, pas de deux fois le seuil — la relation
-    est affine en B/Q, pas proportionnelle au prix. C'est ce qui permet à un desk de
-    refaire le calcul de tête."""
+    """Doubling the line pushes back the B/Q threshold, not the threshold twice over —
+    the relationship is affine in B/Q, not proportional to price. That's what lets a
+    desk redo the calculation in their head."""
     price = pd.Series([2000.0], index=pd.to_datetime(["2023-01-03"]))
     small = forced_exit_price(price, inception="2023-01-03", book_size_t=BOOK_T,
                               credit_line_usd=100e6, im_rate=0.05)
@@ -78,7 +78,7 @@ def test_exit_price_scales_with_the_credit_line():
 
 
 def test_bigger_book_lowers_the_exit_price():
-    """Même ligne, book deux fois plus gros : on est forcé de sortir plus tôt."""
+    """Same line, a book twice as large: forced out earlier."""
     price = pd.Series([2000.0], index=pd.to_datetime(["2023-01-03"]))
     small_book = forced_exit_price(price, inception="2023-01-03", book_size_t=50_000.0,
                                    credit_line_usd=LINE_USD, im_rate=0.05)
@@ -109,17 +109,16 @@ def test_invalid_inputs_raise():
 
 
 # ===========================================================================
-# LE FAIT QUE LA PAGE EXPLIQUE
+# THE FACT THE PAGE EXPLAINS
 # ===========================================================================
 def test_hedging_six_years_early_bought_three_months(cocoa, margin_rate):
-    """Le résultat qui porte la page.
+    """The result that carries the page.
 
-    Sur le cacao réel, une maison couverte depuis janvier 2018 et une maison couverte
-    depuis janvier 2024 sont forcées de sortir **à moins de trois mois d'écart**, alors
-    que six ans séparent leurs points d'entrée. Le mouvement de début 2024 a été assez
-    violent pour écraser la dispersion des dates d'ouverture — ce qui explique pourquoi
-    tant de maisons ont heurté la contrainte de bilan en même temps plutôt que chacune
-    à son tour.
+    On real cocoa, a house hedged since January 2018 and a house hedged since January
+    2024 are forced to exit **within less than three months of each other**, even
+    though six years separate their entry points. The early-2024 move was violent
+    enough to crush the dispersion of opening dates — which explains why so many
+    houses hit the balance-sheet constraint at the same time rather than each in turn.
     """
     schedule = forced_exit_schedule(
         cocoa, ["2018-01-02", "2022-01-03", "2023-01-03", "2023-09-01", "2024-01-02"],
@@ -129,17 +128,17 @@ def test_hedging_six_years_early_bought_three_months(cocoa, margin_rate):
     assert schedule["crossed on"].notna().all()
 
     span_days = (schedule["crossed on"].max() - schedule["crossed on"].min()).days
-    assert span_days < 100, f"les sorties forcées s'étalent sur {span_days} jours"
+    assert span_days < 100, f"the forced exits span {span_days} days"
 
-    # toutes tombent dans la fenetre nov. 2023 - fev. 2024
+    # all fall within the Nov. 2023 - Feb. 2024 window
     assert schedule["crossed on"].min() >= pd.Timestamp("2023-11-01")
     assert schedule["crossed on"].max() <= pd.Timestamp("2024-03-31")
 
 
 def test_earlier_inception_still_buys_some_protection(cocoa, margin_rate):
-    """La dispersion est écrasée, pas nulle : se couvrir tôt reste meilleur, l'ordre est
-    respecté. C'est ce qui distingue « le timing ne sert à rien » (faux) de « le timing
-    n'a acheté que quelques semaines » (vrai)."""
+    """The dispersion is crushed, not zero: hedging early is still better, the order
+    is respected. That's what distinguishes "timing doesn't matter" (false) from
+    "timing only bought a few weeks" (true)."""
     schedule = forced_exit_schedule(
         cocoa, ["2018-01-02", "2022-01-03", "2023-01-03", "2023-09-01", "2024-01-02"],
         book_size_t=BOOK_T, credit_line_usd=LINE_USD, im_rate=margin_rate,
@@ -149,7 +148,7 @@ def test_earlier_inception_still_buys_some_protection(cocoa, margin_rate):
 
 
 def test_headroom_shrinks_as_the_market_runs(cocoa, margin_rate):
-    """Plus on ouvre tard dans un marché haussier, moins la ligne laisse de marge en %."""
+    """The later a position opens in a rising market, the less headroom the line leaves, in %."""
     schedule = forced_exit_schedule(
         cocoa, ["2018-01-02", "2023-01-03", "2024-01-02"],
         book_size_t=BOOK_T, credit_line_usd=LINE_USD, im_rate=margin_rate,
@@ -158,12 +157,12 @@ def test_headroom_shrinks_as_the_market_runs(cocoa, margin_rate):
 
 
 # ===========================================================================
-# L'intensité de couverture — l'ancrage Montesanto
+# Hedging intensity — the Montesanto anchor
 # ===========================================================================
 def test_hedging_intensity_climbs_from_margin_only_to_near_book_value():
-    """Au départ on ne poste que la marge initiale (~4,5 % du prix) ; quand le marché
-    court contre la couverture, la variation margin s'empile jusqu'à immobiliser presque
-    autant que la valeur du stock protégé."""
+    """At first only the initial margin is posted (~4.5% of price); when the market
+    runs against the hedge, variation margin piles up until it ties up almost as much
+    as the value of the protected stock."""
     params = HedgeParams(side=SHORT_HEDGE, book_size_t=BOOK_T, credit_line_usd=LINE_USD)
     simulation = load_real_hedge_frame("cacao_ny", params=params)
     intensity = hedging_intensity(
@@ -183,8 +182,8 @@ def test_hedging_intensity_peak_lands_in_the_crisis_window():
 
 
 def test_implied_margin_rate_is_plausible():
-    """Un taux de marge initiale hors de [1 %, 15 %] du prix signalerait un proxy mal
-    calibré plutôt qu'un barème de chambre."""
+    """An initial margin rate outside [1%, 15%] of price would signal a poorly
+    calibrated proxy rather than a real clearinghouse schedule."""
     params = HedgeParams(side=SHORT_HEDGE, book_size_t=BOOK_T, credit_line_usd=LINE_USD)
     simulation = load_real_hedge_frame("cacao_ny", params=params)
     rate = implied_margin_rate(simulation, book_size_t=BOOK_T)

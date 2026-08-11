@@ -1,12 +1,13 @@
-"""Golden tests T3-2 — le plancher de coût qui n'en est pas un, sur NY11 et USDBRL réels.
+"""Golden tests T3-2 — the cost floor that isn't one, on real NY11 and USDBRL.
 
-Le test central est `test_the_floor_moves_by_twenty_cents_with_no_cost_change` : le coût de
-production est **tenu constant par construction** dans tout le calcul, donc l'amplitude du
-plancher en cents/lb ne peut venir que du change. C'est le résultat de la page, et il est
-d'autant plus solide qu'il ne repose sur aucune estimation.
+The central test is `test_the_floor_moves_by_twenty_cents_with_no_cost_change`: the
+production cost is **held constant by construction** throughout the calculation, so the
+floor's amplitude in cents/lb can only come from FX. That's the page's result, and it's
+all the more solid for resting on no estimation at all.
 
-`test_czarnikow_claim_holds_on_real_prices` vérifie une affirmation publiée et datée plutôt
-que de la citer. Si elle cessait d'être vraie, la section S2 de la page devrait être relue.
+`test_czarnikow_claim_holds_on_real_prices` verifies a published, dated claim rather
+than just citing it. If it stopped being true, the page's S2 section would need a
+rewrite.
 """
 from __future__ import annotations
 
@@ -32,7 +33,7 @@ from agri.chains.sugar_mix import (
 from agri.data.bloomberg_loader import DEFAULT_PATH
 
 pytestmark = pytest.mark.skipif(
-    not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}"
+    not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}"
 )
 
 START = "2015-01-01"
@@ -44,27 +45,27 @@ def frame():
 
 
 # ===========================================================================
-# LE RÉSULTAT
+# THE RESULT
 # ===========================================================================
 def test_the_floor_moves_by_twenty_cents_with_no_cost_change(frame):
-    """LE test de la page.
+    """THE page's test.
 
-    Le coût de production passé au calcul est un scalaire : il ne varie pas d'un jour à
-    l'autre, par construction. Toute l'amplitude du plancher en cents/lb vient donc du seul
-    USDBRL. Vingt cents sur un marché qui cote entre 10 et 25 cents, ce n'est pas un
-    ajustement — c'est plus que la fourchette du marché lui-même.
+    The production cost fed into the calculation is a scalar: it doesn't vary from one
+    day to the next, by construction. The floor's entire amplitude in cents/lb
+    therefore comes from USDBRL alone. Twenty cents on a market that trades between 10
+    and 25 cents isn't an adjustment — it's more than the market's own range.
     """
     floor = moving_floor(frame, cost_brl_t=CZARNIKOW_COST_BRL_T)
     assert floor.floor_range > 15.0
     assert floor.floor_min < 16.0 < floor.floor_max
-    # le plancher est EXACTEMENT proportionnel a l'inverse du change
+    # the floor is EXACTLY proportional to the inverse exchange rate
     product = floor.frame["floor_c_lb"] * floor.frame["usdbrl"]
     assert product.std() == pytest.approx(0.0, abs=1e-9)
 
 
 def test_the_floor_is_nothing_but_a_rescaled_exchange_rate(frame):
-    """Formulation forte du même fait : la corrélation de rang entre le plancher et
-    l'inverse du change vaut exactement 1. Il n'y a aucune information brésilienne dedans."""
+    """Strong statement of the same fact: the rank correlation between the floor and
+    the inverse exchange rate is exactly 1. There is no Brazilian information in it."""
     floor = moving_floor(frame, cost_brl_t=CZARNIKOW_COST_BRL_T)
     inverse_fx = 1.0 / floor.frame["usdbrl"]
     assert floor.frame["floor_c_lb"].corr(inverse_fx, method="spearman") == pytest.approx(1.0)
@@ -79,11 +80,11 @@ def test_a_higher_cost_lifts_the_whole_floor_proportionally(frame):
 
 
 # ===========================================================================
-# L'affirmation sourcée
+# The sourced claim
 # ===========================================================================
 def test_czarnikow_claim_holds_on_real_prices(frame):
-    """Czarnikow (juin 2026) : le pricing 2026/27 est resté sous BRL 2 000/t, sous le coût
-    de production. Vérifié plutôt que cité."""
+    """Czarnikow (June 2026): 2026/27 pricing stayed below BRL 2,000/t, below the cost
+    of production. Verified rather than cited."""
     check = production_cost_check(frame, cost_brl_t=CZARNIKOW_COST_BRL_T)
     assert check.is_below_now
     assert check.last_brl_t < CZARNIKOW_COST_BRL_T
@@ -92,7 +93,7 @@ def test_czarnikow_claim_holds_on_real_prices(frame):
 
 
 def test_sugar_in_brl_hand_computed(frame):
-    """sucre_BRL_t = NY11 x 22,0462 x USDBRL — trois nombres, aucune hypothèse."""
+    """sugar_BRL_t = NY11 x 22.0462 x USDBRL — three numbers, no assumption."""
     row = frame.iloc[-1]
     assert row["sugar_brl_t"] == pytest.approx(
         row["ny11"] * CENTS_LB_TO_USD_T * row["usdbrl"], rel=1e-12
@@ -111,11 +112,11 @@ def test_a_non_positive_cost_is_rejected(frame):
 
 
 # ===========================================================================
-# L'inversion vers l'éthanol
+# The inversion to ethanol
 # ===========================================================================
 def test_the_indifference_price_inverts_the_parity_exactly(frame):
-    """Contrôle croisé : repasser le prix d'indifférence dans la conversion directe doit
-    redonner le NY11 ajusté. Si les deux ne se répondent pas, l'une des deux est fausse."""
+    """Cross-check: feeding the indifference price back through the direct conversion
+    must return the adjusted NY11. If the two don't match, one of them is wrong."""
     hydrous = indifference_hydrous_brl_l(frame["ny11"], frame["usdbrl"])
     back = hydrous_sugar_equivalent_cents_lb(hydrous, frame["usdbrl"])
     expected = frame["ny11"] * DEFAULT_POL_FACTOR
@@ -125,16 +126,17 @@ def test_the_indifference_price_inverts_the_parity_exactly(frame):
 
 
 def test_the_indifference_price_is_a_plausible_ethanol_level(frame):
-    """Un hydraté brésilien se traite entre 1 et 4 BRL/litre selon l'époque. Une inversion
-    qui sortirait de cette plage signalerait une erreur dans la chaîne de conversion."""
+    """Brazilian hydrous ethanol trades between 1 and 4 BRL/litre depending on the era.
+    An inversion landing outside this range would signal an error in the conversion
+    chain."""
     hydrous = indifference_hydrous_brl_l(frame["ny11"], frame["usdbrl"])
     assert 0.5 < hydrous.median() < 5.0
     assert (hydrous > 0).all()
 
 
 def test_the_indifference_price_hand_computed():
-    """NY11 20 c/lb, pol 0,98, USDBRL 5,0 :
-    20 x 0,98 x 5,0 x 2,20462 x (1,6913 / 1,0495) / 100 = 3,4816 BRL/litre."""
+    """NY11 20 c/lb, pol 0.98, USDBRL 5.0:
+    20 x 0.98 x 5.0 x 2.20462 x (1.6913 / 1.0495) / 100 = 3.4816 BRL/litre."""
     index = pd.date_range("2024-01-01", periods=1)
     hydrous = indifference_hydrous_brl_l(
         pd.Series([20.0], index=index), pd.Series([5.0], index=index)
@@ -155,12 +157,12 @@ def test_a_negative_exchange_rate_is_rejected():
 
 
 # ===========================================================================
-# L'asymétrie de S4
+# S4's asymmetry
 # ===========================================================================
 def test_the_exchange_rate_partially_cushions_the_price_but_not_the_floor(frame):
-    """L'argument de S4. Le prix reçu en réaux bénéficie d'une corrélation négative entre le
-    sucre en dollars et le change ; le plancher, exactement proportionnel à l'inverse du
-    change, n'en bénéficie d'aucune."""
+    """S4's argument. The price received in reais benefits from a negative correlation
+    between dollar sugar and the exchange rate; the floor, exactly proportional to the
+    inverse exchange rate, benefits from none of it."""
     decomposition = floor_variance_decomposition(frame)
     assert decomposition["correlation"] < 0
     assert decomposition["share_covariance"] < 0
@@ -174,7 +176,7 @@ def test_the_decomposition_refuses_a_short_sample(frame):
 
 
 # ===========================================================================
-# Chargement
+# Loading
 # ===========================================================================
 def test_load_real_parity_frame_shape(frame):
     assert list(frame.columns) == ["ny11", "usdbrl", "sugar_brl_t"]
@@ -189,9 +191,9 @@ def test_an_impossible_start_date_raises():
 
 
 def test_the_brl_era_guard_is_active(frame):
-    """L'USDBRL d'avant juillet 1994 cote des cruzeiros — une autre monnaie. Le loader
-    l'exclut ; ce test garde cette exclusion depuis l'aval, là où un cruzeiro produirait un
-    plancher absurde de plusieurs dizaines de milliers de cents."""
+    """USDBRL before July 1994 quotes cruzeiros — a different currency. The loader
+    excludes it; this test guards that exclusion from downstream, where a cruzeiro
+    would produce an absurd floor of several tens of thousands of cents."""
     full = load_real_parity_frame(None)
     assert full.index.min() >= pd.Timestamp("1994-07-01")
     assert moving_floor(full).floor_max < 1_000.0

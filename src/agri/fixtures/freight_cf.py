@@ -1,19 +1,19 @@
-"""Jeu synthétique T1-1 — fabriqué pour **imposer** le phénomène que la thèse prédit.
+"""T1-1 synthetic dataset — built to **impose** the phenomenon the thesis predicts.
 
-Ce n'est pas du bruit plausible. La construction force trois propriétés, et les golden
-tests vérifient que le moteur les retrouve :
+This isn't plausible noise. The construction forces three properties, and the golden
+tests verify the engine recovers them:
 
-1. `freight_full > freight_index` **toujours** — le ballast ne peut que renchérir ;
-2. l'arb sous la convention full oscille autour de zéro avec un écart-type de quelques
-   dollars, donc une fraction substantielle de jours tombe dans la bande frontière ;
-3. sur ces jours-là, les deux conventions donnent des signes opposés — c'est le sujet.
+1. `freight_full > freight_index` **always** — ballast can only make it more expensive;
+2. the arb under the full convention oscillates around zero with a standard deviation of
+   a few dollars, so a substantial share of days fall in the borderline band;
+3. on those days, the two conventions give opposite signs — that's the subject.
 
-La propriété 2 est obtenue en construisant le CIF **à partir** du fret full plus un bruit
-centré, plutôt qu'en tirant CIF et FOB indépendamment et en espérant que l'arb tombe au
-bon endroit. C'est assumé : un jeu synthétique sert à tester le moteur, pas à simuler un
-marché.
+Property 2 is obtained by building CIF **from** the full freight plus centred noise,
+rather than by drawing CIF and FOB independently and hoping the arb lands in the right
+place. That's deliberate: a synthetic dataset is for testing the engine, not for
+simulating a market.
 
-Tickers préfixés `SYNTH_`. Rien ici ne doit jamais être lu comme un chiffre de marché.
+Tickers prefixed `SYNTH_`. Nothing here should ever be read as a market number.
 """
 from __future__ import annotations
 
@@ -24,16 +24,16 @@ from agri.chains.freight_cf import financing_cost_usd_t
 from agri.core.voyage import ROUTES, VESSELS, VoyageParams, voyage_freight_series
 
 DEFAULT_START = "2023-01-02"
-DEFAULT_PERIODS = 600          # ~2,4 ans de jours ouvrés, dont 90 mangés par le lissage
+DEFAULT_PERIODS = 600          # ~2.4 years of business days, 90 of which are eaten by smoothing
 
-# Niveaux de référence, ordres de grandeur crédibles pour un Panamax grains.
+# Reference levels, credible orders of magnitude for a grain Panamax.
 TCE_MEAN_USD_DAY = 15_000.0
 VLSFO_MEAN_USD_T = 560.0
 MGO_MEAN_USD_T = 780.0
-FOB_MEAN_USD_T = 440.0         # Santos soja, ordre de grandeur
+FOB_MEAN_USD_T = 440.0         # Santos soybean, order of magnitude
 
-# Écart-type du bruit ajouté au CIF : c'est lui qui décide de la largeur de la bande
-# frontière, donc de la fraction de jours où la convention tranche.
+# Standard deviation of the noise added to CIF: this is what decides the borderline
+# band's width, and therefore the share of days where the convention is decisive.
 CIF_WOBBLE_STD_USD_T = 6.0
 
 
@@ -48,13 +48,13 @@ def build(
     credit_days: float = 30.0,
     insurance_usd_t: float = 0.85,
 ) -> dict[str, pd.Series]:
-    """Renvoie les cinq séries d'entrée de T1-1, en dictionnaire prêt pour `build_conventions`."""
+    """Returns T1-1's five input series, as a dict ready for `build_conventions`."""
     rng = np.random.default_rng(seed)
     index = pd.date_range(start, periods=periods, freq="B")
     n = len(index)
     day_of_year = index.dayofyear.to_numpy()
 
-    # --- TCE : moyenne-réversion lente + saisonnalité (creux de l'hiver nord) ---
+    # --- TCE: slow mean-reversion + seasonality (northern-hemisphere winter trough) ---
     seasonal_tce = 1.0 + 0.18 * np.sin(2 * np.pi * (day_of_year - 60) / 365.25)
     shocks = rng.normal(scale=0.02, size=n)
     drift = np.zeros(n)
@@ -64,7 +64,7 @@ def build(
         TCE_MEAN_USD_DAY * seasonal_tce * np.exp(drift), index=index, name="SYNTH_TCE_PANAMAX"
     )
 
-    # --- Soutes : tendance lente commune, MGO au-dessus du VLSFO avec un spread bruité ---
+    # --- Bunkers: common slow trend, MGO above VLSFO with a noisy spread ---
     bunker_drift = np.zeros(n)
     bunker_shocks = rng.normal(scale=0.012, size=n)
     for i in range(1, n):
@@ -78,7 +78,7 @@ def build(
         name="SYNTH_MGO_SIN",
     )
 
-    # --- FOB origine : marche aléatoire douce autour du niveau de référence ---
+    # --- Origin FOB: gentle random walk around the reference level ---
     fob_drift = np.zeros(n)
     fob_shocks = rng.normal(scale=0.006, size=n)
     for i in range(1, n):
@@ -87,7 +87,7 @@ def build(
         FOB_MEAN_USD_T * np.exp(fob_drift), index=index, name="SYNTH_FOB_SANTOS"
     )
 
-    # --- CIF destination : construit POUR que l'arb full oscille autour de zéro ---
+    # --- Destination CIF: built SO THAT the full arb oscillates around zero ---
     vessel = VESSELS[vessel_key]
     route = ROUTES[route_key]
     params = VoyageParams()
@@ -121,7 +121,7 @@ def _reference_days(vessel, route, params: VoyageParams) -> float:
 
 
 def build_frame(**kwargs) -> pd.DataFrame:
-    """Raccourci : les séries synthétiques déjà passées dans `build_conventions`."""
+    """Shortcut: the synthetic series already passed through `build_conventions`."""
     from agri.chains.freight_cf import build_conventions
 
     vessel_key = kwargs.pop("vessel_key", "panamax")

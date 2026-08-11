@@ -1,17 +1,17 @@
-"""Le point de bascule — le livrable de chaque page du portefeuille.
+"""The tipping point — every page in the portfolio's deliverable.
 
-Un seuil chiffré qu'un praticien peut contester en dix secondes vaut mieux qu'une analyse
-juste. « Le breakeven est à 52 % de tarif » appelle une réponse ; « voici mon analyse »
-n'en appelle aucune. Ce module transforme une fonction de marge en ce seuil-là.
+A numeric threshold a practitioner can contest in ten seconds beats a sound analysis.
+"The breakeven is at 52% of the tariff" invites a response; "here is my analysis" invites
+none. This module turns a margin function into that threshold.
 
-Trois sorties, et la troisième est celle qui protège :
-    theta_star        le niveau où le signe change
-    sensitivity       d(marge)/d(theta) au point de bascule, en unités lisibles
-    distance_sigmas   l'écart entre le niveau courant et theta_star, en écarts-types
-                      historiques de theta
+Three outputs, and the third is the one that protects:
+    theta_star        the level where the sign flips
+    sensitivity       d(margin)/d(theta) at the tipping point, in readable units
+    distance_sigmas   the gap between the current level and theta_star, in historical
+                      standard deviations of theta
 
-Sans la troisième, on annonce un breakeven à trois sigmas comme s'il était imminent —
-c'est la façon la plus rapide de perdre un lecteur qui connaît son marché.
+Without the third, a three-sigma-away breakeven gets announced as if it were imminent —
+that's the fastest way to lose a reader who knows their market.
 """
 from __future__ import annotations
 
@@ -24,16 +24,16 @@ from scipy.optimize import brentq
 
 
 class BreakevenError(ValueError):
-    """Problème mal posé — bornes incohérentes, fonction non numérique."""
+    """Malformed problem — inconsistent bounds, non-numeric function."""
 
 
 class NoBreakevenInRange(Exception):
-    """Aucun changement de signe sur l'intervalle exploré.
+    """No sign change over the explored interval.
 
-    **Ce n'est pas un échec de calcul, c'est un résultat**, et souvent le plus fort de la
-    page : « sur toute la plage plausible de ballast facturé, l'arb reste ouvert » est une
-    affirmation falsifiable. Les valeurs aux deux bornes sont attachées à l'exception pour
-    que la page puisse l'afficher au lieu de tomber en erreur.
+    **This is not a computation failure, it's a result**, and often the page's strongest
+    one: "over the entire plausible range of charged ballast, the arb stays open" is a
+    falsifiable claim. The values at both bounds are attached to the exception so the
+    page can display it instead of erroring out.
     """
 
     def __init__(self, lo: float, hi: float, margin_lo: float, margin_hi: float):
@@ -41,18 +41,18 @@ class NoBreakevenInRange(Exception):
         self.hi = hi
         self.margin_lo = margin_lo
         self.margin_hi = margin_hi
-        sign = "positive" if margin_lo > 0 else "négative"
+        sign = "positive" if margin_lo > 0 else "negative"
         super().__init__(
-            f"aucun changement de signe sur [{lo:g}, {hi:g}] : la marge reste {sign} "
-            f"({margin_lo:+.4f} en {lo:g}, {margin_hi:+.4f} en {hi:g}). "
-            "Ce n'est pas une erreur — c'est le résultat à afficher, sans extrapoler "
-            "hors de la plage plausible."
+            f"no sign change over [{lo:g}, {hi:g}]: the margin stays {sign} "
+            f"({margin_lo:+.4f} at {lo:g}, {margin_hi:+.4f} at {hi:g}). "
+            "This is not an error — it's the result to display, without extrapolating "
+            "beyond the plausible range."
         )
 
 
 @dataclass(frozen=True)
 class Breakeven:
-    """Point de bascule, sa sensibilité locale, et sa distance au niveau courant."""
+    """Tipping point, its local sensitivity, and its distance to the current level."""
 
     theta_star: float
     sensitivity: float
@@ -60,14 +60,14 @@ class Breakeven:
     theta_current: float | None = None
     theta_sigma: float | None = None
     theta_label: str = "theta"
-    margin_label: str = "marge"
+    margin_label: str = "margin"
 
     @property
     def distance_sigmas(self) -> float | None:
-        """Distance du niveau courant au point de bascule, en écarts-types de theta.
+        """Distance from the current level to the tipping point, in standard deviations of theta.
 
-        None quand l'historique n'a pas été fourni : mieux vaut ne rien afficher que
-        d'afficher une distance sans échelle.
+        None when the history wasn't supplied: better to show nothing than to show a
+        distance with no scale.
         """
         if self.theta_current is None or self.theta_sigma is None:
             return None
@@ -77,7 +77,7 @@ class Breakeven:
 
     @property
     def is_within_reach(self) -> bool:
-        """Le point de bascule est-il à moins d'un écart-type ? Sinon, dire qu'il est loin."""
+        """Is the tipping point within one standard deviation? If not, say it's far off."""
         d = self.distance_sigmas
         return d is not None and abs(d) <= 1.0
 
@@ -85,15 +85,15 @@ class Breakeven:
     def summary(self) -> str:
         head = (
             f"{self.theta_label}* = {self.theta_star:.4g} "
-            f"(d{self.margin_label}/d{self.theta_label} = {self.sensitivity:+.4g} au seuil)"
+            f"(d{self.margin_label}/d{self.theta_label} = {self.sensitivity:+.4g} at threshold)"
         )
         d = self.distance_sigmas
         if d is None:
             return head
-        reach = "à portée" if self.is_within_reach else "hors de portée sur l'historique"
+        reach = "within reach" if self.is_within_reach else "out of reach historically"
         return (
-            f"{head} | niveau courant {self.theta_current:.4g}, "
-            f"soit {d:+.2f} écart-type — {reach}"
+            f"{head} | current level {self.theta_current:.4g}, "
+            f"i.e. {d:+.2f} standard deviations — {reach}"
         )
 
 
@@ -106,29 +106,30 @@ def solve_breakeven(
     theta_history: pd.Series | np.ndarray | None = None,
     h: float | None = None,
     theta_label: str = "theta",
-    margin_label: str = "marge",
+    margin_label: str = "margin",
     xtol: float = 1e-10,
 ) -> Breakeven:
-    """Résout `margin_fn(theta) = 0` sur [lo, hi] et mesure la sensibilité au seuil.
+    """Solves `margin_fn(theta) = 0` over [lo, hi] and measures the sensitivity at the threshold.
 
-    `margin_fn` doit être monotone en theta sur l'intervalle — c'est le cas de toutes les
-    marges de ce portefeuille (un ballast plus élevé ne peut que renchérir le fret, un
-    crédit LCFS plus élevé ne peut qu'améliorer la valeur en sortie d'usine). La monotonie
-    n'est pas vérifiée numériquement : elle doit être argumentée dans la page.
+    `margin_fn` must be monotone in theta over the interval — true of every margin in
+    this portfolio (higher ballast can only raise freight cost, a higher LCFS credit can
+    only improve the value out of the plant gate). Monotonicity isn't checked
+    numerically: it must be argued for in the page.
 
-    `theta_history` sert à exprimer la distance en écarts-types. Le fournir est
-    fortement recommandé : c'est ce qui distingue un seuil imminent d'un seuil théorique.
+    `theta_history` is used to express the distance in standard deviations. Supplying it
+    is strongly recommended: it's what distinguishes an imminent threshold from a
+    theoretical one.
     """
     if not np.isfinite(lo) or not np.isfinite(hi):
-        raise BreakevenError(f"bornes non finies : [{lo}, {hi}]")
+        raise BreakevenError(f"non-finite bounds: [{lo}, {hi}]")
     if lo >= hi:
-        raise BreakevenError(f"bornes incohérentes : lo={lo} doit être < hi={hi}")
+        raise BreakevenError(f"inconsistent bounds: lo={lo} must be < hi={hi}")
 
     margin_lo = float(margin_fn(lo))
     margin_hi = float(margin_fn(hi))
     if not np.isfinite(margin_lo) or not np.isfinite(margin_hi):
         raise BreakevenError(
-            f"marge non finie aux bornes : f({lo})={margin_lo}, f({hi})={margin_hi}"
+            f"non-finite margin at the bounds: f({lo})={margin_lo}, f({hi})={margin_hi}"
         )
     if margin_lo == 0.0:
         theta_star = lo
@@ -141,9 +142,9 @@ def solve_breakeven(
 
     step = h if h is not None else (hi - lo) * 1e-5
     if step <= 0:
-        raise BreakevenError(f"le pas de dérivation doit être > 0, reçu {step}")
-    # on garde les deux points d'évaluation à l'intérieur du bracket : hors bornes, la
-    # fonction de marge peut être indéfinie (un ballast négatif n'existe pas)
+        raise BreakevenError(f"the derivation step must be > 0, got {step}")
+    # keep both evaluation points inside the bracket: outside the bounds, the margin
+    # function may be undefined (e.g. a negative ballast doesn't exist)
     left = max(theta_star - step, lo)
     right = min(theta_star + step, hi)
     sensitivity = (float(margin_fn(right)) - float(margin_fn(left))) / (right - left)

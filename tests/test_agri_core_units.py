@@ -1,9 +1,9 @@
-"""Golden tests des conversions d'unités.
+"""Golden tests for unit conversions.
 
-Chaque valeur attendue est calculée à la main dans le commentaire qui la précède.
-Aucune n'est un print du code relu après coup — c'est la règle du repo, et c'est
-particulièrement critique ici : un facteur de conversion faux ne plante jamais, il
-produit une page cohérente et fausse.
+Every expected value is hand-computed in the comment preceding it. None is a print of
+the code read back after the fact — that's the repo's rule, and it's especially
+critical here: a wrong conversion factor never crashes, it produces a page that's
+consistent and wrong.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from agri.core.units import (
 
 
 # ---------------------------------------------------------------------------
-# Boisseaux : le facteur dépend de la graine (U-H1)
+# Bushels: the factor depends on the seed (U-H1)
 # ---------------------------------------------------------------------------
 def test_bushels_per_tonne_soybean():
     # 2204.62262 lb/t / 60 lb/bu = 36.743710...
@@ -40,8 +40,8 @@ def test_bushels_per_tonne_soybean():
 
 
 def test_bushels_per_tonne_corn_differs_from_soybean():
-    # 2204.62262 / 56 = 39.368261...  Le maïs et le soja n'ont PAS le même facteur :
-    # c'est exactement l'erreur que ce module existe pour rendre impossible.
+    # 2204.62262 / 56 = 39.368261...  Corn and soybean do NOT share a factor:
+    # that's exactly the error this module exists to make impossible.
     assert bushels_per_tonne("corn") == pytest.approx(39.3682611, abs=1e-6)
     assert bushels_per_tonne("corn") > bushels_per_tonne("soybean")
 
@@ -52,12 +52,12 @@ def test_bushels_per_tonne_oats():
 
 
 def test_wheat_shares_the_soybean_test_weight():
-    # blé et soja sont tous deux à 60 lb/bu — même facteur, pour de bonnes raisons
+    # wheat and soybean are both 60 lb/bu — same factor, for good reason
     assert bushels_per_tonne("wheat") == bushels_per_tonne("soybean")
 
 
 def test_unknown_commodity_raises_rather_than_guessing():
-    with pytest.raises(UnitError, match="poids-test inconnu"):
+    with pytest.raises(UnitError, match="unknown test weight"):
         bushels_per_tonne("canola")
 
 
@@ -75,7 +75,7 @@ def test_usd_bu_round_trip():
 
 
 # ---------------------------------------------------------------------------
-# Cents/lb et short ton
+# Cents/lb and short ton
 # ---------------------------------------------------------------------------
 def test_cents_lb_to_usd_t():
     # 1 c/lb = 0.01 USD/lb * 2204.62262 lb/t = 22.0462262 USD/t
@@ -97,7 +97,7 @@ def test_usd_short_ton_to_usd_t():
 
 
 def test_meal_300_usd_short_ton_in_metric():
-    # 300 * 1.10231131 = 330.693393 USD/t métrique
+    # 300 * 1.10231131 = 330.693393 metric USD/t
     assert usd_short_ton_to_usd_t(300.0) == pytest.approx(330.693393, abs=1e-4)
 
 
@@ -106,29 +106,29 @@ def test_short_ton_round_trip():
 
 
 def test_short_ton_is_lighter_so_price_per_metric_tonne_is_higher():
-    # contrôle de sens : une short ton pèse moins qu'une tonne, donc le même prix
-    # rapporté à la tonne métrique est forcément PLUS élevé. Un signe inversé ici
-    # passerait tous les tests numériques d'un board crush sans jamais planter.
+    # sanity check: a short ton weighs less than a metric tonne, so the same price
+    # per metric tonne must be HIGHER. A flipped sign here would pass every board
+    # crush numeric test without ever crashing.
     assert usd_short_ton_to_usd_t(100.0) > 100.0
 
 
 # ---------------------------------------------------------------------------
-# Board crush — les trois unités dans une seule formule
+# Board crush — three units in a single formula
 # ---------------------------------------------------------------------------
 def test_board_crush_hand_computed():
-    # fève 10.50 USD/bu, tourteau 300 USD/short ton, huile 45 c/lb
-    #   tourteau : 44/2000 = 0.022 short ton/bu * 300 = 6.60 USD/bu
-    #   huile    : 11 lb/bu * 0.45 USD/lb          = 4.95 USD/bu
-    #   crush    : 6.60 + 4.95 - 10.50            = 1.05 USD/bu
+    # bean 10.50 USD/bu, meal 300 USD/short ton, oil 45 c/lb
+    #   meal : 44/2000 = 0.022 short ton/bu * 300 = 6.60 USD/bu
+    #   oil  : 11 lb/bu * 0.45 USD/lb             = 4.95 USD/bu
+    #   crush: 6.60 + 4.95 - 10.50                = 1.05 USD/bu
     assert board_crush_usd_bu(10.50, 300.0, 45.0) == pytest.approx(1.05, abs=1e-10)
 
 
 def test_board_crush_treating_meal_as_metric_is_materially_wrong():
-    """Le piège, chiffré : traiter le tourteau comme s'il était en tonnes métriques.
+    """The trap, quantified: treating meal as if it were in metric tonnes.
 
-    Coefficient faux : 44 lb/bu / 2204.62262 = 0.0199580 au lieu de 0.022.
-    Sur 300 USD : 5.987 au lieu de 6.60, soit 0.613 USD/bu d'erreur — la moitié du
-    crush lui-même (1.05). Une erreur qui ne plante pas et qui décide du trade.
+    Wrong coefficient: 44 lb/bu / 2204.62262 = 0.0199580 instead of 0.022.
+    On 300 USD: 5.987 instead of 6.60, a 0.613 USD/bu error — half the crush itself
+    (1.05). An error that doesn't crash and that decides the trade.
     """
     correct = board_crush_usd_bu(10.50, 300.0, 45.0)
     wrong_meal_coefficient = 44.0 / LB_PER_TONNE
@@ -142,13 +142,13 @@ def test_board_crush_accepts_series():
     meal = pd.Series([300.0, 310.0])
     oil = pd.Series([45.0, 46.0])
     out = board_crush_usd_bu(beans, meal, oil)
-    # deuxième date : 0.022*310 + 11*0.46 - 11.00 = 6.82 + 5.06 - 11.00 = 0.88
+    # second date: 0.022*310 + 11*0.46 - 11.00 = 6.82 + 5.06 - 11.00 = 0.88
     assert out.iloc[0] == pytest.approx(1.05)
     assert out.iloc[1] == pytest.approx(0.88, abs=1e-10)
 
 
 # ---------------------------------------------------------------------------
-# Masse, volume
+# Mass, volume
 # ---------------------------------------------------------------------------
 def test_lb_kg_round_trip():
     assert kg_to_lb(lb_to_kg(100.0)) == pytest.approx(100.0)
@@ -159,20 +159,20 @@ def test_gallon_to_litre():
 
 
 # ---------------------------------------------------------------------------
-# Change et TVA
+# FX and VAT
 # ---------------------------------------------------------------------------
 def test_local_to_usd_uses_local_per_usd_convention():
-    # 5400 BRL/t à USDBRL = 5.4 -> 1000 USD/t
+    # 5400 BRL/t at USDBRL = 5.4 -> 1000 USD/t
     assert local_to_usd_per_t(5400.0, 5.4) == pytest.approx(1000.0)
 
 
 def test_negative_fx_raises():
-    with pytest.raises(UnitError, match="taux de change"):
+    with pytest.raises(UnitError, match="exchange rate"):
         local_to_usd_per_t(5400.0, -5.4)
 
 
 def test_strip_vat_chinese_agricultural_rate():
-    # 109 TTC à 9 % -> 100 HT, exactement
+    # 109 incl. VAT at 9% -> 100 ex-VAT, exactly
     assert strip_vat(109.0, 0.09) == pytest.approx(100.0)
 
 
@@ -181,31 +181,31 @@ def test_vat_round_trip():
 
 
 def test_vat_rate_given_as_percent_instead_of_fraction_raises():
-    # 9 au lieu de 0.09 : l'erreur la plus probable, et elle doit être bruyante
-    with pytest.raises(UnitError, match="taux de TVA"):
+    # 9 instead of 0.09: the most likely mistake, and it must be loud
+    with pytest.raises(UnitError, match="VAT rate"):
         strip_vat(109.0, 9.0)
 
 
 # ---------------------------------------------------------------------------
-# Sucre : polarisation (U-H2)
+# Sugar: polarisation (U-H2)
 # ---------------------------------------------------------------------------
 def test_raw_sugar_to_white_basis():
-    # 20 c/lb -> 440.924524 USD/t, * 1.07 = 471.789241 USD/t base blanc
+    # 20 c/lb -> 440.924524 USD/t, * 1.07 = 471.789241 USD/t white basis
     assert raw_sugar_to_white_basis(20.0, pol_adjust=1.07) == pytest.approx(471.789241, abs=1e-4)
 
 
 def test_pol_adjust_out_of_range_raises():
-    # 1.5 n'est plus une correction de polarisation, c'est une faute de frappe
+    # 1.5 is no longer a polarisation correction, it's a typo
     with pytest.raises(UnitError, match="pol_adjust"):
         raw_sugar_to_white_basis(20.0, pol_adjust=1.5)
 
 
 def test_pol_adjust_moves_white_premium_by_a_material_amount():
-    """Pourquoi pol_adjust est un slider et pas une constante.
+    """Why pol_adjust is a slider and not a constant.
 
-    Entre 1.06 et 1.08, sur du sucre à 20 c/lb, l'écart est de 8.82 USD/t — du même
-    ordre que le white premium qu'on cherche à décomposer dans T2-4. Figer ce facteur
-    déciderait du résultat de la page.
+    Between 1.06 and 1.08, on sugar at 20 c/lb, the gap is 8.82 USD/t — the same order
+    of magnitude as the white premium T2-4 is trying to decompose. Fixing this factor
+    would decide the page's result.
     """
     low = raw_sugar_to_white_basis(20.0, pol_adjust=1.06)
     high = raw_sugar_to_white_basis(20.0, pol_adjust=1.08)

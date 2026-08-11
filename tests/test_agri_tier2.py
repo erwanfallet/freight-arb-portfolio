@@ -1,9 +1,9 @@
-"""Golden tests des six moteurs Tier 2.
+"""Golden tests for the six Tier 2 engines.
 
-Rappel de posture, vérifié en fin de fichier : chaque moteur T2 repose sur une tension
-**inférée**, pas sur une citation. Les docstrings doivent dire « il me semble », jamais
-« j'ai lu que » — un test le contrôle, parce que c'est la ligne qui se fait démonter en
-une réponse si elle dérape.
+Posture reminder, checked at the end of the file: every T2 engine rests on an
+**inferred** tension, not a citation. The docstrings must say "it seems to me," never
+"I read that" — a test checks this, because it's the line that gets torn apart in one
+reply if it slips.
 """
 from __future__ import annotations
 
@@ -21,15 +21,15 @@ from agri.fixtures import tier2
 
 
 # ===========================================================================
-# T2-1 — basis contre flat price
+# T2-1 — basis against flat price
 # ===========================================================================
 def test_plant_crush_hand_computed():
-    """Fève 13,00 $/bu, tourteau 400 $/short ton, huile 55 c/lb,
-    rendements 43,5 et 10,8 lb/bu, opex 0,42 :
+    """Bean 13.00 $/bu, meal 400 $/short ton, oil 55 c/lb,
+    yields 43.5 and 10.8 lb/bu, opex 0.42:
 
-        tourteau : 43,5/2000 x 400 = 8,70
-        huile    : 10,8 x 0,55     = 5,94
-        crush    : 8,70 + 5,94 - 13,00 - 0,42 = 1,22 $/bu
+        meal : 43.5/2000 x 400 = 8.70
+        oil  : 10.8 x 0.55     = 5.94
+        crush: 8.70 + 5.94 - 13.00 - 0.42 = 1.22 $/bu
     """
     index = pd.to_datetime(["2024-01-01"])
     out = ct.plant_crush_usd_bu(
@@ -41,12 +41,12 @@ def test_plant_crush_hand_computed():
 
 
 def test_board_crush_beats_plant_crush_on_cbot_yields():
-    """Aux mêmes prix, le board utilise 44/11 lb et l'usine 43,5/10,8 : l'écart est le
-    tracking error minimal, celui qui existe même sans basis.
+    """At the same prices, the board uses 44/11 lb and the plant 43.5/10.8: the gap
+    is the minimal tracking error, the one that exists even with zero basis.
 
-        board = 0,022 x 400 + 0,11 x 55 - 13,00 = 1,85
-        usine = 1,22 (ci-dessus)
-        écart = 0,63 $/bu
+        board = 0.022 x 400 + 0.11 x 55 - 13.00 = 1.85
+        plant = 1.22 (above)
+        gap   = 0.63 $/bu
     """
     from agri.core.units import board_crush_usd_bu
 
@@ -95,7 +95,7 @@ def test_optimal_hedge_ratio_is_near_one_overall(crush_frame):
 
 
 def test_rolling_hedge_ratio_moves_away_from_one(crush_frame):
-    """Le produit de la page : `h*` n'est pas constant, et il s'éloigne de 1 par épisodes."""
+    """The page's deliverable: `h*` is not constant, and it drifts from 1 in episodes."""
     rolling = ct.rolling_hedge_ratio(crush_frame, window=120)
     assert rolling["h_star"].min() < 0.92
     assert rolling["h_star"].max() > 1.08
@@ -109,21 +109,21 @@ def test_decoupling_episodes_are_found(crush_frame):
 
 
 def test_decomposition_is_exact(crush_frame):
-    """L'identité doit se refermer au flottant près, sur toutes les dates.
+    """The identity must close to floating-point precision, on every date.
 
-    C'est ce qui distingue une décomposition d'une régression : rien n'est estimé, donc
-    rien ne peut être biaisé.
+    This is what distinguishes a decomposition from a regression: nothing is
+    estimated, so nothing can be biased.
     """
     components = ct.decompose_tracking_error(crush_frame)
     assert np.allclose(components["total"], crush_frame["tracking_error"], atol=1e-10)
 
 
 def test_the_yield_mismatch_term_is_not_a_basis(crush_frame):
-    """Le terme que « le décrochage vient du basis » rate complètement.
+    """The term that "the decoupling comes from the basis" completely misses.
 
-    L'écart entre les rendements CBOT (44/11 lb) et les rendements réels (43,5/10,8 lb)
-    crée un terme proportionnel au **niveau** du board, qui existe même quand tous les
-    basis sont nuls. Sur ce jeu, sa dispersion dépasse celle du basis fève.
+    The gap between the CBOT yields (44/11 lb) and the real yields (43.5/10.8 lb)
+    creates a term proportional to the board's **level**, which exists even when
+    every basis is zero. On this dataset, its dispersion exceeds the bean basis's.
     """
     components = ct.decompose_tracking_error(crush_frame)
     assert components["oil_yield"].std() > components["bean_basis"].std()
@@ -131,8 +131,8 @@ def test_the_yield_mismatch_term_is_not_a_basis(crush_frame):
 
 
 def test_meal_basis_dominates_the_variability(crush_frame):
-    """Le mécanisme que décrivent les gens d'usine : c'est le basis tourteau qui casse le
-    hedge, pas la fève."""
+    """The mechanism plant people describe: it's the meal basis that breaks the
+    hedge, not the bean."""
     contributions = ct.basis_contributions(crush_frame)
     assert contributions.loc[0, "term"] == "meal_basis"
     assert contributions.loc[0, "share"] > 0.5
@@ -140,26 +140,26 @@ def test_meal_basis_dominates_the_variability(crush_frame):
 
 
 def test_opex_moves_the_level_but_not_the_variability(crush_frame):
-    """Distinction qui compte pour une couverture : un coût fixe décale, il ne fait pas
-    trembler."""
+    """A distinction that matters for a hedge: a fixed cost shifts things, it
+    doesn't shake them."""
     contributions = ct.basis_contributions(crush_frame).set_index("term")
     assert contributions.loc["opex", "std_usd_bu"] == pytest.approx(0.0)
     assert contributions.loc["opex", "mean_usd_bu"] == pytest.approx(0.42)
 
 
 def test_a_regression_on_the_basis_alone_is_biased(crush_frame):
-    """Pourquoi la décomposition exacte remplace la régression.
+    """Why the exact decomposition replaces the regression.
 
-    Régresser le tracking error sur les trois basis omet les deux termes de rendement, qui
-    sont aussi dispersés que le basis fève. Le coefficient de la fève — dont la valeur
-    structurelle est exactement +1 — sort biaisé à ~0,99.
+    Regressing the tracking error on the three basis terms omits the two yield
+    terms, which are as dispersed as the bean basis. The bean coefficient — whose
+    structural value is exactly +1 — comes out biased at ~0.99.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         regression = ct.explain_tracking_error(crush_frame)
     assert regression.params["bean_basis"] != pytest.approx(1.0, abs=1e-3)
     assert regression.params["bean_basis"] == pytest.approx(1.0, abs=0.05)
-    # les deux basis a forte dispersion sont, eux, bien identifies
+    # the two high-dispersion basis terms, by contrast, are well identified
     assert regression.params["meal_basis"] == pytest.approx(-0.02175, abs=1e-3)
     assert regression.params["oil_basis"] == pytest.approx(-0.108, abs=1e-3)
 
@@ -168,10 +168,10 @@ def test_a_regression_on_the_basis_alone_is_biased(crush_frame):
 # T2-4 — white premium
 # ===========================================================================
 def test_white_premium_hand_computed():
-    """No.5 à 520 $/t, No.11 à 20 c/lb, pol_adjust 1,07 :
-        20 x 22,0462262 = 440,924524 $/t
-        x 1,07          = 471,789241 $/t sur base blanc
-        premium         = 520 - 471,789241 = 48,210759 $/t
+    """No.5 at 520 $/t, No.11 at 20 c/lb, pol_adjust 1.07:
+        20 x 22.0462262 = 440.924524 $/t
+        x 1.07          = 471.789241 $/t on a white basis
+        premium         = 520 - 471.789241 = 48.210759 $/t
     """
     index = pd.to_datetime(["2024-01-01"])
     out = wp.white_premium_usd_t(
@@ -181,13 +181,13 @@ def test_white_premium_hand_computed():
 
 
 def test_fair_value_refining_hand_computed():
-    """No.11 à 20 c/lb = 440,924524 $/t de brut :
-        énergie          28,000000
-        perte 2 %         8,818490
-        main d'oeuvre    12,000000
-        fret             18,000000
-        financement      440,924524 x 0,055 x 45/360 = 3,031356
-        total            69,849846
+    """No.11 at 20 c/lb = 440.924524 $/t of raw sugar:
+        energy           28.000000
+        2% loss           8.818490
+        labour           12.000000
+        freight          18.000000
+        financing        440.924524 x 0.055 x 45/360 = 3.031356
+        total            69.849846
     """
     index = pd.to_datetime(["2024-01-01"])
     costs = wp.fair_value_refining_usd_t(pd.Series([20.0], index=index))
@@ -197,7 +197,7 @@ def test_fair_value_refining_hand_computed():
 
 
 def test_richness_hand_computed():
-    # 48,210759 - 69,849846 = -21,639087 -> zone CHEAP
+    # 48.210759 - 69.849846 = -21.639087 -> CHEAP zone
     index = pd.to_datetime(["2024-01-01"])
     frame = wp.build_richness(
         pd.Series([520.0], index=index), pd.Series([20.0], index=index)
@@ -215,15 +215,15 @@ def test_pol_adjust_out_of_range_is_rejected():
 
 
 def test_pol_adjust_sensitivity_is_material():
-    """W-H1 : entre 1,06 et 1,08 la part du temps en zone RICH bouge assez pour qu'on ne
-    puisse pas figer le paramètre. C'est ce qui justifie le slider."""
+    """W-H1: between 1.06 and 1.08 the share of time in the RICH zone moves enough
+    that the parameter can't be fixed. That's what justifies the slider."""
     data = tier2.white_premium()
     table = wp.pol_adjust_sensitivity(
         data["no5_usd_t"], data["no11_cents_lb"], values=np.array([1.06, 1.08])
     )
     low, high = table["share_rich"].tolist()
     assert abs(high - low) > 0.05
-    # un pol_adjust plus eleve renchérit la jambe brute, donc comprime le premium
+    # a higher pol_adjust makes the raw leg more expensive, so it compresses the premium
     assert table["mean_white_premium"].is_monotonic_decreasing
 
 
@@ -238,25 +238,25 @@ def test_richness_summary_produces_the_headline():
 
 
 # ===========================================================================
-# T2-4 sur données réelles (export Bloomberg) — No.11/No.5 + Henry Hub
+# T2-4 on real data (Bloomberg export) — No.11/No.5 + Henry Hub
 # ===========================================================================
 from agri.data.bloomberg_loader import DEFAULT_PATH as _BBG_PATH  # noqa: E402
 
 pytestmark_real_t2_4 = pytest.mark.skipif(
-    not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}"
+    not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}"
 )
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_richness_on_2026_08_07_hand_computed():
-    """No.11 = 16,45 c/lb, No.5 = 503,4 USD/t, Henry Hub = 2,662 USD/mmBtu :
-        raw_usd_t       = 16,45 x 22,0462262           = 362,660421
-        white_premium   = 503,4 - 362,660421 x 1,07     = 115,353350
-        energie         = 2,662 x 8,0                   = 21,296
-        perte_rendement = 0,02 x 362,660421              = 7,253208
-        financement     = 362,660421 x 0,055 x 45/360    = 2,493290
-        fv_refining     = 21,296 + 7,253208 + 12 + 18 + 2,493290 = 61,042499
-        richness        = 115,353350 - 61,042499         = 54,310851
+    """No.11 = 16.45 c/lb, No.5 = 503.4 USD/t, Henry Hub = 2.662 USD/mmBtu:
+        raw_usd_t     = 16.45 x 22.0462262           = 362.660421
+        white_premium = 503.4 - 362.660421 x 1.07     = 115.353350
+        energy        = 2.662 x 8.0                   = 21.296
+        yield_loss    = 0.02 x 362.660421              = 7.253208
+        financing     = 362.660421 x 0.055 x 45/360    = 2.493290
+        fv_refining   = 21.296 + 7.253208 + 12 + 18 + 2.493290 = 61.042499
+        richness      = 115.353350 - 61.042499         = 54.310851
     """
     frame = wp.load_real_richness_frame()
     row = frame.loc["2026-08-07"]
@@ -268,11 +268,11 @@ def test_real_richness_on_2026_08_07_hand_computed():
     assert row["zone"] == "RICH"
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_energy_cost_tracks_henry_hub_not_a_constant():
-    """Le coût énergie doit varier dans le temps (proxy Henry Hub), contrairement au
-    forfait DEFAULT_ENERGY_USD_T qu'il remplace — sinon l'upgrade « données réelles »
-    serait cosmétique."""
+    """The energy cost must vary over time (Henry Hub proxy), unlike the
+    DEFAULT_ENERGY_USD_T flat rate it replaces — otherwise the "real data" upgrade
+    would be cosmetic."""
     frame = wp.load_real_richness_frame()
     from agri.chains.white_premium import fair_value_refining_usd_t
     from agri.data.bloomberg_loader import load as load_bloomberg
@@ -284,7 +284,7 @@ def test_real_energy_cost_tracks_henry_hub_not_a_constant():
     assert energy_leg.nunique() > 100
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_richness_summary_and_headline_run_on_real_data():
     frame = wp.load_real_richness_frame()
     summary = wp.summarise_richness(frame)
@@ -294,7 +294,7 @@ def test_real_richness_summary_and_headline_run_on_real_data():
 
 
 # ===========================================================================
-# T2-5 — l'usine comme option
+# T2-5 — the plant as an option
 # ===========================================================================
 @pytest.fixture(scope="module")
 def ou_params() -> po.OUParams:
@@ -302,9 +302,9 @@ def ou_params() -> po.OUParams:
 
 
 def test_ou_calibration_recovers_kappa_and_sigma(ou_params):
-    """theta est volontairement testé plus large : c'est le paramètre le plus lent à
-    estimer. Avec kappa = 0,035 la demi-vie est de 20 périodes, donc 1 600 observations
-    n'en valent qu'une trentaine d'indépendantes pour la moyenne de long terme."""
+    """theta is deliberately tested with a wider tolerance: it's the slowest
+    parameter to estimate. With kappa = 0.035 the half-life is 20 periods, so 1,600
+    observations are only worth about thirty independent ones for the long-run mean."""
     assert ou_params.kappa == pytest.approx(tier2.TRUE_OU_KAPPA, abs=0.008)
     assert ou_params.sigma == pytest.approx(tier2.TRUE_OU_SIGMA, abs=0.4)
     assert ou_params.theta == pytest.approx(tier2.TRUE_OU_THETA, abs=3.0)
@@ -315,8 +315,8 @@ def test_half_life_is_consistent_with_kappa(ou_params):
 
 
 def test_calibration_refuses_a_random_walk():
-    """O-H1 : calibrer un OU sur une marche aléatoire donnerait un kappa quasi nul et une
-    valeur d'option absurde, sans jamais planter. Le refus est explicite."""
+    """O-H1: calibrating an OU process on a random walk would give a near-zero
+    kappa and an absurd option value, without ever crashing. The refusal is explicit."""
     rng = np.random.default_rng(0)
     walk = pd.Series(
         np.cumsum(rng.normal(size=400)),
@@ -349,10 +349,10 @@ def test_value_iteration_converges(band):
 
 
 def test_the_frontier_is_a_band_not_a_threshold(band):
-    """LE résultat de la page : M_off < 0 < M_on, avec une hystérésis strictement positive.
+    """THE page's result: M_off < 0 < M_on, with strictly positive hysteresis.
 
-    Une règle « marge < 0 » suppose M_off = M_on = 0. La frontière optimale ne l'est
-    jamais dès que l'arrêt et le redémarrage coûtent quelque chose.
+    A "margin < 0" rule assumes M_off = M_on = 0. The optimal frontier never is one,
+    the moment stopping and restarting cost anything at all.
     """
     assert band.m_off < 0.0 < band.m_on
     assert band.width > 0.0
@@ -368,11 +368,11 @@ def test_higher_switching_costs_widen_the_band(ou_params):
 
 
 def test_plant_value_increases_with_volatility(ou_params):
-    """La démonstration contre-intuitive, et c'est elle qui fait la page.
+    """The counter-intuitive demonstration, and it's what makes the page.
 
-    À moyenne de marge égale, une usine dont la marge est **plus volatile** vaut plus,
-    parce que la flexibilité d'arrêt tronque la queue basse. C'est un chiffre posé sur un
-    débat qui se tient d'habitude en slogans.
+    At an equal average margin, a plant whose margin is **more volatile** is worth
+    more, because the option to stop truncates the lower tail. It's a number placed
+    on a debate that's usually held in slogans.
     """
     table = po.volatility_sensitivity(
         ou_params, cost_restart=120.0, cost_shutdown=60.0, cost_idle=0.5
@@ -395,33 +395,33 @@ def test_negative_switching_costs_are_rejected(ou_params):
 
 
 # ===========================================================================
-# T2-5 sur données réelles — marge de crush CBOT, entièrement réelle
+# T2-5 on real data — CBOT crush margin, entirely real
 # ===========================================================================
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_crush_margin_on_2026_08_07_hand_computed():
-    """Soja 11,565 USD/bu, tourteau 308,1 USD/short ton, huile 68,16 c/lb :
-        tourteau : 44/2000 x 308,1 = 6,7782
-        huile    : 11 x 0,6816    = 7,4976
-        crush    : 6,7782 + 7,4976 - 11,565 = 2,7108 USD/bu
+    """Soybean 11.565 USD/bu, meal 308.1 USD/short ton, oil 68.16 c/lb:
+        meal : 44/2000 x 308.1 = 6.7782
+        oil  : 11 x 0.6816    = 7.4976
+        crush: 6.7782 + 7.4976 - 11.565 = 2.7108 USD/bu
     """
     margin = po.real_board_crush_margin()
     assert margin.loc["2026-08-07"] == pytest.approx(2.7108, abs=1e-4)
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_margin_uses_only_real_legs_no_parameters():
-    """Contrairement à T1-2 (roll omis) ou T2-4 (labeur/fret paramétrés), les trois
-    jambes ici sont entièrement réelles — aucun terme constant injecté."""
+    """Unlike T1-2 (roll omitted) or T2-4 (labour/freight parameterised), all three
+    legs here are entirely real — no constant term injected."""
     margin = po.real_board_crush_margin(start="2020-01-01")
     assert margin.std() > 0.1
     assert margin.nunique() > 500
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_real_margin_fails_stationarity_and_that_is_the_finding():
-    """Résultat vérifié en session : aucune fenêtre testée (36 ans complets, ni les
-    sous-périodes depuis 2005) ne passe le verdict conjoint ADF+KPSS. Ce test verrouille
-    que le diagnostic le dit clairement plutôt que de masquer l'échec."""
+    """Result verified in session: no window tested (the full 36 years, nor the
+    sub-periods since 2005) passes the joint ADF+KPSS verdict. This test locks in
+    that the diagnostic states this clearly rather than masking the failure."""
     margin = po.real_board_crush_margin()
     diagnostic = po.diagnose_real_margin_stationarity(margin)
     assert diagnostic.stationarity.verdict != "stationary"
@@ -429,11 +429,11 @@ def test_real_margin_fails_stationarity_and_that_is_the_finding():
     assert diagnostic.n_obs == len(margin)
 
 
-@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"fichier Bloomberg absent : {_BBG_PATH}")
+@pytest.mark.skipif(not _BBG_PATH.exists(), reason=f"Bloomberg file absent: {_BBG_PATH}")
 def test_indicative_calibration_still_produces_a_usable_band():
-    """La calibration indicative (strict=False) doit rester utilisable — bande valide,
-    convergence de l'itération de la valeur — même si le verdict de stationnarité est
-    defavorable. C'est ce qui la rend affichable comme resultat illustratif."""
+    """The indicative calibration (strict=False) must remain usable — a valid band,
+    value-iteration convergence — even when the stationarity verdict is
+    unfavourable. That's what makes it displayable as an illustrative result."""
     margin = po.real_board_crush_margin(start="2018-01-01")
     ou = po.calibrate_real_ou_indicative(margin)
     assert ou.stationarity.verdict != "stationary"
@@ -443,7 +443,7 @@ def test_indicative_calibration_still_produces_a_usable_band():
 
 
 # ===========================================================================
-# T2-6 — substitution inter-huiles
+# T2-6 — inter-oil substitution
 # ===========================================================================
 @pytest.fixture(scope="module")
 def spreads() -> pd.DataFrame:
@@ -459,16 +459,17 @@ def test_spreads_are_built_once_per_pair(spreads):
 
 
 def test_half_life_formula():
-    # b = -0,10 -> demi-vie = -ln(2)/ln(0,90) = 6,579
+    # b = -0.10 -> half-life = -ln(2)/ln(0.90) = 6.579
     assert -np.log(2) / np.log(0.90) == pytest.approx(6.5788, abs=1e-3)
 
 
 def test_substitution_bound_finds_the_regime_split(spreads):
-    """Le jeu impose un AR à seuil : lent sous 60 $/t d'écart, rapide au-delà.
+    """The dataset imposes a threshold AR process: slow below a 60 $/t gap, fast
+    beyond it.
 
-    On ne teste pas la restitution exacte des demi-vies — un modèle à seuil estimé par
-    partition est une approximation (S-H4) — mais la **séparation**, qui est ce que la
-    page affirme.
+    This doesn't test exact recovery of the half-lives — a threshold model
+    estimated by splitting is an approximation (S-H4) — but the **separation**,
+    which is what the page claims.
     """
     bound = os_.substitution_bound(
         spreads["palm_minus_soy"],
@@ -483,28 +484,28 @@ def test_substitution_bound_finds_the_regime_split(spreads):
 
 
 def test_lags_are_computed_before_the_regime_filter(spreads):
-    """Le bug que ce test verrouille.
+    """The bug this test locks in against.
 
-    Filtrer le sous-échantillon **avant** de calculer `.diff()` et `.shift()` calcule des
-    écarts entre observations non adjacentes dans le temps, ce qui fabrique une fausse
-    moyenne-réversion : deux points distants de trois semaines paraissent avoir convergé
-    en un pas. Sur ce jeu, l'erreur ramenait une demi-vie de 173 jours à 10.
+    Filtering the subsample **before** computing `.diff()` and `.shift()` computes
+    gaps between observations that aren't adjacent in time, which manufactures fake
+    mean reversion: two points three weeks apart appear to have converged in a
+    single step. On this dataset, the error brought a 173-day half-life down to 10.
     """
     series = spreads["palm_minus_soy"]
     mask = (series.shift(1).abs() < 20.0)
 
     correct = os_.estimate_half_life(series, mask=mask)
-    naive = os_.estimate_half_life(series[mask])       # l'erreur : filtrer d'abord
+    naive = os_.estimate_half_life(series[mask])       # the mistake: filter first
     assert correct.beta != pytest.approx(naive.beta, abs=1e-6)
-    assert abs(naive.beta) > abs(correct.beta)          # l'erreur exagère la réversion
+    assert abs(naive.beta) > abs(correct.beta)          # the mistake exaggerates reversion
 
 
 def test_screen_flags_non_stationary_pairs(spreads):
-    """Le contrôle qui empêche de lire une demi-vie sur une racine unitaire.
+    """The check that prevents reading a half-life off a unit root.
 
-    Le jeu contient un couple construit comme une vraie relation (palme-soja) et deux
-    couples qui n'en sont pas. Le screen doit les distinguer, sinon la page publierait
-    trois « bornes de substitution » dont deux n'existent pas.
+    The dataset contains one pair built as a genuine relationship (palm-soy) and two
+    pairs that aren't. The screen must tell them apart, otherwise the page would
+    publish three "substitution bounds," two of which don't exist.
     """
     table = os_.screen_all_pairs(spreads).set_index("pair")
     assert table.loc["palm_minus_soy", "stationarity"] == "stationary"
@@ -531,29 +532,29 @@ def test_too_few_oils_is_rejected():
 
 
 # ===========================================================================
-# Posture Tier 2 — la règle absolue
+# Tier 2 posture — the absolute rule
 # ===========================================================================
-# `plant_option` est volontairement hors de cette liste depuis sa refonte : la page ne
-# repose plus sur une tension inférée du marché (« il me semble que les desks se
-# disputent ») mais sur la critique d'une règle **réellement utilisée** — le
-# `consecutive_below(margin, 0, N=4)` des pages zinc et lithium — dont elle calcule
-# l'implication. Ce n'est pas un affaiblissement du garde-fou : c'est un statut
-# épistémique différent, couvert par son propre test juste en dessous.
+# `plant_option` is deliberately outside this list since its rework: the page no
+# longer rests on an inferred market tension ("it seems to me desks argue about this")
+# but on the critique of a rule that is **actually used** — the
+# `consecutive_below(margin, 0, N=4)` used on the zinc and lithium pages — whose
+# implication it computes. This isn't a weakening of the guardrail: it's a different
+# epistemic status, covered by its own test right below.
 #
-# `basis_flat` (T2-1) et `grain_carry` (T2-2) ont quitté le portefeuille le 10/08/2026 :
-# l'export Bloomberg ne contient que des premiers mois génériques, donc ni série cash ni
-# spread calendaire. Leur livrable n'était pas calculable et serait resté synthétique.
-# Code conservé dans `_archive/`, pas supprimé.
+# `basis_flat` (T2-1) and `grain_carry` (T2-2) left the portfolio on 10/08/2026: the
+# Bloomberg export only contains generic front months, so neither a cash series nor a
+# calendar spread is available. Their deliverable wasn't computable and would have
+# stayed synthetic. Code kept in `_archive/`, not deleted.
 INFERRED_TENSION_MODULES = [ct, wp, os_]
 
 
 @pytest.mark.parametrize("module", INFERRED_TENSION_MODULES)
 def test_tier2_modules_frame_the_tension_as_inferred(module):
-    """« Il me semble que », jamais « j'ai lu que ».
+    """"It seems to me," never "I read that."
 
-    Présenter une tension inférée comme une citation se fait démonter en une ligne, parce
-    que c'est faux. Ce test garde la frontière au niveau du code plutôt qu'au niveau de la
-    discipline.
+    Presenting an inferred tension as a citation gets torn apart in one line,
+    because it's false. This test keeps the boundary at the code level rather than
+    at the discipline level.
     """
     import re
 
@@ -574,12 +575,12 @@ def test_tier2_modules_frame_the_tension_as_inferred(module):
 
 
 def test_plant_option_rests_on_a_rule_it_can_point_at_not_an_inferred_tension():
-    """Le garde-fou qui remplace celui d'au-dessus, pour le seul module refondu.
+    """The guardrail that replaces the one above, for the one reworked module.
 
-    La page ne revendique aucune dispute de marché — elle vise une règle qu'on peut
-    montrer du doigt, et elle doit dire ce qu'elle en fait : nommer la règle, annoncer
-    qu'elle en calcule l'implication, et exposer le contrefactuel qui empêche de
-    présenter un raffinement comme le sujet principal.
+    The page claims no market dispute — it targets a rule that can be pointed at,
+    and it must say what it does with it: name the rule, announce that it computes
+    its implication, and expose the counterfactual that prevents a refinement from
+    being presented as the main subject.
     """
     doc = po.__doc__ or ""
     lowered = doc.lower()

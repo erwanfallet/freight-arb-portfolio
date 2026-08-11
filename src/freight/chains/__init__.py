@@ -1,1 +1,1 @@
-"""Une chaîne physique par module. Un module = un dashboard = un email."""
+"""One physical chain per module. One module = one dashboard = one email."""

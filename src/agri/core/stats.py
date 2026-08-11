@@ -1,13 +1,13 @@
-"""Boîte à outils statistique — conçue pour produire des refus de conclure.
+"""Statistics toolkit — built to produce refusals to conclude.
 
-Le fil directeur : chaque fonction renvoie sa mesure **avec ce qui permet de la
-disqualifier**. Une corrélation sans sa bande de significativité, un R² sans son n
-effectif, un win rate sans son intervalle de confiance sont des chiffres qui survivent
-mal à un desk. C'est précisément là que se joue la crédibilité d'une page.
+The throughline: every function returns its measurement **together with what allows it
+to be disqualified**. A correlation without its significance band, an R² without its
+effective n, a win rate without its confidence interval are numbers that don't survive a
+desk well. That's precisely where a page's credibility is decided.
 
-Tout ce qui prend un `n_eff` le prend explicitement : ces fonctions ne savent pas si
-l'échantillon qu'on leur donne provient de fenêtres chevauchantes. C'est à l'appelant de
-le dire, via `core.resample.effective_n*`.
+Everything that takes an `n_eff` takes it explicitly: these functions don't know whether
+the sample they're given comes from overlapping windows. It's up to the caller to say
+so, via `core.resample.effective_n*`.
 """
 from __future__ import annotations
 
@@ -36,24 +36,24 @@ __all__ = [
 
 
 class StatsError(ValueError):
-    """Test mal spécifié ou échantillon insuffisant — toujours une erreur d'appelant."""
+    """Mis-specified test or insufficient sample — always a caller error."""
 
 
 # ===========================================================================
-# Stationnarité : les deux tests, toujours
+# Stationarity: both tests, always
 # ===========================================================================
 @dataclass(frozen=True)
 class StationarityVerdict:
-    """Résultat conjoint ADF + KPSS.
+    """Joint ADF + KPSS result.
 
-    Les deux tests ont des hypothèses nulles **opposées** :
-        ADF  H0 = racine unitaire      -> p petit = stationnaire
-        KPSS H0 = stationnarité        -> p petit = non stationnaire
+    The two tests have **opposite** null hypotheses:
+        ADF  H0 = unit root        -> small p = stationary
+        KPSS H0 = stationarity     -> small p = non-stationary
 
-    Les lancer tous les deux est le seul moyen de distinguer « stationnaire » de
-    « je n'ai pas assez de données pour le dire ». Quand ils se contredisent, on ne
-    conclut pas : `verdict` vaut alors "conflicting" ou "inconclusive", et la page doit
-    l'afficher plutôt que de choisir le test qui l'arrange.
+    Running both is the only way to tell "stationary" apart from "I don't have enough
+    data to say." When they disagree, no conclusion is drawn: `verdict` is then
+    "conflicting" or "inconclusive," and the page must show that rather than picking
+    whichever test is convenient.
     """
 
     adf_stat: float
@@ -80,20 +80,20 @@ class StationarityVerdict:
         if not adf_ok and kpss_bad:
             return "unit_root"
         if adf_ok and kpss_bad:
-            # les deux rejettent : typiquement une rupture structurelle ou de
-            # l'hétéroscédasticité, pas une série « moyennement stationnaire »
+            # both reject: typically a structural break or heteroscedasticity, not a
+            # "moderately stationary" series
             return "conflicting"
         return "inconclusive"
 
     @property
     def summary(self) -> str:
         labels = {
-            "stationary": "stationnaire (les deux tests concordent)",
-            "unit_root": "racine unitaire (les deux tests concordent)",
-            "conflicting": "CONTRADICTOIRE — les deux rejettent : suspecter une rupture "
-                           "structurelle ou de l'hétéroscédasticité, ne pas conclure",
-            "inconclusive": "NON CONCLUANT — aucun des deux ne rejette : échantillon "
-                            "probablement trop court, ne pas conclure",
+            "stationary": "stationary (both tests agree)",
+            "unit_root": "unit root (both tests agree)",
+            "conflicting": "CONFLICTING — both reject: suspect a structural break or "
+                           "heteroscedasticity, do not conclude",
+            "inconclusive": "INCONCLUSIVE — neither rejects: sample probably too "
+                            "short, do not conclude",
         }
         return (
             f"{labels[self.verdict]} | ADF p={self.adf_pvalue:.3f}, "
@@ -104,25 +104,25 @@ class StationarityVerdict:
 def adf_kpss(
     series: pd.Series, *, alpha: float = 0.05, regression: str = "c"
 ) -> StationarityVerdict:
-    """ADF et KPSS sur la même série, avec verdict conjoint.
+    """ADF and KPSS on the same series, with a joint verdict.
 
-    `regression='c'` teste autour d'une constante (le cas usuel pour un spread ou une
-    marge) ; `'ct'` ajoute une tendance déterministe.
+    `regression='c'` tests around a constant (the usual case for a spread or a margin);
+    `'ct'` adds a deterministic trend.
     """
     from statsmodels.tsa.stattools import adfuller, kpss
 
     clean = pd.Series(series).dropna().astype(float)
     if len(clean) < 20:
         raise StatsError(
-            f"au moins 20 observations sont nécessaires pour un test de stationnarité "
-            f"lisible, reçu {len(clean)}"
+            f"at least 20 observations are needed for a readable stationarity test, "
+            f"got {len(clean)}"
         )
 
     adf_stat, adf_p, *_ = adfuller(clean.to_numpy(), regression=regression, autolag="AIC")
 
     with warnings.catch_warnings():
-        # KPSS borne sa p-value dans [0.01, 0.10] et prévient quand elle sature ; c'est
-        # une information portée par le verdict, pas un problème à faire remonter.
+        # KPSS clamps its p-value into [0.01, 0.10] and warns when it saturates; that's
+        # information carried by the verdict, not a problem to surface.
         warnings.simplefilter("ignore")
         kpss_stat, kpss_p, *_ = kpss(clean.to_numpy(), regression=regression, nlags="auto")
 
@@ -137,11 +137,11 @@ def adf_kpss(
 
 
 # ===========================================================================
-# Cross-corrélation avec bande de significativité
+# Cross-correlation with a significance band
 # ===========================================================================
 @dataclass(frozen=True)
 class CrossCorrelation:
-    """CCF et sa bande de Bartlett. La bande est le produit, pas la corrélation."""
+    """CCF and its Bartlett band. The band is the deliverable, not the correlation."""
 
     lags: np.ndarray
     values: np.ndarray
@@ -150,11 +150,11 @@ class CrossCorrelation:
 
     @property
     def significant_lags(self) -> np.ndarray:
-        """Les seuls lags dont on a le droit de parler."""
+        """The only lags there's a right to talk about."""
         return self.lags[np.abs(self.values) > self.band]
 
     def peak(self) -> tuple[int, float]:
-        """Lag de corrélation absolue maximale, et sa valeur — significative ou non."""
+        """Lag of maximum absolute correlation, and its value — significant or not."""
         i = int(np.nanargmax(np.abs(self.values)))
         return int(self.lags[i]), float(self.values[i])
 
@@ -162,11 +162,11 @@ class CrossCorrelation:
     def summary(self) -> str:
         lag, value = self.peak()
         verdict = (
-            "SIGNIFICATIF" if abs(value) > self.band
-            else f"DANS LA BANDE (±{self.band:.3f}) — indistinguable de zéro"
+            "SIGNIFICANT" if abs(value) > self.band
+            else f"WITHIN THE BAND (±{self.band:.3f}) — indistinguishable from zero"
         )
         return (
-            f"pic à lag {lag:+d} : rho = {value:+.3f} | {verdict} | "
+            f"peak at lag {lag:+d}: rho = {value:+.3f} | {verdict} | "
             f"n_eff = {self.n_eff:.1f}"
         )
 
@@ -179,23 +179,23 @@ def ccf_with_band(
     n_eff: float | None = None,
     confidence: float = 0.95,
 ) -> CrossCorrelation:
-    """Cross-corrélation entre x et y, avec la bande de Bartlett ±z/sqrt(n_eff).
+    """Cross-correlation between x and y, with the Bartlett band ±z/sqrt(n_eff).
 
-    CONVENTION DE SIGNE, à afficher dans la page parce qu'elle s'inverse d'un logiciel à
-    l'autre : la valeur au lag k est `corr(x[t], y[t+k])`. Un pic à **lag positif**
-    signifie donc que **x précède y**.
+    SIGN CONVENTION, worth displaying on the page because it flips between software
+    packages: the value at lag k is `corr(x[t], y[t+k])`. A peak at **positive lag**
+    therefore means **x leads y**.
 
-    `n_eff` est la taille d'échantillon effective (Règle C). Le laisser à None utilise le
-    nombre d'observations brut — correct seulement si les observations ne se chevauchent
-    pas. C'est le paramètre qui décide de la largeur de la bande, donc de ce qu'on a le
-    droit d'appeler un signal : sur n=150, une corrélation de -0.10 est dans la bande.
+    `n_eff` is the effective sample size (Rule C). Leaving it at None uses the raw
+    observation count — correct only if the observations don't overlap. It's the
+    parameter that decides the band's width, and therefore what's allowed to be called
+    a signal: at n=150, a correlation of -0.10 is within the band.
     """
     aligned = pd.concat({"x": x, "y": y}, axis=1).dropna()
     n = len(aligned)
     if n < max_lag + 10:
         raise StatsError(
-            f"échantillon trop court pour {max_lag} lags : n={n}. "
-            "Réduire max_lag ou renoncer au test."
+            f"sample too short for {max_lag} lags: n={n}. "
+            "Reduce max_lag or drop the test."
         )
 
     xs = aligned["x"].to_numpy(dtype=float)
@@ -204,7 +204,7 @@ def ccf_with_band(
     ys = ys - ys.mean()
     denom = np.sqrt(np.sum(xs**2) * np.sum(ys**2))
     if denom == 0:
-        raise StatsError("une des deux séries est constante — corrélation indéfinie")
+        raise StatsError("one of the two series is constant — correlation undefined")
 
     lags = np.arange(-max_lag, max_lag + 1)
     values = np.empty(len(lags), dtype=float)
@@ -216,7 +216,7 @@ def ccf_with_band(
 
     effective = float(n_eff) if n_eff is not None else float(n)
     if effective < 2:
-        raise StatsError(f"n_eff doit être >= 2, reçu {effective}")
+        raise StatsError(f"n_eff must be >= 2, got {effective}")
     z = float(scipy_stats.norm.ppf(0.5 + confidence / 2.0))
     return CrossCorrelation(
         lags=lags, values=values, band=z / np.sqrt(effective), n_eff=effective
@@ -224,18 +224,18 @@ def ccf_with_band(
 
 
 # ===========================================================================
-# Régression à erreurs HAC (Newey-West)
+# HAC-error regression (Newey-West)
 # ===========================================================================
 def newey_west_lags(n_obs: int) -> int:
-    """Règle de sélection automatique : floor(4 * (n/100)^(2/9))."""
+    """Automatic selection rule: floor(4 * (n/100)^(2/9))."""
     if n_obs < 1:
-        raise StatsError(f"n_obs doit être >= 1, reçu {n_obs}")
+        raise StatsError(f"n_obs must be >= 1, got {n_obs}")
     return int(np.floor(4.0 * (n_obs / 100.0) ** (2.0 / 9.0)))
 
 
 @dataclass(frozen=True)
 class HacRegression:
-    """MCO à erreurs Newey-West. Les t-stats naïves d'une série temporelle mentent."""
+    """OLS with Newey-West errors. Naive t-stats on a time series lie."""
 
     params: pd.Series
     std_errors: pd.Series
@@ -263,11 +263,11 @@ def hac_ols(
     lags: int | None = None,
     add_constant: bool = True,
 ) -> HacRegression:
-    """MCO avec covariance HAC (Newey-West).
+    """OLS with HAC (Newey-West) covariance.
 
-    `lags=None` applique `newey_west_lags(n)`. Toutes les régressions de ce portefeuille
-    portent sur des séries temporelles autocorrélées : la covariance HAC n'est pas un
-    raffinement, c'est la condition pour que la p-value affichée veuille dire quelque chose.
+    `lags=None` applies `newey_west_lags(n)`. Every regression in this portfolio runs on
+    autocorrelated time series: HAC covariance isn't a refinement, it's the condition
+    for the displayed p-value to mean anything.
     """
     import statsmodels.api as sm
 
@@ -276,7 +276,7 @@ def hac_ols(
     aligned = pd.concat([pd.Series(y).rename("__y__"), X], axis=1).dropna()
     if len(aligned) < X.shape[1] + 3:
         raise StatsError(
-            f"pas assez d'observations : n={len(aligned)} pour {X.shape[1]} régresseurs"
+            f"not enough observations: n={len(aligned)} for {X.shape[1]} regressors"
         )
 
     y_clean = aligned["__y__"].astype(float)
@@ -301,11 +301,11 @@ def hac_ols(
 
 
 # ===========================================================================
-# Bootstrap par blocs (Politis-Romano stationnaire)
+# Block bootstrap (stationary Politis-Romano)
 # ===========================================================================
 @dataclass(frozen=True)
 class BootstrapCI:
-    """Intervalle de confiance qui respecte la dépendance temporelle."""
+    """Confidence interval that respects time dependence."""
 
     point: float
     lo: float
@@ -320,9 +320,9 @@ class BootstrapCI:
 
     @property
     def summary(self) -> str:
-        verdict = " — INCLUT ZÉRO" if self.includes_zero else ""
+        verdict = " — INCLUDES ZERO" if self.includes_zero else ""
         return (
-            f"{self.point:+.4f} [IC {self.confidence:.0%} : {self.lo:+.4f}, "
+            f"{self.point:+.4f} [{self.confidence:.0%} CI: {self.lo:+.4f}, "
             f"{self.hi:+.4f}]{verdict}"
         )
 
@@ -330,11 +330,11 @@ class BootstrapCI:
 def stationary_bootstrap_indices(
     n: int, block_len: float, n_iter: int, rng: np.random.Generator
 ) -> np.ndarray:
-    """Indices de rééchantillonnage Politis-Romano, entièrement vectorisés.
+    """Politis-Romano resampling indices, fully vectorised.
 
-    Les blocs ont une longueur géométrique de moyenne `block_len` et bouclent en fin de
-    série. Longueur aléatoire plutôt que fixe : c'est ce qui rend le bootstrap
-    stationnaire, un découpage en blocs de taille fixe introduit une périodicité.
+    Blocks have a geometric length averaging `block_len` and wrap around at the end of
+    the series. Random rather than fixed length: that's what makes the bootstrap
+    stationary — a fixed-size block split introduces periodicity.
     """
     p = 1.0 / block_len
     starts = rng.random((n_iter, n)) < p
@@ -356,28 +356,28 @@ def block_bootstrap(
     confidence: float = 0.95,
     seed: int = 0,
 ) -> BootstrapCI:
-    """IC par bootstrap stationnaire — jamais une p-value naïve sur un P&L.
+    """Stationary-bootstrap CI — never a naive p-value on a P&L.
 
-    `block_len` doit être de l'ordre de la **période de hold** du backtest : c'est la
-    longueur sur laquelle les observations restent dépendantes. Un bloc de 1 revient à
-    supposer l'indépendance, ce qui est exactement l'hypothèse qu'on cherche à éviter.
+    `block_len` should be on the order of the backtest's **holding period**: that's the
+    length over which observations stay dependent. A block of 1 amounts to assuming
+    independence, which is exactly the assumption this is meant to avoid.
 
-    `statistic=None` prend la moyenne (chemin vectorisé). Toute autre statistique est un
-    callable appliqué à chaque rééchantillon.
+    `statistic=None` takes the mean (vectorised path). Any other statistic is a callable
+    applied to each resample.
 
-    `seed` est fixé par défaut : un IC qui bouge d'un rafraîchissement de page à l'autre
-    détruit la confiance dans le dashboard bien plus vite qu'il ne renseigne sur l'aléa.
+    `seed` is fixed by default: a CI that shifts from one page refresh to the next
+    destroys trust in the dashboard far faster than it informs about the randomness.
     """
     array = np.asarray(pd.Series(values).dropna(), dtype=float)
     n = len(array)
     if n < 5:
-        raise StatsError(f"au moins 5 observations sont nécessaires, reçu {n}")
+        raise StatsError(f"at least 5 observations are needed, got {n}")
     if block_len < 1:
-        raise StatsError(f"block_len doit être >= 1, reçu {block_len}")
+        raise StatsError(f"block_len must be >= 1, got {block_len}")
     if block_len > n:
         raise StatsError(
-            f"block_len ({block_len}) dépasse la longueur de la série ({n}) — "
-            "le rééchantillonnage ne ferait que recopier la série"
+            f"block_len ({block_len}) exceeds the series length ({n}) — "
+            "resampling would just copy the series"
         )
 
     rng = np.random.default_rng(seed)
@@ -404,19 +404,19 @@ def block_bootstrap(
 
 
 # ===========================================================================
-# Régimes : durée et profondeur
+# Regimes: duration and depth
 # ===========================================================================
 def regime_runs(
     mask: pd.Series, *, depth: pd.Series | None = None, min_obs: int = 1
 ) -> pd.DataFrame:
-    """Épisodes consécutifs où `mask` est vrai.
+    """Consecutive episodes where `mask` is true.
 
-    Colonnes : start, end, n_obs, duration_days, depth_mean, depth_min, depth_max.
+    Columns: start, end, n_obs, duration_days, depth_mean, depth_min, depth_max.
 
-    C'est la fonction qui produit les phrases de mail. « La marge est négative » est une
-    observation ; « la marge est négative depuis 7 mois, la plus longue série depuis
-    2015 » est un fait daté que le destinataire peut contester — donc auquel il peut
-    répondre. La différence tient entièrement dans la durée et la profondeur.
+    This is the function that produces the email sentences. "The margin is negative" is
+    an observation; "the margin has been negative for 7 months, the longest run since
+    2015" is a dated fact the recipient can contest — and therefore can respond to. The
+    difference lies entirely in the duration and the depth.
     """
     flag = pd.Series(mask).astype("boolean").fillna(False).astype(bool).sort_index()
     columns = ["start", "end", "n_obs", "duration_days", "depth_mean", "depth_min", "depth_max"]
@@ -453,11 +453,11 @@ def regime_runs(
 
 
 # ===========================================================================
-# Proportion : intervalle exact de Clopper-Pearson
+# Proportion: exact Clopper-Pearson interval
 # ===========================================================================
 @dataclass(frozen=True)
 class ProportionCI:
-    """IC binomial exact. Le seul honnête quand n est petit ou la proportion extrême."""
+    """Exact binomial CI. The only honest one when n is small or the proportion extreme."""
 
     successes: int
     n: float
@@ -469,30 +469,31 @@ class ProportionCI:
     @property
     def summary(self) -> str:
         return (
-            f"{self.point:.1%} [IC {self.confidence:.0%} exact : {self.lo:.1%}, "
-            f"{self.hi:.1%}] sur n = {self.n:g}"
+            f"{self.point:.1%} [exact {self.confidence:.0%} CI: {self.lo:.1%}, "
+            f"{self.hi:.1%}] on n = {self.n:g}"
         )
 
 
 def clopper_pearson(
     successes: int, n: float, *, confidence: float = 0.95
 ) -> ProportionCI:
-    """IC exact d'une proportion — sans approximation normale.
+    """Exact CI of a proportion — no normal approximation.
 
-    Deux usages dans ce portefeuille, et le second est le plus important :
-    le `sign_flip_rate` de T1-1, et **le win rate d'un backtest évalué sur n_eff**.
-    Sur un n effectif de 7, un win rate de 100 % a une borne basse très éloignée de
-    100 % : c'est ce chiffre-là qui va dans le mail.
+    Two uses in this portfolio, and the second is the more important one: T1-1's
+    `sign_flip_rate`, and **a backtest's win rate evaluated on n_eff**. At an effective n
+    of 7, a 100% win rate has a lower bound far from 100% — that's the number that goes
+    in the email.
 
-    `n` accepte un flottant parce qu'un n effectif n'est pas entier. L'IC est alors
-    approché en arrondissant à l'entier inférieur — conservateur, donc dans le bon sens.
+    `n` accepts a float because an effective n isn't an integer. The CI is then
+    approximated by rounding down to the nearest integer — conservative, so in the right
+    direction.
     """
     n_int = int(np.floor(n))
     if n_int < 1:
-        raise StatsError(f"n doit être >= 1, reçu {n}")
+        raise StatsError(f"n must be >= 1, got {n}")
     successes = int(min(successes, n_int))
     if successes < 0:
-        raise StatsError(f"successes doit être >= 0, reçu {successes}")
+        raise StatsError(f"successes must be >= 0, got {successes}")
 
     alpha = 1.0 - confidence
     lo = 0.0 if successes == 0 else float(scipy_stats.beta.ppf(alpha / 2, successes, n_int - successes + 1))

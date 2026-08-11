@@ -1,40 +1,39 @@
-"""Les trois règles qui décident de la validité d'un test.
+"""The three rules that decide whether a test is valid.
 
-Ce module ne calcule presque rien. Il rend **exécutables** trois règles qui, écrites en
-prose dans une note de méthode, sont systématiquement oubliées au bout de trois semaines.
+This module computes almost nothing. It makes **executable** three rules that, written
+as prose in a method note, are reliably forgotten within three weeks.
 
-RÈGLE A — on descend, jamais on ne monte
-----------------------------------------
-Pour tout test statistique (corrélation, CCF, régression), si la série la plus lente est
-mensuelle, le test entier est mensuel. La série rapide est agrégée ; l'inverse — étirer
-la lente sur le calendrier de la rapide — fabrique des observations qui n'existent pas et
-biaise toute autocorrélation. C'est le diagnostic déjà posé sur la page cuivre : le
-`.ffill()` du Yangshan et des stocks SHFE avait détruit la cross-corrélation.
+RULE A — you go down, never up
+--------------------------------
+For any statistical test (correlation, CCF, regression), if the slowest series is
+monthly, the entire test is monthly. The fast series gets aggregated; the reverse —
+stretching the slow one onto the fast one's calendar — fabricates observations that
+don't exist and biases every autocorrelation. This is the diagnosis already made on the
+copper page: `.ffill()` on Yangshan and SHFE stocks had destroyed the cross-correlation.
 
-RÈGLE B — le forward-fill est légitime en P&L, jamais en test
--------------------------------------------------------------
-Un smelter paie bien un TC mensuel tous les jours : reconstruire un P&L quotidien à
-partir d'une série mensuelle est correct. Mais le remplissage doit être **visible**, d'où
-les colonnes jumelles `is_true_print` et `staleness_days`.
+RULE B — forward-fill is legitimate for P&L, never for a test
+-----------------------------------------------------------------
+A smelter does pay a monthly TC every day: reconstructing a daily P&L from a monthly
+series is correct. But the fill has to be **visible**, hence the twin columns
+`is_true_print` and `staleness_days`.
 
-Cette règle est ici rendue impossible à violer par accident : `ffill_with_provenance`
-renvoie un DataFrame à trois colonnes qu'on ne peut pas passer tel quel à un test. Pour
-en extraire des valeurs, il faut choisir explicitement `for_pnl()` — qui accepte — ou
-`for_test()` — qui **lève** dès qu'une seule valeur est remplie. La règle n'est plus une
-consigne, c'est une exception.
+This rule is made impossible to break by accident here: `ffill_with_provenance` returns
+a three-column DataFrame that can't be passed as-is into a test. Extracting values from
+it requires explicitly choosing `for_pnl()` — which allows it — or `for_test()` — which
+**raises** the moment a single value is filled. The rule is no longer a guideline, it's
+an exception.
 
-Note sur `ingest/contract.py` : ce module-là interdit toute politique de trou autre que
-`none`, parce qu'il garde la frontière d'**ingestion** (une série arrive telle quelle, un
-trou reste un trou, c'est la leçon du BSI périmé). Le forward-fill de la Règle B est une
-opération de **modélisation**, en aval du contrat, sur une série déjà validée. Les deux
-règles ne se contredisent pas : elles gardent deux frontières différentes.
+Note on `ingest/contract.py`: that module forbids any gap policy other than `none`,
+because it guards the **ingestion** boundary (a series arrives as-is, a gap stays a gap,
+that's the lesson from the stale BSI). Rule B's forward-fill is a **modelling**
+operation, downstream of the contract, on a series that's already been validated. The
+two rules don't contradict each other: they guard two different boundaries.
 
-RÈGLE C — n effectif
---------------------
-Une fenêtre glissante de 30 jours sur données quotidiennes ne donne pas n observations
-indépendantes. Toute statistique calculée sur des fenêtres qui se chevauchent doit
-reporter `n_eff`, et c'est `n_eff` — pas `n_obs` — qui entre dans une bande de
-significativité ou un intervalle de confiance.
+RULE C — effective n
+----------------------
+A 30-day rolling window on daily data does not give n independent observations. Any
+statistic computed on overlapping windows must report `n_eff`, and it's `n_eff` — not
+`n_obs` — that goes into a significance band or a confidence interval.
 """
 from __future__ import annotations
 
@@ -44,18 +43,18 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# Fréquences : ordonnées de la plus rapide à la plus lente
+# Frequencies: ordered from fastest to slowest
 # ---------------------------------------------------------------------------
 FREQ_ORDER: dict[str, int] = {
     "daily": 0,
     "weekly": 1,
-    "fortnightly": 2,   # quinzaine UNICA, CEPEA
+    "fortnightly": 2,   # UNICA, CEPEA fortnight
     "monthly": 3,
     "quarterly": 4,
     "yearly": 5,
 }
 
-# Alias pandas 3.x correspondants (les alias 'M'/'Q'/'A' ont été retirés)
+# Corresponding pandas 3.x aliases (the 'M'/'Q'/'A' aliases were removed)
 _PANDAS_RULE: dict[str, str] = {
     "daily": "D",
     "weekly": "W",
@@ -69,33 +68,33 @@ VALID_AGGREGATIONS = ("last", "mean")
 
 
 class StaleDataInTest(Exception):
-    """Une série forward-fillée a tenté d'entrer dans un test statistique (Règle B)."""
+    """A forward-filled series tried to enter a statistical test (Rule B)."""
 
 
 class ResampleError(ValueError):
-    """Rééchantillonnage mal spécifié — toujours une erreur d'appelant."""
+    """Mis-specified resampling — always a caller error."""
 
 
 # ---------------------------------------------------------------------------
-# RÈGLE A
+# RULE A
 # ---------------------------------------------------------------------------
 def infer_frequency(series: pd.Series) -> str:
-    """Fréquence observée d'une série, déduite de l'écart médian entre observations.
+    """Observed frequency of a series, inferred from the median gap between observations.
 
-    On prend la **médiane** et pas le mode ni le minimum : une série quotidienne a des
-    trous de week-end et de fériés, une série mensuelle a des mois à 28 et 31 jours. La
-    médiane traverse les deux sans se laisser attraper.
+    The **median** is used, not the mode or the minimum: a daily series has weekend and
+    holiday gaps, a monthly series has 28- and 31-day months. The median crosses both
+    without getting caught out.
     """
     index = pd.DatetimeIndex(series.dropna().index)
     if len(index) < 3:
         raise ResampleError(
-            f"au moins 3 observations sont nécessaires pour inférer une fréquence, "
-            f"reçu {len(index)}"
+            f"at least 3 observations are needed to infer a frequency, "
+            f"got {len(index)}"
         )
-    # Arithmétique en secondes, jamais sur les entiers bruts de l'index : pandas 3 date
-    # en microsecondes par défaut (datetime64[us]) là où pandas 2 datait en nanosecondes.
-    # Diviser `.asi8` par une constante nanoseconde donne un écart 1000x trop petit,
-    # classe toutes les séries en quotidien, et désarme silencieusement la Règle A.
+    # Arithmetic in seconds, never on the index's raw integers: pandas 3 dates in
+    # microseconds by default (datetime64[us]) where pandas 2 dated in nanoseconds.
+    # Dividing `.asi8` by a nanosecond constant gives a gap 1000x too small, classifies
+    # every series as daily, and silently disarms Rule A.
     gaps_days = index.to_series().diff().dropna().dt.total_seconds() / 86_400.0
     median_gap = float(gaps_days.median())
 
@@ -113,9 +112,9 @@ def infer_frequency(series: pd.Series) -> str:
 
 
 def slowest_frequency(series_map: dict[str, pd.Series]) -> str:
-    """La fréquence la plus lente du lot — celle qui commande le test entier."""
+    """The slowest frequency in the set — the one that governs the whole test."""
     if not series_map:
-        raise ResampleError("aucune série fournie")
+        raise ResampleError("no series supplied")
     return max(
         (infer_frequency(s) for s in series_map.values()),
         key=lambda f: FREQ_ORDER[f],
@@ -123,29 +122,29 @@ def slowest_frequency(series_map: dict[str, pd.Series]) -> str:
 
 
 def downsample(series: pd.Series, target_freq: str, *, how: str = "last") -> pd.Series:
-    """Agrège une série vers une fréquence **plus lente ou égale**. Jamais l'inverse.
+    """Aggregates a series to a **slower or equal** frequency. Never the reverse.
 
-    `how='last'` prend le dernier print de la période (ce qu'un trader regarde),
-    `how='mean'` la moyenne (ce qu'un économètre préfère pour un flux). Le choix est
-    imposé à l'appelant parce qu'il change le résultat et n'a pas de bon défaut
-    universel — il doit être documenté dans la page qui l'appelle.
+    `how='last'` takes the period's last print (what a trader looks at),
+    `how='mean'` the average (what an econometrician prefers for a flow). The choice is
+    forced on the caller because it changes the result and has no good universal
+    default — it must be documented in the page that calls it.
     """
     if target_freq not in FREQ_ORDER:
-        raise ResampleError(f"fréquence cible inconnue : {target_freq!r}")
+        raise ResampleError(f"unknown target frequency: {target_freq!r}")
     if how not in VALID_AGGREGATIONS:
-        raise ResampleError(f"agrégation doit être dans {VALID_AGGREGATIONS}, reçu {how!r}")
+        raise ResampleError(f"aggregation must be in {VALID_AGGREGATIONS}, got {how!r}")
 
     source_freq = infer_frequency(series)
     if FREQ_ORDER[source_freq] > FREQ_ORDER[target_freq]:
         raise ResampleError(
-            f"RÈGLE A violée : on ne remonte pas une série {source_freq} vers du "
-            f"{target_freq}. Descendre le test à la fréquence de la série la plus lente, "
-            "ou renoncer au test."
+            f"RULE A violated: a {source_freq} series cannot be upsampled to "
+            f"{target_freq}. Either lower the test to the slowest series' frequency, "
+            "or drop the test."
         )
-    # On rééchantillonne même quand la fréquence est déjà la bonne : c'est ce qui
-    # normalise les étiquettes. Une série mensuelle datée au 1er et une série quotidienne
-    # descendue en mensuel (datée en fin de mois) ont la même fréquence et zéro date
-    # commune — l'intersection sortirait vide sans que rien ne le signale.
+    # Resampling happens even when the frequency is already right: that's what
+    # normalises the labels. A monthly series dated on the 1st and a daily series
+    # downsampled to monthly (dated at month-end) have the same frequency and zero
+    # common date — the intersection would come out empty with nothing to explain why.
     resampled = series.dropna().sort_index().resample(_PANDAS_RULE[target_freq])
     aggregated = resampled.last() if how == "last" else resampled.mean()
     return aggregated.dropna()
@@ -154,14 +153,15 @@ def downsample(series: pd.Series, target_freq: str, *, how: str = "last") -> pd.
 def align_for_test(
     series_map: dict[str, pd.Series], *, how: str = "last"
 ) -> pd.DataFrame:
-    """Aligne plusieurs séries pour un test statistique, en respectant la Règle A.
+    """Aligns several series for a statistical test, honouring Rule A.
 
-    Toutes les séries descendent à la fréquence de la plus lente, puis on intersecte les
-    dates. Aucun trou n'est comblé : une date où une série manque disparaît du test.
+    Every series is downsampled to the slowest one's frequency, then the dates are
+    intersected. No gap is filled: a date where a series is missing drops out of the
+    test.
 
-    Le DataFrame renvoyé porte la fréquence retenue dans `.attrs["test_frequency"]`, à
-    afficher dans la page — « la corrélation est calculée en mensuel parce que le grind
-    est trimestriel » est une phrase qui doit apparaître à l'écran, pas rester dans le code.
+    The returned DataFrame carries the frequency used in `.attrs["test_frequency"]`, to
+    be shown on the page — "the correlation is computed monthly because the grind data
+    is quarterly" is a sentence that must appear on screen, not stay in the code.
     """
     target = slowest_frequency(series_map)
     aligned = pd.concat(
@@ -171,15 +171,15 @@ def align_for_test(
     ).dropna()
     if aligned.empty:
         raise ResampleError(
-            f"aucune date commune aux {len(series_map)} séries après passage en {target} — "
-            "vérifier les calendriers avant d'aller plus loin, ne pas combler les trous"
+            f"no common date across the {len(series_map)} series after downsampling to "
+            f"{target} — check the calendars before going further, don't fill the gaps"
         )
     aligned.attrs["test_frequency"] = target
     return aligned
 
 
 # ---------------------------------------------------------------------------
-# RÈGLE B
+# RULE B
 # ---------------------------------------------------------------------------
 def ffill_with_provenance(
     series: pd.Series,
@@ -187,29 +187,29 @@ def ffill_with_provenance(
     *,
     max_staleness_days: int | None = None,
 ) -> pd.DataFrame:
-    """Forward-fill traçable, pour reconstruction de P&L uniquement (Règle B).
+    """Traceable forward-fill, for P&L reconstruction only (Rule B).
 
-    Renvoie trois colonnes :
-        value             la valeur, remplie
-        is_true_print     True si la date porte une observation réelle
-        staleness_days    âge de l'observation portée, 0 sur un vrai print
+    Returns three columns:
+        value             the filled value
+        is_true_print     True if the date carries a genuine observation
+        staleness_days    age of the carried observation, 0 on a genuine print
 
-    `max_staleness_days` remet en NaN au-delà d'un âge donné : un TC mensuel de 400 jours
-    n'est plus une hypothèse conservatrice, c'est une donnée morte. Correspond à l'option
-    « filtrer les jours périmés » de la sidebar.
+    `max_staleness_days` resets to NaN beyond a given age: a 400-day-old monthly TC is
+    no longer a conservative assumption, it's dead data. Corresponds to the "filter
+    stale days" option in the sidebar.
     """
     target_index = pd.DatetimeIndex(target_index).sort_values()
     clean = series.dropna().sort_index()
     if clean.empty:
-        raise ResampleError("série vide — rien à reporter")
+        raise ResampleError("empty series — nothing to carry forward")
 
     reindexed = clean.reindex(target_index)
     is_true_print = reindexed.notna()
     filled = reindexed.ffill()
 
-    # âge : nombre de jours depuis le dernier vrai print à gauche de chaque date.
-    # Avant le premier print, last_print reste NaT et l'âge sort en NaN — c'est le
-    # comportement voulu : il n'y a rien à reporter, pas une valeur d'âge nulle.
+    # age: number of days since the last genuine print to the left of each date. Before
+    # the first print, last_print stays NaT and the age comes out as NaN — that's the
+    # intended behaviour: there is nothing to carry forward, not a zero age value.
     own_date = pd.Series(target_index, index=target_index)
     last_print = own_date.where(is_true_print.to_numpy()).ffill()
     staleness = (own_date - last_print).dt.days.astype(float)
@@ -231,20 +231,21 @@ def ffill_with_provenance(
 
 
 def for_pnl(filled: pd.DataFrame) -> pd.Series:
-    """Extrait les valeurs d'un `ffill_with_provenance` **pour un calcul de P&L**.
+    """Extracts values from a `ffill_with_provenance` frame **for a P&L computation**.
 
-    Autorisé par la Règle B. Le nom de la fonction est la documentation : si tu écris
-    `for_pnl` dans un chemin de code qui alimente une régression, tu l'as fait exprès.
+    Allowed under Rule B. The function's name is the documentation: writing `for_pnl` in
+    a code path that feeds a regression means you did it on purpose.
     """
     _check_provenance_frame(filled)
     return filled["value"]
 
 
 def for_test(filled: pd.DataFrame) -> pd.Series:
-    """Extrait les valeurs **pour un test statistique** — lève si quoi que ce soit est rempli.
+    """Extracts values **for a statistical test** — raises if anything at all is filled.
 
-    C'est le point où la Règle B cesse d'être une consigne. Le repli correct n'est pas de
-    forcer : c'est `align_for_test`, qui descend le test à la fréquence de la série lente.
+    This is the point where Rule B stops being a guideline. The correct fallback isn't
+    to force it through: it's `align_for_test`, which lowers the test to the slow
+    series' frequency.
     """
     _check_provenance_frame(filled)
     live = filled[filled["value"].notna()]
@@ -252,10 +253,9 @@ def for_test(filled: pd.DataFrame) -> pd.Series:
     if n_filled:
         share = 100.0 * n_filled / len(live)
         raise StaleDataInTest(
-            f"RÈGLE B violée : {n_filled} des {len(live)} valeurs ({share:.0f} %) sont "
-            "des forward-fill et ne peuvent pas entrer dans un test statistique. "
-            "Utiliser align_for_test() pour descendre le test à la fréquence de la série "
-            "la plus lente."
+            f"RULE B violated: {n_filled} of {len(live)} values ({share:.0f}%) are "
+            "forward-filled and cannot enter a statistical test. "
+            "Use align_for_test() to lower the test to the slowest series' frequency."
         )
     return live["value"]
 
@@ -265,17 +265,17 @@ def _check_provenance_frame(filled: pd.DataFrame) -> None:
     missing = required - set(filled.columns)
     if missing:
         raise ResampleError(
-            f"attendu un DataFrame produit par ffill_with_provenance (colonnes "
-            f"{sorted(required)}), colonnes manquantes : {sorted(missing)}"
+            f"expected a DataFrame produced by ffill_with_provenance (columns "
+            f"{sorted(required)}), missing columns: {sorted(missing)}"
         )
 
 
 # ---------------------------------------------------------------------------
-# RÈGLE C
+# RULE C
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class EffectiveSample:
-    """Taille d'échantillon corrigée du chevauchement, et ce qu'elle change."""
+    """Sample size corrected for overlap, and what that changes."""
 
     n_obs: int
     overlap: float
@@ -283,47 +283,47 @@ class EffectiveSample:
 
     @property
     def shrinkage(self) -> float:
-        """Facteur de réduction : 3.0 signifie « trois fois moins d'information »."""
+        """Reduction factor: 3.0 means 'three times less information.'"""
         return self.n_obs / self.n_eff if self.n_eff > 0 else float("inf")
 
     @property
     def summary(self) -> str:
         return (
-            f"n = {self.n_obs} observations, chevauchement moyen {self.overlap:.2f} "
-            f"-> n_eff = {self.n_eff:.1f} (l'échantillon vaut {self.shrinkage:.1f}x moins "
-            "que sa taille apparente)"
+            f"n = {self.n_obs} observations, average overlap {self.overlap:.2f} "
+            f"-> n_eff = {self.n_eff:.1f} (the sample is worth {self.shrinkage:.1f}x less "
+            "than its apparent size)"
         )
 
 
 def effective_n(n_obs: int, overlap: float) -> EffectiveSample:
-    """n_eff = n_obs / chevauchement. La formule est triviale, l'oublier ne l'est pas."""
+    """n_eff = n_obs / overlap. The formula is trivial, forgetting it isn't."""
     if n_obs < 1:
-        raise ResampleError(f"n_obs doit être >= 1, reçu {n_obs}")
+        raise ResampleError(f"n_obs must be >= 1, got {n_obs}")
     if overlap < 1:
         raise ResampleError(
-            f"le chevauchement doit être >= 1 (1 = observations indépendantes), reçu {overlap}"
+            f"overlap must be >= 1 (1 = independent observations), got {overlap}"
         )
     return EffectiveSample(n_obs=n_obs, overlap=float(overlap), n_eff=n_obs / overlap)
 
 
 def effective_n_rolling(n_obs: int, window: int) -> EffectiveSample:
-    """Cas d'une statistique en fenêtre glissante : le chevauchement est la fenêtre."""
+    """The rolling-window statistic case: the overlap is the window."""
     return effective_n(n_obs, window)
 
 
 def average_concurrency(entry_dates: pd.DatetimeIndex, hold_days: int) -> float:
-    """Nombre moyen de positions ouvertes en même temps, sur les jours où il y en a au moins une.
+    """Average number of positions open at once, over the days where at least one is.
 
-    Mesuré sur les vraies dates d'entrée, pas déduit d'un plafond théorique : un backtest
-    à « 3 positions concurrentes maximum » tourne rarement à 3 en permanence, et prendre
-    le maximum sous-estimerait `n_eff`, donc surestimerait la significativité — le biais
-    est dans le mauvais sens, il faut le mesurer.
+    Measured on the real entry dates, not inferred from a theoretical cap: a backtest
+    capped at "3 concurrent positions max" rarely runs at 3 all the time, and taking the
+    maximum would underestimate `n_eff`, thus overstating significance — the bias runs
+    the wrong way, so it has to be measured.
     """
     entries = pd.DatetimeIndex(entry_dates).sort_values()
     if len(entries) == 0:
-        raise ResampleError("aucune date d'entrée")
+        raise ResampleError("no entry dates")
     if hold_days < 1:
-        raise ResampleError(f"hold_days doit être >= 1, reçu {hold_days}")
+        raise ResampleError(f"hold_days must be >= 1, got {hold_days}")
 
     span = pd.date_range(entries.min(), entries.max() + pd.Timedelta(days=hold_days - 1), freq="D")
     open_count = np.zeros(len(span), dtype=int)
@@ -338,12 +338,12 @@ def average_concurrency(entry_dates: pd.DatetimeIndex, hold_days: int) -> float:
 def effective_n_from_trades(
     entry_dates: pd.DatetimeIndex, hold_days: int
 ) -> EffectiveSample:
-    """`n_eff` d'un backtest à positions chevauchantes — le cas du module T1-M.
+    """`n_eff` of a backtest with overlapping positions — the T1-M module's case.
 
-    C'est ce calcul qu'il faut passer sur le backtest cuivre avant d'envoyer quoi que ce
-    soit : 18 trades tenus 30 jours avec plusieurs positions simultanées ne valent pas
-    18 tirages indépendants, et l'intervalle de confiance sur un win rate de 100 % s'en
-    trouve changé du tout au tout.
+    This is the computation to run on the copper backtest before sending anything: 18
+    trades held 30 days with several simultaneous positions are not 18 independent
+    draws, and the confidence interval on a 100% win rate changes completely as a
+    result.
     """
     overlap = average_concurrency(entry_dates, hold_days)
     return effective_n(len(pd.DatetimeIndex(entry_dates)), overlap)

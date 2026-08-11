@@ -1,8 +1,8 @@
-"""Golden tests de la boîte à outils statistique.
+"""Golden tests for the statistics toolkit.
 
-Beaucoup de ces tests vérifient que le code **refuse de conclure**. C'est intentionnel :
-la valeur de ce module tient dans les bandes, les intervalles et les verdicts
-« non concluant », pas dans les points estimés.
+Many of these tests verify that the code **refuses to conclude**. That's intentional:
+this module's value lies in the bands, the intervals and the "inconclusive" verdicts,
+not in the point estimates.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from agri.core.stats import (
 
 
 # ===========================================================================
-# Stationnarité
+# Stationarity
 # ===========================================================================
 def test_white_noise_is_stationary():
     rng = np.random.default_rng(0)
@@ -55,29 +55,29 @@ def test_short_series_refuses_the_test():
 def test_summary_says_do_not_conclude_when_tests_disagree():
     from agri.core.stats import StationarityVerdict
 
-    # les deux rejettent : rupture structurelle probable, surtout pas « plutôt stationnaire »
+    # both reject: probable structural break, definitely not "somewhat stationary"
     both = StationarityVerdict(
         adf_stat=-4.0, adf_pvalue=0.001, kpss_stat=1.0, kpss_pvalue=0.01, alpha=0.05, n_obs=300
     )
     assert both.verdict == "conflicting"
-    assert "ne pas conclure" in both.summary
+    assert "do not conclude" in both.summary
 
-    # aucun ne rejette : échantillon trop court
+    # neither rejects: sample too short
     neither = StationarityVerdict(
         adf_stat=-1.0, adf_pvalue=0.60, kpss_stat=0.1, kpss_pvalue=0.10, alpha=0.05, n_obs=30
     )
     assert neither.verdict == "inconclusive"
-    assert "ne pas conclure" in neither.summary
+    assert "do not conclude" in neither.summary
 
 
 # ===========================================================================
-# Cross-corrélation et bande de Bartlett
+# Cross-correlation and the Bartlett band
 # ===========================================================================
 def test_bartlett_band_hand_computed():
-    """z / sqrt(n_eff) avec z = 1.959964 pour 95 %.
+    """z / sqrt(n_eff) with z = 1.959964 for 95%.
 
-    Sur n = 150 : 1.959964 / sqrt(150) = 1.959964 / 12.24745 = 0.16003.
-    Une corrélation de -0.10 est donc DANS la bande — c'est l'exemple de la spec.
+    At n = 150: 1.959964 / sqrt(150) = 1.959964 / 12.24745 = 0.16003.
+    A correlation of -0.10 is therefore WITHIN the band — the spec's example.
     """
     rng = np.random.default_rng(2)
     x = pd.Series(rng.normal(size=150))
@@ -88,7 +88,7 @@ def test_bartlett_band_hand_computed():
 
 
 def test_peak_lag_sign_convention_x_leads_y():
-    """Convention : la valeur au lag k est corr(x[t], y[t+k]), donc lag positif = x précède y."""
+    """Convention: the value at lag k is corr(x[t], y[t+k]), so positive lag = x leads y."""
     rng = np.random.default_rng(3)
     base = rng.normal(size=400)
     x = pd.Series(base)
@@ -100,11 +100,11 @@ def test_peak_lag_sign_convention_x_leads_y():
 
 
 def test_effective_n_widens_the_band_and_can_kill_a_signal():
-    """Le chiffre qui change la lecture : la même corrélation, deux n effectifs.
+    """The number that changes the reading: the same correlation, two effective n's.
 
-    Sur n_eff = 150 la bande est à 0.160 ; sur n_eff = 7 (un backtest à positions
-    chevauchantes) elle monte à 1.959964/sqrt(7) = 0.7408 — plus large que toute
-    corrélation possible. Autrement dit : sur ce n, aucune corrélation n'est publiable.
+    At n_eff = 150 the band is 0.160; at n_eff = 7 (a backtest with overlapping
+    positions) it rises to 1.959964/sqrt(7) = 0.7408 — wider than any possible
+    correlation. In other words: at this n, no correlation is publishable.
     """
     rng = np.random.default_rng(4)
     x = pd.Series(rng.normal(size=150))
@@ -119,13 +119,13 @@ def test_summary_flags_a_peak_inside_the_band():
     x = pd.Series(rng.normal(size=200))
     y = pd.Series(rng.normal(size=200))
     out = ccf_with_band(x, y, max_lag=5, n_eff=7)
-    assert "DANS LA BANDE" in out.summary
+    assert "WITHIN THE BAND" in out.summary
 
 
 def test_ccf_refuses_when_sample_too_short_for_the_lags():
     x = pd.Series(np.arange(15.0))
     y = pd.Series(np.arange(15.0))
-    with pytest.raises(StatsError, match="trop court"):
+    with pytest.raises(StatsError, match="too short"):
         ccf_with_band(x, y, max_lag=20)
 
 
@@ -153,10 +153,11 @@ def test_hac_ols_recovers_a_known_slope():
 
 
 def test_hac_standard_errors_exceed_naive_ones_under_autocorrelation():
-    """Pourquoi HAC n'est pas un raffinement optionnel.
+    """Why HAC isn't an optional refinement.
 
-    Avec un résidu fortement autocorrélé, l'erreur-type naïve est trop petite et la
-    p-value trop belle. HAC corrige dans le sens qui dérange, ce qui est le bon sens.
+    With a strongly autocorrelated residual, the naive standard error is too small and
+    the p-value too flattering. HAC corrects in the direction that's inconvenient, which
+    is the right direction.
     """
     import statsmodels.api as sm
 
@@ -174,7 +175,7 @@ def test_hac_standard_errors_exceed_naive_ones_under_autocorrelation():
 
 
 # ===========================================================================
-# Bootstrap par blocs
+# Block bootstrap
 # ===========================================================================
 def test_bootstrap_is_deterministic_for_a_given_seed():
     rng = np.random.default_rng(8)
@@ -198,7 +199,7 @@ def test_bootstrap_ci_covers_zero_for_zero_mean_noise():
     s = pd.Series(rng.normal(size=400))
     out = block_bootstrap(s, block_len=20, n_iter=2000)
     assert out.includes_zero
-    assert "INCLUT ZÉRO" in out.summary
+    assert "INCLUDES ZERO" in out.summary
 
 
 def test_bootstrap_ci_excludes_zero_for_a_strong_mean():
@@ -210,7 +211,7 @@ def test_bootstrap_ci_excludes_zero_for_a_strong_mean():
 
 
 def test_longer_blocks_widen_the_interval_on_autocorrelated_data():
-    """Le point de tout l'exercice : ignorer la dépendance rétrécit faussement l'IC."""
+    """The whole point of the exercise: ignoring dependence falsely shrinks the CI."""
     rng = np.random.default_rng(11)
     n = 500
     values = np.zeros(n)
@@ -230,12 +231,12 @@ def test_bootstrap_accepts_a_custom_statistic():
 
 def test_block_longer_than_series_raises():
     s = pd.Series(np.arange(10.0))
-    with pytest.raises(StatsError, match="dépasse la longueur"):
+    with pytest.raises(StatsError, match="exceeds the series length"):
         block_bootstrap(s, block_len=50, n_iter=100)
 
 
 # ===========================================================================
-# Régimes
+# Regimes
 # ===========================================================================
 @pytest.fixture
 def margin_with_two_negative_runs():
@@ -245,11 +246,11 @@ def margin_with_two_negative_runs():
 
 
 def test_regime_runs_hand_computed(margin_with_two_negative_runs):
-    """Marge : [1, -2, -5, -3, 1, 1, -1, -4, 1, 1] sur 10 jours consécutifs.
+    """Margin: [1, -2, -5, -3, 1, 1, -1, -4, 1, 1] over 10 consecutive days.
 
-    Deux épisodes négatifs :
-        du 02 au 04 janvier : 3 observations, moyenne (-2-5-3)/3 = -3.3333, min -5
-        du 07 au 08 janvier : 2 observations, moyenne (-1-4)/2  = -2.5,    min -4
+    Two negative episodes:
+        Jan 02 to Jan 04: 3 observations, mean (-2-5-3)/3 = -3.3333, min -5
+        Jan 07 to Jan 08: 2 observations, mean (-1-4)/2  = -2.5,    min -4
     """
     margin = margin_with_two_negative_runs
     runs = regime_runs(margin < 0, depth=margin)
@@ -290,7 +291,7 @@ def test_regime_runs_without_depth_leaves_depth_columns_missing():
 
 
 def test_longest_run_is_the_mail_sentence(margin_with_two_negative_runs):
-    # « la marge est négative depuis N jours, la plus longue série de l'échantillon »
+    # "the margin has been negative for N days, the sample's longest run"
     runs = regime_runs(margin_with_two_negative_runs < 0, depth=margin_with_two_negative_runs)
     longest = runs.loc[runs["duration_days"].idxmax()]
     assert longest["duration_days"] == 3
@@ -298,10 +299,10 @@ def test_longest_run_is_the_mail_sentence(margin_with_two_negative_runs):
 
 
 # ===========================================================================
-# Clopper-Pearson — le chiffre du module T1-M
+# Clopper-Pearson — the T1-M module's number
 # ===========================================================================
 def test_clopper_pearson_perfect_score_on_18_draws():
-    """18 succès sur 18 : borne basse = 0.025^(1/18) = 81.5 %."""
+    """18 wins out of 18: lower bound = 0.025^(1/18) = 81.5%."""
     out = clopper_pearson(18, 18)
     assert out.point == pytest.approx(1.0)
     assert out.lo == pytest.approx(0.81470, abs=1e-4)
@@ -309,12 +310,12 @@ def test_clopper_pearson_perfect_score_on_18_draws():
 
 
 def test_clopper_pearson_perfect_score_on_seven_effective_draws():
-    """LE chiffre du mail. 7 succès sur 7 : borne basse = 0.025^(1/7) = 59.0 %.
+    """THE number for the email. 7 wins out of 7: lower bound = 0.025^(1/7) = 59.0%.
 
-    C'est la traduction quantitative de la phrase d'auto-critique : un win rate de 100 %
-    sur ~7 tirages indépendants n'est pas distinguable d'un processus qui réussit 6 fois
-    sur 10. La différence avec la borne à 81.5 % annoncée sur n = 18 est exactement ce que
-    le chevauchement des positions coûte en information.
+    This is the quantitative translation of the self-critique sentence: a 100% win rate
+    on ~7 independent draws is not distinguishable from a process that succeeds 6 times
+    out of 10. The gap with the 81.5% bound announced on n = 18 is exactly what the
+    position overlap costs in information.
     """
     out = clopper_pearson(7, 7)
     assert out.lo == pytest.approx(0.59043, abs=1e-4)
@@ -328,14 +329,14 @@ def test_the_overlap_correction_costs_22_points_of_lower_bound():
 
 
 def test_clopper_pearson_accepts_a_non_integer_effective_n():
-    # n_eff = 7.23 -> arrondi à 7, conservateur donc dans le bon sens
+    # n_eff = 7.23 -> rounded to 7, conservative so in the right direction
     out = clopper_pearson(7, 7.23)
     assert out.n == pytest.approx(7.23)
     assert out.lo == pytest.approx(0.59043, abs=1e-4)
 
 
 def test_clopper_pearson_zero_successes():
-    # 0 sur 10 : borne haute = 1 - 0.025^(1/10) = 30.85 %
+    # 0 out of 10: upper bound = 1 - 0.025^(1/10) = 30.85%
     out = clopper_pearson(0, 10)
     assert out.lo == 0.0
     assert out.hi == pytest.approx(0.30850, abs=1e-4)
@@ -348,4 +349,4 @@ def test_clopper_pearson_is_symmetric_at_one_half():
 
 
 def test_summary_reports_the_interval_not_just_the_point():
-    assert "IC 95% exact" in clopper_pearson(7, 7).summary.replace(" ", "")
+    assert "exact95%CI" in clopper_pearson(7, 7).summary.replace(" ", "")

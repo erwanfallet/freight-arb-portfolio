@@ -1,48 +1,48 @@
-"""Projet A — décomposition du premium 65-62 % Fe en une part fret et un résidu.
+"""Project A — decomposing the 65-62% Fe premium into a freight share and a residual.
 
-THÈSE
------
-Les indices minerai de fer 62 % Fe et 65 % Fe sont tous deux cotés **CFR Chine**, donc le
-fret est déjà à l'intérieur des deux prix. Le 65 % est essentiellement brésilien
-(Tubarão -> Qingdao, ~11 000 nm, route Baltic C3), le 62 % essentiellement australien
-(Port Hedland -> Qingdao, ~1 600 nm, route C5). Le premium observé contient donc
-mécaniquement le différentiel de fret C3 - C5.
+THESIS
+------
+The 62% Fe and 65% Fe iron ore indices are both quoted **CFR China**, so freight is
+already inside both prices. The 65% grade is mostly Brazilian (Tubarão -> Qingdao,
+~11,000 nm, Baltic route C3), the 62% grade mostly Australian (Port Hedland -> Qingdao,
+~1,600 nm, route C5). The observed premium therefore mechanically contains the C3 - C5
+freight differential.
 
-    premium_observé = P65_CFR - P62_CFR
-    fair_value_fret = C3_par_dmt - C5_par_dmt
-    résidu          = premium_observé - fair_value_fret
+    observed_premium = P65_CFR - P62_CFR
+    fair_value_freight = C3_per_dmt - C5_per_dmt
+    residual            = observed_premium - fair_value_freight
 
-Le résidu n'est PAS « de la tension physique ». C'est « qualité + valeur-en-usage +
-tension + base FFA-vs-index ». On refuse de le baptiser autrement : aucune donnée
-publique ne permet de séparer ces quatre termes, et un modèle de valeur-en-usage inventé
-transformerait le résultat en artefact.
+The residual is NOT "physical tension." It's "quality + use-value + tension + the
+FFA-vs-index basis." It doesn't get renamed anything else: no public data lets these
+four terms be separated, and an invented use-value model would turn the result into an
+artefact.
 
-LE PIÈGE D'UNITÉ, QUI EST LE CŒUR TECHNIQUE
+THE UNIT TRAP, WHICH IS THE TECHNICAL CORE
 -------------------------------------------
-Les indices minerai sont cotés en USD par tonne métrique **sèche** (dmt). Le fret se paie
-sur le poids **embarqué**, c'est-à-dire humide (wmt, poids du connaissement). Donc :
+Ore indices are quoted in USD per **dry** metric tonne (dmt). Freight is paid on the
+**loaded** weight, i.e. wet (wmt, bill-of-lading weight). So:
 
-    fret_par_dmt = fret_par_wmt / (1 - humidité)
+    freight_per_dmt = freight_per_wmt / (1 - moisture)
 
-Les fines brésiliennes sortent autour de 9 % d'humidité, le Pilbara Blend autour de 8 %.
-Ignorer la correction sous-estime systématiquement la part fret du premium.
+Brazilian fines come out around 9% moisture, Pilbara Blend around 8%. Ignoring the
+correction systematically understates the premium's freight share.
 
-C'est le même mouvement que `TC_par_t_zinc = TC_par_dmt_conc / (grade × recovery)` :
-l'unité de cotation n'est pas l'unité économique.
+It's the same move as `TC_per_t_zinc = TC_per_dmt_conc / (grade × recovery)`: the
+quoted unit is not the economic unit.
 
-HYPOTHÈSES (toutes explicites, toutes paramétrées)
---------------------------------------------------
-A-H1  Le 65 % CFR est essentiellement brésilien, le 62 % essentiellement australien.
-      Le 62 % contient en réalité aussi du brésilien et de l'indien -> la part fret est
-      SOUS-estimée. Biais conservateur, donc dans le bon sens.
-A-H2  Humidité : 9,0 % Brésil, 8,0 % Australie. Paramétrées, balayées en sensibilité.
-A-H2b Le fret C3/C5 est payé sur le poids humide. Vrai pour un affrètement au voyage
-      standard sur poids embarqué ; à revérifier si une contrepartie paie sur base sèche.
-A-H3  Le FFA front-month est un proxy de la route spot. Il existe une base. Elle est
-      affichée comme avertissement de données, jamais masquée.
-A-H4  Aucune prime de valeur-en-usage modélisée (posée à zéro). Le résidu l'absorbe.
-A-H5  Pas de coût de portage sur l'écart de ~25 jours de temps de voyage. Chiffré à part
-      dans la section sensibilité, pas dans l'identité principale.
+ASSUMPTIONS (all explicit, all parameterised)
+-----------------------------------------------
+A-H1  The 65% CFR grade is mostly Brazilian, the 62% grade mostly Australian. The 62%
+      grade actually also contains Brazilian and Indian ore -> the freight share is
+      UNDER-estimated. Conservative bias, so in the right direction.
+A-H2  Moisture: 9.0% Brazil, 8.0% Australia. Parameterised, swept in sensitivity.
+A-H2b The C3/C5 freight is paid on the wet weight. True for a standard voyage charter
+      on loaded weight; to double-check if a counterparty pays on a dry basis.
+A-H3  The front-month FFA is a proxy for the spot route. A basis exists. It's shown as
+      a data warning, never hidden.
+A-H4  No use-value premium modelled (set to zero). The residual absorbs it.
+A-H5  No carry cost on the ~25-day voyage-time gap. Quantified separately in the
+      sensitivity section, not in the main identity.
 """
 from __future__ import annotations
 
@@ -53,18 +53,18 @@ import pandas as pd
 
 from agri.data.snapshot import cached
 
-# Valeurs par défaut des hypothèses A-H2. Documentées, jamais codées en dur ailleurs.
+# Default values for assumptions A-H2. Documented, never hard-coded anywhere else.
 DEFAULT_MOISTURE_BRAZIL = 0.090
 DEFAULT_MOISTURE_AUSTRALIA = 0.080
 
 
 def freight_per_dry_tonne(freight_per_wet_tonne: pd.Series | float, moisture: float) -> pd.Series | float:
-    """Convertit un fret payé sur tonne humide en coût par tonne sèche (A-H2b).
+    """Converts freight paid on a wet tonne into a cost per dry tonne (A-H2b).
 
-    moisture est une fraction (0.09 = 9 %), pas un pourcentage.
+    moisture is a fraction (0.09 = 9%), not a percentage.
     """
     if not 0.0 <= moisture < 1.0:
-        raise ValueError(f"moisture doit être dans [0, 1), reçu {moisture}")
+        raise ValueError(f"moisture must be in [0, 1), got {moisture}")
     return freight_per_wet_tonne / (1.0 - moisture)
 
 
@@ -77,26 +77,26 @@ def decompose_premium(
     moisture_brazil: float = DEFAULT_MOISTURE_BRAZIL,
     moisture_australia: float = DEFAULT_MOISTURE_AUSTRALIA,
 ) -> pd.DataFrame:
-    """Décompose le premium 65-62 en part fret et résidu.
+    """Decomposes the 65-62 premium into a freight share and a residual.
 
-    Toutes les séries sont indexées par date. Les prix sont en USD/dmt, les frets en
-    USD/wmt. L'alignement de calendrier est fait ici par intersection : aucun
-    forward-fill, un trou reste un trou (règle du contrat de données).
+    All series are indexed by date. Prices are in USD/dmt, freight in USD/wmt.
+    Calendar alignment is done here by intersection: no forward-fill, a gap stays a
+    gap (the data contract's rule).
 
-    Retourne un DataFrame avec, par date :
+    Returns a DataFrame with, per date:
         p65, p62, premium_observed,
         c3_wmt, c5_wmt, c3_dmt, c5_dmt,
         freight_fair_value, residual, freight_share,
-        premium_naive_freight  (le différentiel non corrigé de l'humidité, pour montrer
-                                exactement ce que la correction change)
+        premium_naive_freight  (the differential uncorrected for moisture, to show
+                                exactly what the correction changes)
     """
     aligned = pd.concat(
         {"p65": p65, "p62": p62, "c3_wmt": c3, "c5_wmt": c5}, axis=1
     ).dropna()
     if aligned.empty:
         raise ValueError(
-            "aucune date commune aux quatre séries — vérifier les calendriers avant "
-            "d'aller plus loin, ne pas combler les trous"
+            "no common date across the four series — check the calendars before "
+            "going further, don't fill the gaps"
         )
     aligned = aligned.sort_index()
 
@@ -108,8 +108,8 @@ def decompose_premium(
     out["residual"] = out["premium_observed"] - out["freight_fair_value"]
     out["premium_naive_freight"] = aligned["c3_wmt"] - aligned["c5_wmt"]
 
-    # part fret du premium : non définie quand le premium est nul, et trompeuse quand il
-    # est négatif -> on la laisse en NaN plutôt que de produire un pourcentage absurde.
+    # freight share of the premium: undefined when the premium is zero, and misleading
+    # when it's negative -> left as NaN rather than producing an absurd percentage.
     share = out["freight_fair_value"] / out["premium_observed"]
     share[out["premium_observed"] <= 0] = np.nan
     out["freight_share"] = share
@@ -119,7 +119,7 @@ def decompose_premium(
 
 @dataclass(frozen=True)
 class ExplainedVariance:
-    """Résultat de la régression premium ~ a + b * fair_value_fret."""
+    """Result of the premium ~ a + b * fair_value_freight regression."""
 
     slope: float
     intercept: float
@@ -130,7 +130,7 @@ class ExplainedVariance:
     @property
     def summary(self) -> str:
         return (
-            f"premium = {self.intercept:.2f} + {self.slope:.2f} × fret  "
+            f"premium = {self.intercept:.2f} + {self.slope:.2f} × freight  "
             f"(R² = {self.r_squared:.3f}, rho = {self.correlation:.3f}, n = {self.n_obs})"
         )
 
@@ -138,19 +138,19 @@ class ExplainedVariance:
 def explained_variance(
     premium: pd.Series, freight_fair_value: pd.Series, *, on_changes: bool = False
 ) -> ExplainedVariance:
-    """Part de la variance du premium expliquée par la part fret.
+    """Share of the premium's variance explained by the freight share.
 
-    on_changes=True régresse les variations plutôt que les niveaux. À privilégier pour
-    la lecture statistique : deux séries en niveau non stationnaires produisent un R²
-    flatteur qui ne veut rien dire. Les deux sont exposés parce que le niveau parle au
-    trader et la variation parle à l'économètre — et l'écart entre les deux est
-    lui-même une information à afficher.
+    on_changes=True regresses the changes rather than the levels. Preferable for the
+    statistical reading: two non-stationary level series produce a flattering R² that
+    means nothing. Both are exposed because the level speaks to a trader and the
+    change speaks to an econometrician — and the gap between the two is itself
+    information worth showing.
     """
     aligned = pd.concat({"y": premium, "x": freight_fair_value}, axis=1).dropna()
     if on_changes:
         aligned = aligned.diff().dropna()
     if len(aligned) < 3:
-        raise ValueError(f"pas assez d'observations pour régresser (n={len(aligned)})")
+        raise ValueError(f"not enough observations to regress (n={len(aligned)})")
 
     x = aligned["x"].to_numpy(dtype=float)
     y = aligned["y"].to_numpy(dtype=float)
@@ -172,12 +172,14 @@ def explained_variance(
 def negative_residual_episodes(
     decomposition: pd.DataFrame, *, min_days: int = 5
 ) -> pd.DataFrame:
-    """Épisodes où le résidu est négatif : le premium haute teneur est inférieur au seul
-    surcoût de distance. Autrement dit, la qualité est vendue gratuitement ou à perte.
+    """Episodes where the residual is negative: the high-grade premium is below the
+    distance surcharge alone. In other words, quality is being sold for free or at a
+    loss.
 
-    C'est l'anomalie qui porte la conversation. min_days filtre le bruit d'un jour.
+    This is the anomaly that carries the conversation. min_days filters out one-day
+    noise.
 
-    Retourne un DataFrame : start, end, n_obs, residual_min, residual_mean.
+    Returns a DataFrame: start, end, n_obs, residual_min, residual_mean.
     """
     flag = decomposition["residual"] < 0
     if not flag.any():
@@ -185,7 +187,7 @@ def negative_residual_episodes(
             columns=["start", "end", "n_obs", "residual_min", "residual_mean"]
         )
 
-    # regroupe les True consécutifs
+    # group consecutive True values
     group_id = (flag != flag.shift()).cumsum()
     rows = []
     for _, chunk in decomposition[flag].groupby(group_id[flag]):
@@ -205,7 +207,7 @@ def negative_residual_episodes(
 
 @dataclass(frozen=True)
 class HedgeResult:
-    """Effet d'une couverture de la jambe fret sur la volatilité du trade de premium."""
+    """Effect of hedging the freight leg on the premium trade's volatility."""
 
     beta: float
     vol_unhedged: float
@@ -225,26 +227,26 @@ def freight_hedge_effect(
     *,
     beta: float | None = None,
 ) -> HedgeResult:
-    """Volatilité des variations quotidiennes du premium, avant et après couverture de la
-    part fret par des FFA C3/C5.
+    """Volatility of the premium's daily changes, before and after hedging the
+    freight share with C3/C5 FFAs.
 
-    beta=None estime le ratio de couverture par MCO sur les variations (le ratio de
-    variance minimale). beta=1.0 force la couverture unitaire, qui est ce qu'un desk
-    ferait naïvement — l'écart entre les deux est en soi un résultat.
+    beta=None estimates the hedge ratio by OLS on changes (the minimum-variance
+    ratio). beta=1.0 forces a unit hedge, which is what a desk would do naively — the
+    gap between the two is itself a result.
 
-    Ce que ce calcul NE dit PAS : que le hedge est exécutable. Les FFA C3/C5 sont des
-    contrats mensuels sur moyenne de route ; couvrir une exposition quotidienne avec ça
-    laisse une base non triviale. À afficher comme caveat.
+    What this calculation does NOT say: that the hedge is executable. C3/C5 FFAs are
+    monthly average-of-route contracts; hedging a daily exposure with them leaves a
+    non-trivial basis. To be shown as a caveat.
     """
     aligned = pd.concat({"prem": premium, "fret": freight_fair_value}, axis=1).dropna()
     changes = aligned.diff().dropna()
     if len(changes) < 3:
-        raise ValueError(f"pas assez d'observations (n={len(changes)})")
+        raise ValueError(f"not enough observations (n={len(changes)})")
 
     if beta is None:
         var_f = float(changes["fret"].var())
         if var_f == 0:
-            raise ValueError("la part fret ne varie pas — beta indéterminé")
+            raise ValueError("the freight share doesn't vary — beta is undetermined")
         beta = float(changes[["prem", "fret"]].cov().iloc[0, 1] / var_f)
 
     residual_changes = changes["prem"] - beta * changes["fret"]
@@ -261,15 +263,15 @@ def carry_cost_of_extra_voyage_days(
     extra_days: float,
     annual_rate: float,
 ) -> pd.Series | float:
-    """A-H5 chiffrée : coût de portage des jours de voyage supplémentaires du Brésil.
+    """A-H5, quantified: carry cost of Brazil's extra voyage days.
 
-    Tubarão -> Qingdao contre Port Hedland -> Qingdao, c'est de l'ordre de 25 jours de
-    mer en plus. Sur une cargaison à 100 $/dmt et 6 % annuel, ça fait ~0,41 $/dmt : petit
-    devant un différentiel de fret de 10-14 $/dmt, mais pas nul devant un résidu de
-    2-3 $/dmt. Le montrer, c'est refuser de faire semblant que le terme n'existe pas.
+    Tubarão -> Qingdao against Port Hedland -> Qingdao is on the order of 25 extra
+    days at sea. On a cargo at 100 $/dmt and 6% annual, that's ~0.41 $/dmt: small
+    against a freight differential of 10-14 $/dmt, but not zero against a residual of
+    2-3 $/dmt. Showing it means refusing to pretend the term doesn't exist.
     """
     if extra_days < 0:
-        raise ValueError("extra_days doit être positif")
+        raise ValueError("extra_days must be positive")
     return cargo_value_per_dmt * annual_rate * (extra_days / 365.0)
 
 

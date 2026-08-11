@@ -1,5 +1,5 @@
-"""Chargement de données reelles, hors moteurs et hors fixtures synthetiques.
+"""Real-data loading, outside the engines and outside the synthetic fixtures.
 
-Ce module ne fait aucun calcul de these : il lit l'export Bloomberg de l'utilisateur et
-rend des pd.Series propres, indexees par date, avec l'unite declaree explicitement.
+This module runs no thesis calculation: it reads the user's Bloomberg export and
+returns clean pd.Series, indexed by date, with the unit explicitly declared.
 """

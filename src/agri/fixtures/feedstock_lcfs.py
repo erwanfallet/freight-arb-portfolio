@@ -1,14 +1,15 @@
-"""Jeu synthétique T3-1.
+"""T3-1 synthetic dataset.
 
-Deux propriétés sont **imposées**, et les golden tests vérifient que le moteur les retrouve :
+Two properties are **imposed**, and the golden tests verify the engine recovers them:
 
-1. le prix LCFS traverse le seuil `LCFS*` en cours d'échantillon, donc la filière gagnante
-   change — sans quoi la heatmap n'aurait qu'une seule zone et la page n'aurait rien à dire ;
-2. le bêta énergie du soyoil au Brent **double** à la date de finalisation des RVO
-   (mars 2026), pour que le test de Chow ait quelque chose à détecter et qu'on puisse
-   vérifier qu'il ne le détecte pas ailleurs.
+1. the LCFS price crosses the `LCFS*` threshold partway through the sample, so the
+   winning pathway changes — otherwise the heatmap would have only one zone and the
+   page would have nothing to say;
+2. soyoil's energy beta to Brent **doubles** on the RVO finalisation date (March 2026),
+   so the Chow test has something to detect and it can be checked that it doesn't
+   detect anything elsewhere.
 
-Tickers préfixés `SYNTH_`.
+Tickers prefixed `SYNTH_`.
 """
 from __future__ import annotations
 
@@ -16,42 +17,42 @@ import numpy as np
 import pandas as pd
 
 DEFAULT_START = "2023-01-02"
-# ~4,4 ans de jours ouvrés, jusqu'a mi-2027. Dimensionné pour laisser plus de 300 jours
-# ouvrés APRÈS la rupture de mars 2026 : sans ça, aucune fenêtre glissante de 120 jours
-# n'est entièrement dans le régime post-rupture, et le bêta d'après ne peut pas être lu.
+# ~4.4 years of business days, through mid-2027. Sized to leave more than 300 business
+# days AFTER the March 2026 break: without that, no 120-day rolling window sits
+# entirely in the post-break regime, and the "after" beta can't be read.
 DEFAULT_PERIODS = 1150
 
-# Date de politique : finalisation des RVO 2026-27 par l'EPA.
+# Policy date: EPA finalisation of the 2026-27 RVOs.
 RVO_BREAK_DATE = pd.Timestamp("2026-03-16")
 
-BETA_BEFORE_BREAK = 0.20       # le soyoil suivait mollement le brut
-BETA_AFTER_BREAK = 0.45        # le biofuel pull se renforce
+BETA_BEFORE_BREAK = 0.20       # soyoil loosely tracked crude
+BETA_AFTER_BREAK = 0.45        # the biofuel pull strengthens
 
 
 def build(
     *, start: str = DEFAULT_START, periods: int = DEFAULT_PERIODS, seed: int = 0
 ) -> dict[str, pd.Series]:
-    """Séries d'entrée de T3-1 : ULSD, RIN D4, crédit LCFS, soyoil, Brent."""
+    """T3-1's input series: ULSD, RIN D4, LCFS credit, soyoil, Brent."""
     rng = np.random.default_rng(seed)
     index = pd.date_range(start, periods=periods, freq="B")
     n = len(index)
 
-    # --- Brent : marche aléatoire avec une escalade géopolitique début 2026 ---
+    # --- Brent: random walk with a geopolitical escalation in early 2026 ---
     brent_returns = rng.normal(scale=0.014, size=n)
     escalation = (index >= pd.Timestamp("2026-01-15")) & (index <= pd.Timestamp("2026-02-28"))
     brent_returns[escalation] += 0.004
     brent = pd.Series(78.0 * np.exp(np.cumsum(brent_returns)), index=index, name="SYNTH_BRENT")
 
-    # --- Soyoil : bêta au Brent qui DOUBLE à la date des RVO (pour le test de Chow) ---
+    # --- Soyoil: beta to Brent that DOUBLES on the RVO date (for the Chow test) ---
     betas = np.where(index >= RVO_BREAK_DATE, BETA_AFTER_BREAK, BETA_BEFORE_BREAK)
     soyoil_returns = betas * brent_returns + rng.normal(scale=0.010, size=n)
     soyoil = pd.Series(
         0.52 * np.exp(np.cumsum(soyoil_returns)), index=index, name="SYNTH_SOYOIL_USD_LB"
     )
 
-    # --- LCFS : traverse le seuil en cours d'échantillon ---
-    # rampe de 60 vers 340 $/t avec du bruit : le seuil a parité de prix est a ~285 $/t,
-    # donc la filiere gagnante bascule quelque part au milieu de l'echantillon.
+    # --- LCFS: crosses the threshold partway through the sample ---
+    # ramp from 60 to 340 $/t with noise: the price-parity threshold is at ~285 $/t,
+    # so the winning pathway flips somewhere in the middle of the sample.
     ramp = np.linspace(60.0, 340.0, n)
     lcfs = pd.Series(
         np.clip(ramp + rng.normal(scale=12.0, size=n), 5.0, None),
@@ -59,7 +60,7 @@ def build(
         name="SYNTH_LCFS_USD_T",
     )
 
-    # --- ULSD et RIN D4 : niveaux plausibles, faiblement bruités ---
+    # --- ULSD and RIN D4: plausible levels, lightly noised ---
     ulsd = pd.Series(
         2.55 * np.exp(np.cumsum(0.6 * brent_returns + rng.normal(scale=0.006, size=n))),
         index=index,
@@ -71,7 +72,7 @@ def build(
         name="SYNTH_RIN_D4_USD",
     )
 
-    # --- UCO importé : décoté par rapport au soyoil, spread bruité ---
+    # --- Imported UCO: discounted against soyoil, noisy spread ---
     uco = pd.Series(
         soyoil.to_numpy() - np.clip(0.055 + rng.normal(scale=0.012, size=n), 0.0, None),
         index=index,

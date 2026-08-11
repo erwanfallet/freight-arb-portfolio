@@ -1,7 +1,7 @@
-"""Jeux synthétiques des trois derniers projets Tier 3.
+"""Synthetic datasets for the last three Tier 3 projects.
 
-Chaque générateur impose le phénomène de sa thèse, paramètres vrais exposés en constantes.
-Tickers préfixés `SYNTH_`.
+Each generator imposes its thesis's phenomenon, true parameters exposed as constants.
+Tickers prefixed `SYNTH_`.
 """
 from __future__ import annotations
 
@@ -9,21 +9,22 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# T3-2 — sucre : le mix ne suit pas la parité
+# T3-2 — sugar: the mix doesn't follow parity
 # ---------------------------------------------------------------------------
-# Élasticité vraie du mix à la parité, et sa conditionnalité au hedge d'entrée.
-TRUE_BETA_PARITY = 0.0020          # points de mix par cent/lb, à hedge nul
-TRUE_BETA_INTERACTION = -0.0028    # l'effet s'annule puis s'inverse quand on est couvert
+# True elasticity of the mix to parity, and its conditionality on entry hedging.
+TRUE_BETA_PARITY = 0.0020          # mix points per cent/lb, at zero hedge
+TRUE_BETA_INTERACTION = -0.0028    # the effect cancels then reverses once hedged
 
-# hedge_ratio et dist_port sont deliberement DECORRELES ici (contrairement a une version
-# initiale ou les deux etaient monotones region par region, correlation -0,98). Sans ca,
-# le terme d'interaction parity x hedge et le terme parity x dist_port sont quasi
-# colineaires, et beta2 (l'objet d'interet de la page) sort indetermine (~0 au lieu de la
-# vraie valeur) sans jamais lever d'erreur — un piege silencieux, pas une absence de
-# signal. Six regions plutot que quatre, pour plus de degres de liberte sur l'interaction.
+# hedge_ratio and dist_port are deliberately DECORRELATED here (unlike an initial
+# version where both were monotone region by region, correlation -0.98). Without that,
+# the parity x hedge interaction term and the parity x dist_port term are nearly
+# collinear, and beta2 (the page's object of interest) comes out undetermined (~0
+# instead of the true value) without ever raising an error — a silent trap, not an
+# absence of signal. Six regions rather than four, for more degrees of freedom on the
+# interaction.
 REGIONS = {
-    "Sao Paulo centre": {"hedge": 0.65, "dist_port": 0.20, "cap": 0.52, "presold": 0.44},
-    "Sao Paulo ouest": {"hedge": 0.60, "dist_port": 0.85, "cap": 0.50, "presold": 0.42},
+    "Sao Paulo center": {"hedge": 0.65, "dist_port": 0.20, "cap": 0.52, "presold": 0.44},
+    "Sao Paulo west": {"hedge": 0.60, "dist_port": 0.85, "cap": 0.50, "presold": 0.42},
     "Minas Gerais": {"hedge": 0.30, "dist_port": 0.35, "cap": 0.48, "presold": 0.38},
     "Goias": {"hedge": 0.25, "dist_port": 1.00, "cap": 0.46, "presold": 0.34},
     "Mato Grosso do Sul": {"hedge": 0.50, "dist_port": 0.65, "cap": 0.49, "presold": 0.40},
@@ -32,7 +33,7 @@ REGIONS = {
 
 
 def sugar_prices(*, periods: int = 900, seed: int = 10) -> dict[str, pd.Series]:
-    """NY11, éthanol hydraté ex-usine et USDBRL, avec une parité qui change de signe."""
+    """NY11, ex-mill hydrous ethanol and USDBRL, with a parity that switches sign."""
     rng = np.random.default_rng(seed)
     index = pd.date_range("2023-01-02", periods=periods, freq="B")
 
@@ -46,7 +47,7 @@ def sugar_prices(*, periods: int = 900, seed: int = 10) -> dict[str, pd.Series]:
         index=index,
         name="SYNTH_USDBRL",
     )
-    # hydraté calé pour que la parité oscille autour de zéro sur l'échantillon
+    # hydrous calibrated so the parity oscillates around zero over the sample
     cycle = 0.09 * np.sin(2 * np.pi * np.arange(periods) / 260.0)
     hydrous = pd.Series(
         (2.95 + cycle) * np.exp(np.cumsum(rng.normal(scale=0.006, size=periods))),
@@ -57,12 +58,12 @@ def sugar_prices(*, periods: int = 900, seed: int = 10) -> dict[str, pd.Series]:
 
 
 def sugar_panel(*, seed: int = 11, fortnights: int = 60) -> pd.DataFrame:
-    """Panel quinzaine x région, avec l'élasticité conditionnelle **imposée**.
+    """Fortnight x region panel, with the conditional elasticity **imposed**.
 
-        d_mix = b1 x parity + b2 x (parity x hedge) + effets fixes + bruit
+        d_mix = b1 x parity + b2 x (parity x hedge) + fixed effects + noise
 
-    C'est `b2` que `estimate_mix_elasticity` doit retrouver — l'objet du désaccord entre
-    Hedgepoint et Czarnikow.
+    It's `b2` that `estimate_mix_elasticity` must recover — the object of the
+    disagreement between Hedgepoint and Czarnikow.
     """
     rng = np.random.default_rng(seed)
     dates = pd.date_range("2023-04-01", periods=fortnights, freq="SME")
@@ -95,18 +96,18 @@ def sugar_panel(*, seed: int = 11, fortnights: int = 60) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# T3-4 — Chine soja
+# T3-4 — China soy
 # ---------------------------------------------------------------------------
-# Signature imposée : NÉGATIVE, donc politique. Les achats se concentrent quand la marge
-# de crush est basse — ce que le commercial ne peut pas faire.
+# Imposed signature: NEGATIVE, therefore political. Purchases concentrate when the
+# crush margin is low — something a commercial buyer would not do.
 TRUE_POLITICAL_SIGNATURE = True
 
 
 def china_soy(*, periods: int = 220, seed: int = 14) -> dict:
-    """Séries mensuelles : CBOT, basis, fret, DCE tourteau/huile, USDCNY, imports, crush.
+    """Monthly series: CBOT, basis, freight, DCE meal/oil, USDCNY, imports, crush.
 
-    Les achats de réserve sont générés par une probabilité **décroissante** avec la marge
-    de crush : c'est la signature politique que `signature_test` doit détecter.
+    Reserve purchases are generated with a probability **decreasing** in the crush
+    margin: that's the political signature `signature_test` must detect.
     """
     rng = np.random.default_rng(seed)
     index = pd.date_range("2018-01-31", periods=periods, freq="ME")
@@ -147,7 +148,7 @@ def china_soy(*, periods: int = 220, seed: int = 14) -> dict:
     bean = bean_cnf_usd_t(cbot, basis, freight)
     margin = crush_margin_cny_t(meal, oil, bean, usdcny)["margin"]
 
-    # probabilité d'achat DÉCROISSANTE avec la marge retardée -> signature politique
+    # purchase probability DECREASING in the lagged margin -> political signature
     standardised = (margin - margin.mean()) / margin.std()
     logit = -0.4 - 1.6 * standardised.shift(1)
     probability = 1.0 / (1.0 + np.exp(-logit))

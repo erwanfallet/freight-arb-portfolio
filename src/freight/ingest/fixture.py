@@ -1,17 +1,17 @@
-"""GÉNÉRATEUR DE DONNÉES SYNTHÉTIQUES — AUCUNE VALEUR ÉCONOMIQUE.
+"""SYNTHETIC DATA GENERATOR — NO ECONOMIC VALUE.
 
-Raison d'être : prouver que le pipeline tourne et que les six sections du dashboard
-s'affichent, avant que les vraies séries n'arrivent. Rien de ce que produit ce module ne
-doit sortir du repo, apparaître dans un email, ou être lu comme un résultat.
+Purpose: prove the pipeline runs and the dashboard's six sections render, before the
+real series arrive. Nothing this module produces should leave the repo, appear in an
+email, or be read as a result.
 
-Trois garde-fous :
-  1. tous les tickers sont préfixés `SYNTH_`
-  2. la fonction renvoie un DataFrame avec l'attribut `.attrs["synthetic"] = True`
-  3. le dashboard affiche une bannière rouge tant que cet attribut est vrai
+Three guardrails:
+  1. every ticker is prefixed `SYNTH_`
+  2. the function returns a DataFrame with the attribute `.attrs["synthetic"] = True`
+  3. the dashboard shows a red banner as long as that attribute is true
 
-Les niveaux choisis sont de l'ordre de grandeur du marché (P62 autour de 100 $/dmt, C3
-autour de 20 $/wmt, C5 autour de 10 $/wmt) uniquement pour que les axes des graphiques
-soient lisibles. Ils ne sont calibrés sur rien.
+The chosen levels are on the order of market magnitude (P62 around 100 $/dmt, C3 around
+20 $/wmt, C5 around 10 $/wmt) purely so the chart axes stay readable. They are not
+calibrated on anything.
 """
 from __future__ import annotations
 
@@ -27,13 +27,13 @@ SYNTHETIC_TICKERS = {
 
 
 def synthetic_ironore(n_days: int = 520, seed: int = 42) -> pd.DataFrame:
-    """Quatre séries synthétiques en format long canonique (date, ticker, valeur).
+    """Four synthetic series in the canonical long format (date, ticker, valeur).
 
-    La structure imposée volontairement : un facteur Capesize commun pousse C3 et C5
-    ensemble, C3 réagit plus fort (long-courrier, plus sensible aux soutes), et le
-    premium 65-62 contient une composante qualité indépendante. C'est la structure que
-    la décomposition est censée retrouver — donc ce jeu de données teste la plomberie,
-    pas la thèse. Il ne peut pas la confirmer.
+    The structure is deliberately imposed: a common Capesize factor pushes C3 and C5
+    together, C3 reacts more strongly (longer haul, more bunker-sensitive), and the
+    65-62 premium contains an independent quality component. That's the structure the
+    decomposition is supposed to recover — so this dataset tests the plumbing, not the
+    thesis. It cannot confirm it.
     """
     rng = np.random.default_rng(seed)
     idx = pd.bdate_range("2024-01-01", periods=n_days)
@@ -57,8 +57,8 @@ def synthetic_ironore(n_days: int = 520, seed: int = 42) -> pd.DataFrame:
         )
     out = pd.concat(frames, ignore_index=True)
 
-    # trous volontaires : jours fériés désalignés entre le fret et les prix, pour que la
-    # gestion des calendriers soit exercée dès le mode synthétique.
+    # deliberate gaps: holidays misaligned between freight and prices, so calendar
+    # handling gets exercised even in synthetic mode.
     holidays = set(rng.choice(n_days, size=12, replace=False))
     mask = out.apply(
         lambda r: (idx.get_loc(r["date"]) in holidays)

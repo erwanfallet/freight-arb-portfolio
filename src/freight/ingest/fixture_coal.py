@@ -1,18 +1,17 @@
-"""GÉNÉRATEUR DE DONNÉES SYNTHÉTIQUES POUR LE PROJET B — AUCUNE VALEUR ÉCONOMIQUE.
+"""SYNTHETIC DATA GENERATOR FOR PROJECT B — NO ECONOMIC VALUE.
 
-Avertissement plus fort que pour le projet A, et il faut le lire.
+A stronger warning than for project A, and it needs to be read.
 
-Le projet A affirme qu'une part du premium vient du fret ; le jeu synthétique A impose une
-structure de ce type, donc il ne peut pas la confirmer. Ici c'est pire : **la rupture de
-2022 est imposée à la main dans le générateur**. Le dashboard affichera donc un coefficient
-de fret qui s'effondre après 2022 et un arb qui décroche — parce que c'est écrit dans ces
-quinze lignes de code, pas parce que le marché l'a fait.
+Project A claims that part of the premium comes from freight; synthetic set A imposes a
+structure of that kind, so it cannot confirm it. Here it's worse: **the 2022 break is
+imposed by hand in the generator**. The dashboard will therefore show a freight
+coefficient that collapses after 2022 and an arb that breaks — because it's written
+into these fifteen lines of code, not because the market did it.
 
-Ce jeu de données sert exclusivement à vérifier que les six sections s'affichent et que le
-test de rupture avec contrôle TTF tourne. Toute lecture économique de ces graphiques est
-une erreur.
+This dataset exists solely to verify the six sections render and that the break test
+with the TTF control runs. Any economic reading of these charts is a mistake.
 
-Tickers préfixés `SYNTH_`, attribut `.attrs["synthetic"] = True`, bannière rouge dans le
+Tickers prefixed `SYNTH_`, attribute `.attrs["synthetic"] = True`, red banner in the
 dashboard.
 """
 from __future__ import annotations
@@ -33,15 +32,15 @@ BREAKPOINT = pd.Timestamp("2022-03-01")
 
 
 def synthetic_coal(seed: int = 11) -> pd.DataFrame:
-    """Six séries synthétiques en format long canonique (date, ticker, valeur).
+    """Six synthetic series in the canonical long format (date, ticker, valeur).
 
-    Structure imposée, à connaître avant de regarder un seul graphique :
-      - avant la rupture : spread API2−API4 ≈ fret, donc arb autour de zéro
-      - après : le spread garde un niveau propre indépendant du fret
-      - un choc TTF au printemps 2022, corrélé au niveau du spread, pour que le test
-        d'attribution ait quelque chose à démêler
-      - EUA nul avant 2024 uniquement dans les faits réglementaires, pas dans la série :
-        le prix du quota existe avant, c'est la montée en charge qui le neutralise
+    Imposed structure, to know before looking at a single chart:
+      - before the break: API2−API4 spread ≈ freight, so the arb sits around zero
+      - after: the spread keeps a clean level independent of freight
+      - a TTF shock in spring 2022, correlated with the spread's level, so the
+        attribution test has something to untangle
+      - EUA is zero before 2024 only in the regulatory facts, not in the series: the
+        allowance price exists before then, it's the phase-in that neutralises it
     """
     rng = np.random.default_rng(seed)
     idx = pd.bdate_range("2019-01-01", "2026-06-30")
@@ -58,7 +57,7 @@ def synthetic_coal(seed: int = 11) -> pd.DataFrame:
     api4 = 70.0 + np.cumsum(rng.normal(0, 0.55, n)) + 0.25 * (ttf - 20.0)
     api4 = np.clip(api4, 30.0, None)
 
-    # avant : le spread paie le fret. après : il garde un niveau propre.
+    # before: the spread pays for freight. after: it keeps a clean level.
     spread = np.where(
         post > 0,
         0.15 * freight + 18.0 + 0.05 * (ttf - 20.0) + rng.normal(0, 1.2, n),

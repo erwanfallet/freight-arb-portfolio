@@ -1,11 +1,12 @@
-"""Golden tests T3-4 — le budget d'origination, et les fenêtres où aucune origine ne marche.
+"""Golden tests T3-4 — the origination budget, and the windows where no origin works.
 
-L'intérêt du budget tient à ce qu'il **ne** contient pas : ni basis d'origine, ni fret. Deux
-tests le vérifient explicitement (`test_the_budget_does_not_depend_on_the_freight_assumption`
-et `..._on_the_basis_assumption`), parce que c'est exactement la propriété qui permet à la
-page de conclure sans les deux séries que l'export ne fournit pas. Si une refonte future
-réintroduisait l'une des deux dans le calcul, la conclusion deviendrait conditionnelle à un
-forfait sans que rien ne le signale.
+The budget's interest lies in what it does **not** contain: neither origin basis nor
+freight. Two tests verify this explicitly
+(`test_the_budget_does_not_depend_on_the_freight_assumption` and
+`..._on_the_basis_assumption`), because that's exactly the property that lets the page
+conclude without the two series the export doesn't provide. If a future rework
+reintroduced either one into the calculation, the conclusion would become conditional
+on an assumed figure with nothing flagging it.
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ from agri.chains.china_soy import (
 from agri.data.bloomberg_loader import DEFAULT_PATH, load
 
 pytestmark = pytest.mark.skipif(
-    not DEFAULT_PATH.exists(), reason=f"fichier Bloomberg absent : {DEFAULT_PATH}"
+    not DEFAULT_PATH.exists(), reason=f"Bloomberg file absent: {DEFAULT_PATH}"
 )
 
 
@@ -36,27 +37,29 @@ def budget():
 
 
 # ===========================================================================
-# LA PROPRIÉTÉ QUI FONDE LA PAGE
+# THE PROPERTY THE PAGE RESTS ON
 # ===========================================================================
 def test_the_budget_does_not_depend_on_the_freight_assumption():
-    """LE test de la page.
+    """THE page's test.
 
-    Le fret de référence sert de **seuil de lecture**, jamais d'entrée du calcul. Deux
-    valeurs très différentes doivent produire exactement le même budget — sinon la
-    conclusion serait conditionnelle à un forfait que l'export ne fournit pas.
+    The reference freight serves as a **reading threshold**, never as an input to the
+    calculation. Two very different values must produce exactly the same budget —
+    otherwise the conclusion would be conditional on an assumed figure the export
+    doesn't provide.
     """
     low = affordable_origination_budget(start="2018-01-01", freight_reference_usd_t=25.0)
     high = affordable_origination_budget(start="2018-01-01", freight_reference_usd_t=85.0)
     pd.testing.assert_series_equal(
         low.frame["budget_usd_t"], high.frame["budget_usd_t"]
     )
-    # seule la LECTURE change
+    # only the READING changes
     assert low.share_below_freight < high.share_below_freight
 
 
 def test_the_budget_does_not_depend_on_the_basis_assumption():
-    """Même exigence pour le basis FOB : il est passé à `load_real_crush_frame` en aval mais
-    ne doit pas atteindre le budget, qui part de la recette et du CBOT nu."""
+    """Same requirement for the FOB basis: it's passed to `load_real_crush_frame`
+    downstream but must not reach the budget, which starts from revenue and the raw
+    CBOT price."""
     low = affordable_origination_budget(start="2018-01-01", basis_cents_bu=0.0)
     high = affordable_origination_budget(start="2018-01-01", basis_cents_bu=150.0)
     pd.testing.assert_series_equal(
@@ -65,7 +68,7 @@ def test_the_budget_does_not_depend_on_the_basis_assumption():
 
 
 def test_budget_hand_computed(budget):
-    """budget = (recette_HT - transformation)/(1 + droit)/USDCNY - CBOT x 36,7437."""
+    """budget = (revenue_ex_vat - processing)/(1 + duty)/USDCNY - CBOT x 36.7437."""
     crush = load_real_crush_frame(start="2018-01-01")
     row = budget.frame.iloc[-1]
     revenue = float(crush.loc[budget.frame.index[-1], "revenue_ex_vat"])
@@ -81,31 +84,32 @@ def test_budget_hand_computed(budget):
 
 
 def test_the_bushel_conversion_is_derived_not_hardcoded():
-    """60 lb par boisseau de soja -> 36,7437 boisseaux par tonne métrique."""
+    """60 lb per soybean bushel -> 36.7437 bushels per metric tonne."""
     assert BUSHELS_PER_TONNE_SOYBEAN == pytest.approx(36.7437, abs=1e-4)
 
 
 # ===========================================================================
-# LE RÉSULTAT
+# THE RESULT
 # ===========================================================================
 def test_a_material_share_of_sessions_admits_no_origin_at_all(budget):
-    """Le résultat de S2 : sur une part non anecdotique des séances, le budget est négatif —
-    une fève gratuite, transportée gratuitement, ne rendrait pas le crush rentable."""
+    """S2's result: over a non-trivial share of sessions, the budget is negative — a
+    free bean, freighted for free, still wouldn't make the crush pay."""
     assert budget.share_impossible > 0.005
     assert (budget.frame["budget_usd_t"] < 0).any()
     assert "negative" in budget.headline
 
 
 def test_freight_alone_eats_the_whole_budget_far_more_often(budget):
-    """Contraste : le budget passe sous le seul coût du fret bien plus souvent qu'il ne
-    devient négatif. Entre les deux, il faudrait acheter la fève SOUS le CBOT à l'origine."""
+    """Contrast: the budget falls below freight cost alone far more often than it
+    turns negative. Between the two, the bean would have to be bought BELOW the CBOT
+    price at origin."""
     assert budget.share_below_freight > budget.share_impossible
     assert budget.share_below_freight > 0.05
 
 
 def test_the_impossible_windows_are_concentrated_in_2023(budget):
-    """La concentration temporelle est le fait saillant de S3 : ce n'est pas du bruit autour
-    de zéro réparti sur huit ans, c'est un épisode daté."""
+    """The temporal concentration is S3's salient fact: this isn't noise around zero
+    spread over eight years, it's a dated episode."""
     windows = impossible_windows(budget, threshold_usd_t=0.0, min_obs=3)
     assert len(windows) > 0
     years = {pd.Timestamp(value).year for value in windows["start"]}
@@ -114,31 +118,32 @@ def test_the_impossible_windows_are_concentrated_in_2023(budget):
 
 
 def test_the_windows_calendar_carries_dates_not_just_a_count(budget):
-    """Le livrable est un calendrier confrontable à un carnet d'arrivées."""
+    """The deliverable is a calendar that can be checked against an arrival book."""
     windows = impossible_windows(budget, threshold_usd_t=0.0, min_obs=3)
     assert {"start", "end", "duration_days"} <= set(windows.columns)
     assert (pd.to_datetime(windows["end"]) >= pd.to_datetime(windows["start"])).all()
 
 
 def test_a_higher_threshold_can_only_add_windows(budget):
-    """Monotonie : relever le seuil ne peut pas faire disparaître de jours sous le seuil."""
+    """Monotonicity: raising the threshold can't make days below it disappear."""
     strict = impossible_windows(budget, threshold_usd_t=0.0, min_obs=3)
     loose = impossible_windows(budget, threshold_usd_t=45.0, min_obs=3)
     assert loose["duration_days"].sum() > strict["duration_days"].sum()
 
 
 # ===========================================================================
-# Cohérence et garde-fous
+# Consistency and guardrails
 # ===========================================================================
 def test_the_budget_median_is_a_plausible_origination_cost(budget):
-    """Contrôle de plausibilité : un basis Gulf plus un fret Chine tournent autour de
-    60-100 USD/t. Un budget médian très en dehors signalerait une erreur de conversion."""
+    """Plausibility check: a Gulf basis plus China freight typically run around
+    60-100 USD/t. A median budget far outside that would signal a conversion error."""
     assert 40.0 < budget.median_budget < 140.0
 
 
 def test_the_module_default_assumption_sits_near_the_median(budget):
-    """Le forfait retenu ailleurs dans le module (70 c/bu de basis + 45 USD/t de fret) doit
-    tomber dans la plage que le budget autorise en médiane — sinon l'un des deux est faux."""
+    """The assumed figure used elsewhere in the module (70 c/bu of basis + 45 USD/t of
+    freight) must fall within the range the budget's median allows — otherwise one of
+    the two is wrong."""
     from agri.chains.china_soy import DEFAULT_BASIS_CENTS_BU
 
     assumed = DEFAULT_BASIS_CENTS_BU / 100.0 * BUSHELS_PER_TONNE_SOYBEAN + DEFAULT_FREIGHT_USD_T
@@ -158,19 +163,19 @@ def test_an_impossible_start_date_raises():
 
 
 def test_the_budget_is_the_margin_stripped_of_its_two_forfaits(budget):
-    """Ce que le budget est **exactement**, énoncé plutôt que suggéré.
+    """What the budget **exactly** is, stated rather than implied.
 
-    Écrit en développement pour vérifier que budget et marge n'étaient pas la même chose ;
-    la donnée a répondu qu'ils l'étaient à une transformation affine près, et l'identité est
-    exacte au flottant :
+    Written during development to check whether budget and margin were the same
+    thing; the data answered that they are, up to an affine transform, and the
+    identity is exact to floating-point precision:
 
-        marge = (1 + droit) x USDCNY x (budget - basis_forfait - fret_forfait)
+        margin = (1 + duty) x USDCNY x (budget - basis_forfait - freight_forfait)
 
-    Le budget n'apporte donc **aucune information nouvelle** — il retire deux paramètres
-    arbitraires. C'est précisément ce qui rend son passage à zéro interprétable là où celui
-    de la marge ne l'est pas : le zéro de la marge dépend du forfait retenu, celui du budget
-    ne dépend de rien. La page dit cela explicitement plutôt que de laisser croire à une
-    grandeur indépendante.
+    The budget therefore carries **no new information** — it removes two arbitrary
+    parameters. That's precisely what makes its crossing zero interpretable where the
+    margin's is not: the margin's zero depends on the assumed figure used, the
+    budget's depends on nothing. The page states this explicitly rather than letting
+    it read as an independent quantity.
     """
     crush = load_real_crush_frame(start="2018-01-01")
     aligned = pd.concat(
