@@ -1,81 +1,105 @@
-"""Portfolio landing page. `streamlit run app/Home.py`
+"""Portfolio landing page and navigation router. `streamlit run app/Home.py`
 
 Nothing is hardcoded here: everything comes from `freight.portfolio`. Adding a project to
 the portfolio means adding a `Project` to `src/freight/portfolio.py` — this page never has
-to be edited by hand.
+to be edited by hand, and the same is true of the sidebar: `st.navigation` builds its
+sections directly from `by_tier()`, so the sidebar groups by sector exactly as the page
+body does, and a new tier or project appears in both without a second edit.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 import streamlit as st
 
 from freight.portfolio import (
     DATA_REAL,
     DATA_SYNTHETIC,
+    FREIGHT_PROJECTS,
     PROJECTS,
     STATUS_READY,
     by_tier,
     total_tests,
 )
 
-st.set_page_config(page_title="Physical arbitrage portfolio", layout="wide")
+_FREIGHT_IDS = {p.id for p in FREIGHT_PROJECTS}
 
-st.title("Physical arbitrage — when the quoted unit is not the economic unit")
 
-st.markdown(
-    """
-Twelve projects across dry bulk, refined products, gas, softs and grains. One throughline,
-and it is not the commodity: **every project turns on the quoted unit not being the unit
-the economics run on.** Wet tonne against dry tonne, kcal against tonne, gallon against
-tonne, cents per bushel against dollars per bushel, USD per day against USD per tonne,
-ringgit against dollar.
+def _nav_icon(project) -> str:
+    return "🚢" if project.id in _FREIGHT_IDS else "🌾"
+
+
+def _nav_label(project) -> str:
+    """Reproduce the label the classic `pages/` auto-discovery derived from the filename
+    (numeric prefix stripped, underscores to spaces) — sidebar items look unchanged, only
+    the new section headers are added on top."""
+    stem = Path(project.dashboard_page).stem
+    parts = stem.split("_")
+    if parts and parts[0].isdigit():
+        parts = parts[1:]
+    return " ".join(parts)
+
+
+def home_page() -> None:
+    st.set_page_config(page_title="Physical arbitrage portfolio", layout="wide")
+
+    st.title("Physical arbitrage — when the quoted unit is not the economic unit")
+
+    st.markdown(
+        """
+Eighteen projects across dry bulk, refined products, gas, softs and grains. One
+throughline, and it is not the commodity: **every project turns on the quoted unit not
+being the unit the economics run on.** Wet tonne against dry tonne, kcal against tonne,
+gallon against tonne, cents per bushel against dollars per bushel, USD per day against
+USD per tonne, ringgit against dollar.
 
 That is not a presentational detail. In several of these projects the conversion factor
 moves the answer by more than the phenomenon being measured — which means getting it wrong
 does not produce an error, it produces a plausible number that is wrong.
 """
-)
+    )
 
-n_ready = sum(1 for p in PROJECTS if p.status == STATUS_READY)
-n_real = sum(1 for p in PROJECTS if p.data_mode != DATA_SYNTHETIC)
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Projects", len(PROJECTS))
-c2.metric("Built and tested", n_ready)
-c3.metric("On real market data", n_real)
-c4.metric("Golden tests", total_tests())
+    n_ready = sum(1 for p in PROJECTS if p.status == STATUS_READY)
+    n_real = sum(1 for p in PROJECTS if p.data_mode != DATA_SYNTHETIC)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Projects", len(PROJECTS))
+    c2.metric("Built and tested", n_ready)
+    c3.metric("On real market data", n_real)
+    c4.metric("Golden tests", total_tests())
 
-st.divider()
-
-_DATA_BADGE = {
-    DATA_REAL: "🟩 real data",
-    DATA_SYNTHETIC: "⬜ synthetic — no number here is a market result",
-}
-
-for tier, projects in by_tier().items():
-    st.subheader(tier)
-    for row_start in range(0, len(projects), 3):
-        row = projects[row_start : row_start + 3]
-        columns = st.columns(len(row))
-        for column, project in zip(columns, row):
-            with column:
-                badge = _DATA_BADGE.get(project.data_mode, "🟨 hybrid — main legs real")
-                st.markdown(f"**{project.code} — {project.title}**")
-                st.caption(badge)
-                st.markdown(f"*{project.thesis}*")
-                with st.expander("Where the disagreement comes from"):
-                    st.markdown(project.disagreement)
-                    st.markdown(f"**The deliverable** — {project.pivot}")
-                    if project.data_fallback:
-                        st.caption(f"Data constraint: {project.data_fallback}")
-                with st.expander("The question in the email"):
-                    st.markdown(project.mail_question)
-                    st.caption(f"Target: {project.targets}")
-                if project.dashboard_page:
-                    st.page_link(project.dashboard_page, label="Open the dashboard →")
-                st.caption(f"{project.n_tests or 0} golden tests")
     st.divider()
 
-st.markdown(
-    """
+    _DATA_BADGE = {
+        DATA_REAL: "🟩 real data",
+        DATA_SYNTHETIC: "⬜ synthetic — no number here is a market result",
+    }
+
+    for tier, projects in by_tier().items():
+        st.subheader(tier)
+        for row_start in range(0, len(projects), 3):
+            row = projects[row_start : row_start + 3]
+            columns = st.columns(len(row))
+            for column, project in zip(columns, row):
+                with column:
+                    badge = _DATA_BADGE.get(project.data_mode, "🟨 hybrid — main legs real")
+                    st.markdown(f"**{project.code} — {project.title}**")
+                    st.caption(badge)
+                    st.markdown(f"*{project.thesis}*")
+                    with st.expander("Where the disagreement comes from"):
+                        st.markdown(project.disagreement)
+                        st.markdown(f"**The deliverable** — {project.pivot}")
+                        if project.data_fallback:
+                            st.caption(f"Data constraint: {project.data_fallback}")
+                    with st.expander("The question in the email"):
+                        st.markdown(project.mail_question)
+                        st.caption(f"Target: {project.targets}")
+                    if project.dashboard_page:
+                        st.page_link(project.dashboard_page, label="Open the dashboard →")
+                    st.caption(f"{project.n_tests or 0} golden tests")
+        st.divider()
+
+    st.markdown(
+        """
 ### Method rules, portfolio-wide
 
 - **A data gap is information**, not noise to smooth over. No forward-fill before the audit
@@ -96,4 +120,17 @@ Several projects end in a **negative result** — the substitution band that doe
 the rent level that is not identifiable from prices. Those are kept as they are. A portfolio
 in which every thesis is confirmed is a portfolio that was not really tested.
 """
-)
+    )
+
+
+_sections: dict[str, list[st.Page]] = {
+    "Overview": [st.Page(home_page, title="Home", icon="🏠", default=True)],
+}
+for _tier, _projects in by_tier().items():
+    _sections[_tier] = [
+        st.Page(project.dashboard_page, title=_nav_label(project), icon=_nav_icon(project))
+        for project in _projects
+        if project.dashboard_page
+    ]
+
+st.navigation(_sections).run()
