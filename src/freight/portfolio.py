@@ -384,6 +384,61 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=12,
     ),
+    Project(
+        id="index_basis",
+        code="H",
+        tier=TIER_FREIGHT,
+        title="The index tracks the route worst on the days that matter least",
+        thesis=(
+            "A route-specific hedger fears a benchmark index decouples exactly when "
+            "the route moves hardest. Measured on the real BPI and the real P8 route: "
+            "the index explains MORE of the route's variance on its biggest-move days "
+            "(R²=10.4%, significant) than on calm ones (R²=0.3%, not significant) — but "
+            "the unexplained dollars grow just as fast as the move itself, so the "
+            "better statistical fit buys no more absolute protection."
+        ),
+        disagreement=(
+            "Inferred tension. A route-specific hedge using a global index is assumed "
+            "to work worst exactly when it is needed most. MEASURED ON 624 OVERLAPPING "
+            "DAYS OF THE REAL BPI AND P8 ROUTE RATE: split by the size of the route's "
+            "own move, R² rises monotonically from 0.3% (calm) to 10.4% (top decile) — "
+            "the opposite of the naive fear. The unexplained residual still grows 40x "
+            "over the same split, almost exactly matching the 42x growth in the raw "
+            "move, so the improved fit is a statistical artifact of scale, not better "
+            "dollar protection."
+        ),
+        pivot=(
+            "R² rises with the size of the route's move; the residual in USD/t grows "
+            "in almost the same proportion as the move itself — the correction that "
+            "keeps the first result from being read as good news"
+        ),
+        mail_question=(
+            "On the days the P8 route moves hardest, the BPI index actually tracks it "
+            "more closely than on a quiet day — but the dollars left unhedged grow "
+            "just as fast as the move itself, so the better statistical fit does not "
+            "translate into better protection. On your largest route-specific moves, "
+            "is there usually an identifiable driver — a large single fixture, port "
+            "congestion, an itinerary shift — that a desk would see operationally but "
+            "that never shows up in the index?"
+        ),
+        targets=(
+            "Freight derivatives and FFA risk desks (Freight Investor Services, SSY "
+            "Futures, Clarksons Securities) — the paper-hedging side of freight risk"
+        ),
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The P8 route rate is missing 2023 and 2024 entirely, the same gap "
+            "documented in project D — this test covers the 2021-2022 and 2025-2026 "
+            "windows only. A finer slice than the top decile (the 90th-95th percentile "
+            "of moves, 32 observations) shows a striking R² and is deliberately not "
+            "reported as a verdict."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/18_H_Index_Basis.py",
+        chain_module="freight.chains.index_basis",
+        data_mode=DATA_REAL,
+        n_tests=8,
+    ),
 ]
 
 
