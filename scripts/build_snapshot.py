@@ -44,6 +44,7 @@ def build() -> dict[str, tuple[int, int]]:
     from freight.chains.coal import load_real_switching_frame
     from freight.chains.freight_incidence import load_incidence_frame
     from freight.chains.grain_seasonal import load_panamax_frame
+    from freight.chains.marginal_ship import load_marginal_ship_frame
     from freight.chains.ironore import load_real_premium_frame
     from freight.chains.products import load_real_transatlantic_frame
 
@@ -91,6 +92,7 @@ def build() -> dict[str, tuple[int, int]]:
         "d_panamax_seasonal": live(load_panamax_frame)(),
         "e_freight_incidence": live(load_incidence_frame)(),
         "f_bunker_basis": live(load_bunker_frame)(),
+        "g_marginal_ship": live(load_marginal_ship_frame)(),
     }
 
     written: dict[str, tuple[int, int]] = {}

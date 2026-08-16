@@ -285,6 +285,54 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=14,
     ),
+    Project(
+        id="marginal_ship",
+        code="G",
+        tier=TIER_FREIGHT,
+        title="How much less efficient could a ship be, and still cover its fuel bill here",
+        thesis=(
+            "Solved exactly from the real P8 route rate and the real VLSFO price: the "
+            "fuel-consumption multiplier at which a reference panamax's own fuel bill "
+            "would consume all its freight revenue never approached 1 in nearly five "
+            "years — not even during the sharpest VLSFO spike on record — and the "
+            "margin's day-to-day variance traces more to the bunker price than to the "
+            "freight rate itself."
+        ),
+        disagreement=(
+            "Inferred tension. A strong freight market is usually read as the thing "
+            "buying a chartering desk fuel-cost headroom. MEASURED ON THE REAL P8 ROUTE, "
+            "2021-2022 AND 2025-2026: the breakeven multiplier ranged 1.46 to 3.86 and "
+            "never approached 1, and only 38% of its variance traces to the freight "
+            "rate — 62% traces to the bunker price, which the freight market does not "
+            "set and does not track closely."
+        ),
+        pivot=(
+            "The margin's tightest point on record lands inside the same VLSFO spike "
+            "documented on project F's page, and even there stayed above 1.4"
+        ),
+        mail_question=(
+            "On the P8 route since late 2021, a panamax could have burned 1.5 to nearly "
+            "4 times its reference consumption and still covered its fuel bill from "
+            "freight revenue alone — and that margin moves more with the bunker price "
+            "than with the freight rate itself. Does your desk actually track a "
+            "fuel-cost headroom like this when assessing which tonnage to fix, or does "
+            "opex and capital cost dominate the decision so completely that fuel "
+            "efficiency alone rarely binds?"
+        ),
+        targets="Grain and freight chartering desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra)",
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The P8 route rate is missing 2023 and 2024 entirely in this export, the "
+            "same gap documented in project D — this test covers the 2021-2022 "
+            "boom-to-slump transition and the 2025-2026 window, not a continuous "
+            "history."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/16_G_Marginal_Ship.py",
+        chain_module="freight.chains.marginal_ship",
+        data_mode=DATA_REAL,
+        n_tests=11,
+    ),
 ]
 
 
