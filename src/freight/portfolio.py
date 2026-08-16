@@ -148,6 +148,50 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=28,
     ),
+    Project(
+        id="grain_seasonal",
+        code="D",
+        tier=TIER_FREIGHT,
+        title="The largest cargo flow in the market leaves no mark on freight",
+        thesis=(
+            "Brazilian soybean exports grew roughly sixfold since 1999 and the Panamax "
+            "seasonal amplitude nearly tripled — but not in the harvest months, which sit "
+            "at the year's own median in every sub-period. A freight seasonal is a "
+            "positioning seasonal, not a demand one."
+        ),
+        disagreement=(
+            "Inferred tension. The harvest is the obvious candidate for a freight "
+            "seasonal, and it is how the flow is usually described. MEASURED ON 27 YEARS "
+            "OF THE BALTIC PANAMAX INDEX: the trough is February and the peak October — "
+            "both outside the Brazilian window. March through June are statistically "
+            "indistinguishable from the annual level, while February and October are "
+            "not. An anticipated flow is absorbed by repositioning before it reaches the "
+            "rate."
+        ),
+        pivot=(
+            "The amplitude tripled while the harvest months moved by 0.011 of the annual "
+            "level — a difference that does not require knowing the counterfactual"
+        ),
+        mail_question=(
+            "Brazilian exports went up roughly sixfold in 25 years and I cannot find any "
+            "footprint in the Panamax seasonal. Is that because you pre-position the "
+            "fleet months ahead, or because the BPI is too global to show a single-basin "
+            "flow?"
+        ),
+        targets="Grain chartering desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra), Panamax owners and operators",
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The P8 Santos-Qingdao route is missing 2023 and 2024 entirely in the export, "
+            "which rules out a route-level seasonal. The BPI carries 27 complete years "
+            "and the test runs on it instead — at the cost of basin dilution, which is "
+            "stated as the limit of what the page can prove."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/13_D_Grain_Seasonal.py",
+        chain_module="freight.chains.grain_seasonal",
+        data_mode=DATA_REAL,
+        n_tests=16,
+    ),
 ]
 
 

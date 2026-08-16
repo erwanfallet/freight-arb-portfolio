@@ -41,6 +41,7 @@ def build() -> dict[str, tuple[int, int]]:
     from agri.chains.sugar_mix import load_real_parity_frame
     from agri.chains.white_premium import load_real_richness_frame
     from freight.chains.coal import load_real_switching_frame
+    from freight.chains.grain_seasonal import load_panamax_frame
     from freight.chains.ironore import load_real_premium_frame
     from freight.chains.products import load_real_transatlantic_frame
 
@@ -85,6 +86,7 @@ def build() -> dict[str, tuple[int, int]]:
         "a_iron_ore": live(load_real_premium_frame)(),
         "b_switching": live(load_real_switching_frame)(),
         "c_products": live(load_real_transatlantic_frame)(),
+        "d_panamax_seasonal": live(load_panamax_frame)(),
     }
 
     written: dict[str, tuple[int, int]] = {}
