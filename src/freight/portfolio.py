@@ -31,7 +31,7 @@ from agri.portfolio import (  # noqa: F401
 )
 from agri.portfolio import PROJECTS as AGRI_PROJECTS
 
-TIER_FREIGHT = "Dry bulk and refined products — freight as the deciding term"
+TIER_FREIGHT = "FREIGHT — Dry bulk and refined products — freight as the deciding term"
 
 
 FREIGHT_PROJECTS: list[Project] = [

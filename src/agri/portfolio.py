@@ -17,9 +17,9 @@ DATA_SYNTHETIC = "synthetic"  # fabricated to impose the phenomenon, waiting on 
 DATA_REAL = "real"            # runs on the Bloomberg export
 DATA_HYBRID = "hybrid"        # main legs real, a minor term stays parameterised (documented in the engine)
 
-TIER_1 = "T1 — sourced disagreements"
-TIER_2 = "T2 — inferred structural tensions"
-TIER_3 = "T3 — disagreements open as of August 2026"
+TIER_1 = "AGRI · TIER 1 — sourced disagreements"
+TIER_2 = "AGRI · TIER 2 — inferred structural tensions"
+TIER_3 = "AGRI · TIER 3 — disagreements open as of August 2026"
 
 # Data-access risk, as established by the spec's gates.
 GATE_NONE = "none"            # free, public series
