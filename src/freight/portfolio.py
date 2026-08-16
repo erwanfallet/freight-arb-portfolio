@@ -236,6 +236,55 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=15,
     ),
+    Project(
+        id="bunker_basis",
+        code="F",
+        tier=TIER_FREIGHT,
+        title="You hedge bunkers with crude, and here is what you keep",
+        thesis=(
+            "Crude is the cheapest and deepest instrument bunkers actually get hedged "
+            "with, which makes the hedge ratio a measurable number rather than a "
+            "convention. It has fallen by a factor of three since 2016, and even at its "
+            "best crude explained barely a fifth of the daily bunker variance."
+        ),
+        disagreement=(
+            "Inferred tension. Hedging bunkers with crude is standard desk practice, "
+            "and the ratio used is often a inherited convention rather than a "
+            "re-estimated one. MEASURED ON DAILY VLSFO SINGAPORE AND BRENT: the hedge "
+            "ratio was 0.79 in 2016-2017 and 0.23 in 2024-2025 — a position sized on "
+            "the earlier window is three times too large today, and crude never "
+            "explained more than 21% of the daily variance even at its peak."
+        ),
+        pivot=(
+            "The hedge ratio's own drift across eight two-year windows, and the ceiling "
+            "on variance explained even in the best of them"
+        ),
+        mail_question=(
+            "The crude hedge ratio on VLSFO Singapore has fallen from about 0.8 in "
+            "2016-2017 to about 0.2 now, and even in the best window crude only "
+            "explained roughly half the daily variance it was hedging. How do you size "
+            "a bunker hedge today — still crude as the primary instrument, or has the "
+            "desk moved toward gasoil, a blended proxy, or something else?"
+        ),
+        targets=(
+            "Bunker purchasing and fuel risk desks (Cargill Fuel & Freight Risk, "
+            "trading-house bunker desks at Vitol, Glencore, Trafigura; ship-operator "
+            "bunker procurement)"
+        ),
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The series is labelled VLSFO back to 2009, nine years before the 0.5% "
+            "sulphur grade it names existed as a bunker fuel. What the pre-2020 window "
+            "actually tracks is not established here, and the drift measured across it "
+            "is reported as a property of the quoted series rather than a claim about "
+            "the fuel itself."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/15_F_Bunker_Basis.py",
+        chain_module="freight.chains.bunker_basis",
+        data_mode=DATA_REAL,
+        n_tests=14,
+    ),
 ]
 
 
