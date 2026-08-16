@@ -192,6 +192,50 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=16,
     ),
+    Project(
+        id="freight_incidence",
+        code="E",
+        tier=TIER_FREIGHT,
+        title="The buyer does not pay the freight, and the index says so",
+        thesis=(
+            "The 62% Fe index is quoted CFR China, so the freight is already inside it — "
+            "which makes the incidence a regression coefficient rather than an opinion. "
+            "At every horizon where the sample has power, full pass-through is rejected: "
+            "the delivered price does not move with the freight it contains."
+        ),
+        disagreement=(
+            "Inferred tension. Quoting a price CFR presents freight as something the "
+            "buyer is charged for, and the delivered-price convention answers the "
+            "incidence question implicitly. MEASURED ON DAILY IODEX 62 AND C5: the "
+            "coefficient is -0.06 daily and -0.26 weekly, and one sits outside both "
+            "intervals. The test is strong enough to matter — under full pass-through "
+            "the correlation would be 0.18 against a 0.066 band, 2.7x the noise floor."
+        ),
+        pivot=(
+            "Full pass-through rejected where the sample has power; zero not rejected — "
+            "so the answer is bounded, not settled, and the bound is the deliverable"
+        ),
+        mail_question=(
+            "The 62% CFR shows no freight pass-through at daily or weekly horizons and "
+            "full pass-through is statistically rejected. Is freight a cost you absorb "
+            "into the netback, or does it get renegotiated into the price on term "
+            "business — and does that differ between your FOB and CFR books?"
+        ),
+        targets="Iron ore desks and marketing at Vale, Rio Tinto, BHP; Capesize freight desks at Glencore, Trafigura, Cargill",
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The IODEX series starts in January 2023, leaving 14 quarterly observations — "
+            "so the contract horizon, where incidence would most plausibly settle, cannot "
+            "be tested and no verdict is drawn from it. C5 is a front-month FFA rather "
+            "than the spot route, which attenuates toward the null found here: the bias "
+            "runs against the conclusion, not for it."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/14_E_Freight_Incidence.py",
+        chain_module="freight.chains.freight_incidence",
+        data_mode=DATA_REAL,
+        n_tests=15,
+    ),
 ]
 
 
