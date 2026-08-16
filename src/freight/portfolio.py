@@ -333,6 +333,57 @@ FREIGHT_PROJECTS: list[Project] = [
         data_mode=DATA_REAL,
         n_tests=11,
     ),
+    Project(
+        id="cii_ballast",
+        code="I",
+        tier=TIER_FREIGHT,
+        title="The ballast leg the regulator counts the same as a laden one",
+        thesis=(
+            "CII's attained metric divides emissions by capacity and distance sailed — "
+            "neither term asks whether the ship was carrying cargo. Slowing only the "
+            "ballast leg buys a 31% better rating with zero additional cargo "
+            "transported, and that same slowdown costs 6% of the voyage's real annual "
+            "net contribution at current freight and bunker prices."
+        ),
+        disagreement=(
+            "Inferred tension. A rating designed to measure carbon efficiency is "
+            "assumed to track transport efficiency. COMPUTED FROM THE VOYAGE MODEL ON "
+            "THE REAL P8 SANTOS-QINGDAO ROUTE: slowing the ballast leg from 13 to 8 "
+            "knots, with the laden leg and every tonne of cargo on it unchanged, "
+            "improves attained AER by 31% — and loading more or less cargo changes AER "
+            "by exactly zero, since deadweight is nameplate capacity, not cargo "
+            "carried."
+        ),
+        pivot=(
+            "The same 31% rating gain costs 6% of annual net contribution at real "
+            "prices — the rating can be gamed for free, the P&L notices"
+        ),
+        mail_question=(
+            "Slowing only the ballast leg on this route buys a 31% better attained AER "
+            "with zero additional cargo moved — but at real freight and bunker prices "
+            "it costs about 6% of the voyage's annual net contribution. Does a bad CII "
+            "rating actually show up in your fixture terms or charter-party clauses in "
+            "a way that would justify eating that cost, or is the rating something the "
+            "fleet reports and the chartering decision otherwise ignores?"
+        ),
+        targets=(
+            "Dry bulk shipowners and operators (Oldendorff, Star Bulk, Golden Ocean, "
+            "Pacific Basin) — the rating sits with the owner, not the charterer"
+        ),
+        data_gate=GATE_NONE,
+        data_fallback=(
+            "The official IMO rating-boundary table (reference lines and reduction "
+            "factors by ship type and size) is deliberately not reproduced — citing "
+            "exact regulatory thresholds without full certainty in them would be worse "
+            "than not answering. Every result is an attained-AER percentage change, "
+            "which needs none of that table."
+        ),
+        status=STATUS_READY,
+        dashboard_page="pages/17_I_CII_Ballast.py",
+        chain_module="freight.chains.cii_ballast",
+        data_mode=DATA_REAL,
+        n_tests=12,
+    ),
 ]
 
 
