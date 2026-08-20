@@ -4,172 +4,19 @@ import pandas as pd
 import pytest
 
 from freight.chains.coal import (
-    BENCHMARK_CV_KCAL_PER_KG,
-    DEFAULT_EMISSION_FACTOR,
-    EXTRA_EU_SCOPE_FACTOR,
-    ets_cost_per_cargo_tonne,
-    financing_cost,
-    freight_binding_test,
+    ceiling_test,
+    generation_cost_eur_mwh_e,
+    non_overlapping,
     ols,
-    phase_in_factor,
-    phase_in_series,
-    reconstruct_ara_arb,
-    regime_stats,
-    to_energy_basis,
-    voyage_emissions_t_co2,
+    switch_ttf_eur_mwh,
+    switching_carbon_price,
+    switching_distance_pct,
+    trailing_median_distance_pct,
 )
 
 
 def _dates(n: int, start: str = "2021-01-01") -> pd.DatetimeIndex:
     return pd.bdate_range(start, periods=n)
-
-
-# ------------------------------------------------------------- calorific value
-def test_energy_basis_golden():
-    """5,700 kcal/kg against a 6,000 reference: factor 6000/5700 = 1.052631578...
-
-    A price of 90 $/t becomes 94.736842105 $ per tonne-equivalent-6,000.
-    A freight rate of 12 $/t becomes 12.631578947 per tonne-equivalent-6,000, i.e. +5.3%.
-    """
-    assert to_energy_basis(90.0, 5700.0) == pytest.approx(94.73684210526316, rel=1e-12)
-    assert to_energy_basis(12.0, 5700.0) == pytest.approx(12.631578947368421, rel=1e-12)
-
-
-def test_energy_basis_at_benchmark_is_identity():
-    assert to_energy_basis(88.5, BENCHMARK_CV_KCAL_PER_KG) == pytest.approx(88.5)
-
-
-def test_energy_basis_penalises_low_cv():
-    """The lower the real CV, the higher the cost per unit of energy."""
-    assert to_energy_basis(12.0, 5500.0) > to_energy_basis(12.0, 5800.0) > 12.0
-
-
-def test_energy_basis_rejects_bad_cv():
-    with pytest.raises(ValueError):
-        to_energy_basis(90.0, 0.0)
-    with pytest.raises(ValueError):
-        to_energy_basis(90.0, -5700.0)
-
-
-# ---------------------------------------------------------------------------- ETS
-def test_phase_in_factor_golden():
-    """Maritime ETS phase-in: nothing before 2024, then 40%, 70%, 100%."""
-    assert phase_in_factor(2023) == 0.0
-    assert phase_in_factor(2024) == pytest.approx(0.40)
-    assert phase_in_factor(2025) == pytest.approx(0.70)
-    assert phase_in_factor(2026) == pytest.approx(1.00)
-    assert phase_in_factor(2030) == pytest.approx(1.00)
-
-
-def test_effective_extra_eu_coverage_is_20_35_50():
-    """For a voyage with one end outside the EU — Richards Bay -> Rotterdam — the
-    effective coverage is scope × phase-in, i.e. 20% in 2024, 35% in 2025 and 50% from
-    2026.
-    """
-    assert EXTRA_EU_SCOPE_FACTOR * phase_in_factor(2024) == pytest.approx(0.20)
-    assert EXTRA_EU_SCOPE_FACTOR * phase_in_factor(2025) == pytest.approx(0.35)
-    assert EXTRA_EU_SCOPE_FACTOR * phase_in_factor(2026) == pytest.approx(0.50)
-
-
-def test_phase_in_series_follows_calendar_year():
-    idx = pd.DatetimeIndex(["2023-12-31", "2024-01-01", "2025-06-30", "2026-01-01"])
-    s = phase_in_series(idx)
-    assert list(s.values) == [0.0, 0.40, 0.70, 1.00]
-
-
-def test_voyage_emissions_golden():
-    """480 t of fuel × 3.114 tCO2/t = 1,494.72 tCO2."""
-    assert voyage_emissions_t_co2(480.0) == pytest.approx(1494.72, rel=1e-12)
-    assert voyage_emissions_t_co2(480.0, DEFAULT_EMISSION_FACTOR) == pytest.approx(1494.72)
-
-
-def test_ets_cost_golden():
-    """Full calculation, by hand:
-
-    emissions              1,494.72 tCO2
-    × scope 0.50          =   747.36
-    × phase-in 0.40 (2024) =   298.944 allowances due
-    × 70 EUR               = 20,926.08 EUR
-    × 1.10 EURUSD          = 23,018.688 USD
-    / 150,000 t            =     0.15345792 USD/t
-    """
-    cost = ets_cost_per_cargo_tonne(
-        eua_price_eur=70.0,
-        eurusd=1.10,
-        emissions_t_co2=1494.72,
-        cargo_t=150_000.0,
-        phase_in=0.40,
-    )
-    assert cost == pytest.approx(0.15345792, rel=1e-12)
-
-
-def test_ets_cost_scales_with_phase_in():
-    kwargs = dict(
-        eua_price_eur=70.0, eurusd=1.10, emissions_t_co2=1494.72, cargo_t=150_000.0
-    )
-    c2024 = ets_cost_per_cargo_tonne(phase_in=0.40, **kwargs)
-    c2026 = ets_cost_per_cargo_tonne(phase_in=1.00, **kwargs)
-    # 100% / 40% = 2.5x
-    assert c2026 / c2024 == pytest.approx(2.5, rel=1e-12)
-
-
-def test_ets_cost_rejects_bad_inputs():
-    kwargs = dict(eua_price_eur=70.0, eurusd=1.1, emissions_t_co2=1000.0, phase_in=0.4)
-    with pytest.raises(ValueError):
-        ets_cost_per_cargo_tonne(cargo_t=0.0, **kwargs)
-    with pytest.raises(ValueError):
-        ets_cost_per_cargo_tonne(cargo_t=150_000.0, scope_factor=1.5, **kwargs)
-
-
-# ---------------------------------------------------------------------------- arb
-def test_financing_cost_golden():
-    """90 $/t × 6% × 20/365 = 0.295890410958904 $/t."""
-    assert financing_cost(90.0, 20.0, 0.06) == pytest.approx(0.2958904109589041, rel=1e-12)
-
-
-def test_arb_reconstruction_golden():
-    """API2 110, API4 90, freight 12, 20 days at 6%, ETS 0.15345792:
-
-    spread     = 20.00
-    financing  =  0.295890411
-    arb        = 20 − 12 − 0.295890411 − 0.15345792 = 7.550651669
-    """
-    idx = _dates(1)
-    frame = reconstruct_ara_arb(
-        api2=pd.Series([110.0], index=idx),
-        api4=pd.Series([90.0], index=idx),
-        freight=pd.Series([12.0], index=idx),
-        voyage_days=20.0,
-        annual_rate=0.06,
-        ets_cost=0.15345792,
-    )
-    row = frame.iloc[0]
-    assert row["spread"] == pytest.approx(20.0)
-    assert row["financing"] == pytest.approx(0.2958904109589041, rel=1e-12)
-    assert row["arb"] == pytest.approx(7.550651669041096, rel=1e-12)
-    assert bool(row["is_open"]) is True
-
-
-def test_arb_requires_common_dates():
-    with pytest.raises(ValueError, match="no common date"):
-        reconstruct_ara_arb(
-            api2=pd.Series([110.0], index=pd.DatetimeIndex(["2024-01-01"])),
-            api4=pd.Series([90.0], index=pd.DatetimeIndex(["2024-01-02"])),
-            freight=pd.Series([12.0], index=pd.DatetimeIndex(["2024-01-03"])),
-        )
-
-
-def test_arb_rejects_ets_series_with_gaps():
-    """An ETS series that doesn't cover the whole arb must raise, not punch holes in
-    the calculation."""
-    idx = _dates(5)
-    with pytest.raises(ValueError, match="doesn't cover every date"):
-        reconstruct_ara_arb(
-            api2=pd.Series(110.0, index=idx),
-            api4=pd.Series(90.0, index=idx),
-            freight=pd.Series(12.0, index=idx),
-            ets_cost=pd.Series(0.15, index=idx[:3]),
-        )
 
 
 # --------------------------------------------------------------------------- OLS
@@ -216,8 +63,8 @@ def test_omitting_the_control_biases_the_freight_coefficient():
     exactly.
 
     In other words: without controlling for TTF, freight would be credited with an
-    effect 3.5 times too large — and the symmetric reasoning applies to attributing the
-    post-2022 break to India.
+    effect 3.5 times too large — and the symmetric reasoning applies to attributing a
+    forward-return effect to switching when it is really a confound.
     """
     idx = _dates(600)
     rng = np.random.default_rng(5)
@@ -234,50 +81,116 @@ def test_omitting_the_control_biases_the_freight_coefficient():
     assert controlled.coefficients["ttf"] == pytest.approx(5.0, abs=1e-8)
 
 
-# ------------------------------------------------------------------------ regimes
-def test_regime_stats_splits_and_measures_persistence():
-    """Before the break: arb alternates, never two days open in a row.
-    After: arb positive every day, so a 10-day open run.
+# ----------------------------------------------------------------- switching level
+def test_switch_ttf_golden():
+    """coal_th = 20, eua = 80, eta_coal = 0.38, eta_gas = 0.55:
+
+    ttf* = (0.55/0.38) x 20 + 80 x (0.55 x 0.34/0.38 - 0.20)
+         = 28.947368421... + 80 x 0.292105263...
+         = 52.315789473684213
     """
-    idx = _dates(20, start="2021-12-20")
-    arb = np.where(np.arange(20) % 2 == 0, 1.0, -1.0)
-    arb[10:] = 3.0
-    frame = pd.DataFrame({"arb": arb}, index=idx)
-    frame["is_open"] = frame["arb"] > 0
-    bp = idx[10]
-    before, after = regime_stats(frame, bp)
-
-    assert before.n_obs == 10
-    assert after.n_obs == 10
-    assert before.share_open == pytest.approx(0.5)
-    assert after.share_open == pytest.approx(1.0)
-    assert before.longest_open_run == 1
-    assert after.longest_open_run == 10
-    assert after.arb_mean > before.arb_mean
+    idx = _dates(1)
+    frame = pd.DataFrame(
+        {"coal_eur_mwh_th": [20.0], "eua_eur_t": [80.0], "ttf_eur_mwh": [0.0]}, index=idx
+    )
+    switch = switch_ttf_eur_mwh(frame, coal_efficiency=0.38, gas_efficiency=0.55)
+    assert switch.iloc[0] == pytest.approx(52.315789473684213, rel=1e-12)
 
 
-def test_regime_stats_handles_empty_side():
-    idx = _dates(5, start="2024-01-01")
-    frame = pd.DataFrame({"arb": np.ones(5), "is_open": [True] * 5}, index=idx)
-    before, after = regime_stats(frame, "2020-01-01")
-    assert before.n_obs == 0
-    assert after.n_obs == 5
-
-
-def test_freight_binding_test_detects_a_collapsing_coefficient():
-    """Before the break, spread = 1.0 × freight (freight is the constraint).
-    After, spread = 0.1 × freight + a level (freight no longer constrains).
+def test_switch_ttf_and_switching_carbon_price_are_the_same_equality_solved_two_ways():
+    """Set TTF exactly at its own switching level: the carbon price that makes gas and
+    coal cost the same must come back out as the EUA already in the frame — the two
+    functions solve the same equation for different variables and must agree.
     """
-    idx = _dates(400, start="2021-01-01")
-    rng = np.random.default_rng(9)
-    freight = pd.Series(12.0 + rng.normal(0, 2, 400), index=idx)
-    bp = idx[200]
-    spread = pd.Series(index=idx, dtype=float)
-    pre = idx < bp
-    spread[pre] = 1.0 * freight[pre]
-    spread[~pre] = 0.1 * freight[~pre] + 25.0
+    idx = _dates(1)
+    frame = pd.DataFrame(
+        {"coal_eur_mwh_th": [20.0], "eua_eur_t": [80.0], "ttf_eur_mwh": [0.0]}, index=idx
+    )
+    switch = switch_ttf_eur_mwh(frame, coal_efficiency=0.38, gas_efficiency=0.55)
+    frame_at_switch = frame.assign(ttf_eur_mwh=switch)
 
-    results = freight_binding_test(spread, freight, bp)
-    labels = list(results)
-    assert results[labels[0]].coefficients["freight"] == pytest.approx(1.0, abs=1e-6)
-    assert results[labels[1]].coefficients["freight"] == pytest.approx(0.1, abs=1e-6)
+    recovered_eua = switching_carbon_price(
+        frame_at_switch, coal_efficiency=0.38, gas_efficiency=0.55
+    )
+    assert recovered_eua.iloc[0] == pytest.approx(80.0, abs=1e-8)
+
+    generation = generation_cost_eur_mwh_e(
+        frame_at_switch, coal_efficiency=0.38, gas_efficiency=0.55
+    )
+    assert generation["spread"].iloc[0] == pytest.approx(0.0, abs=1e-8)
+
+
+def test_switching_distance_pct_golden():
+    idx = _dates(1)
+    switch = pd.Series([50.0], index=idx)
+    frame_above = pd.DataFrame({"ttf_eur_mwh": [55.0]}, index=idx)
+    frame_below = pd.DataFrame({"ttf_eur_mwh": [45.0]}, index=idx)
+    assert switching_distance_pct(frame_above, switch).iloc[0] == pytest.approx(0.10)
+    assert switching_distance_pct(frame_below, switch).iloc[0] == pytest.approx(-0.10)
+
+
+# -------------------------------------------------------------------------- placebo
+def test_trailing_median_distance_pct_golden():
+    """Ten flat days at 50, then a jump to 60. The 5-day trailing median only reaches
+    50 once the window is full of pre-jump days; on the jump day itself the median of
+    the last 5 (still all 50s) is 50, so distance = (60-50)/50 = 0.20.
+    """
+    idx = _dates(11)
+    ttf = pd.Series([50.0] * 10 + [60.0], index=idx)
+    dist = trailing_median_distance_pct(ttf, window=5)
+    assert np.isnan(dist.iloc[3])  # window not yet full (only 4 obs)
+    assert dist.iloc[4] == pytest.approx(0.0)  # window full, all 50s
+    assert dist.iloc[10] == pytest.approx(0.20, rel=1e-12)
+
+
+def test_non_overlapping_keeps_every_horizon_th_row():
+    idx = _dates(23)
+    frame = pd.DataFrame({"x": np.arange(23)}, index=idx)
+    kept = non_overlapping(frame, horizon_days=5)
+    assert list(kept["x"]) == [0, 5, 10, 15, 20]
+
+
+# ---------------------------------------------------------------------- ceiling test
+def test_ceiling_test_recovers_a_designed_reversion_and_rejects_a_flat_placebo():
+    """Construction: `switch` follows a slow deterministic drift. Every `horizon` days,
+    TTF's deviation from `switch` is redrawn independently of its current value — i.e.
+    the next window's level is `switch(t+h)` plus fresh noise, not a continuation of
+    today's gap. That makes the forward return mechanically anti-correlated with
+    `distance_pct` (today's gap gets closed by construction) while carrying no
+    particular relationship to TTF's own trailing median, which merely smooths the
+    same noisy path and is not the anchor doing the closing.
+    """
+    horizon = 5
+    trailing_window = 10
+    n_anchors = 90
+    n = trailing_window + n_anchors * horizon + horizon + 5
+    idx = _dates(n)
+
+    rng = np.random.default_rng(7)
+    drift = 80.0 + 0.02 * np.arange(n)  # switch level: slow deterministic drift
+    ttf = drift.copy()
+    # redraw the deviation from drift every `horizon` days, independent draws
+    for start in range(0, n, horizon):
+        end = min(start + horizon, n)
+        deviation = rng.normal(0, 6.0)
+        ttf[start:end] = drift[start:end] + deviation
+
+    frame = pd.DataFrame({"ttf_eur_mwh": ttf}, index=idx)
+    switch = pd.Series(drift, index=idx)
+
+    result = ceiling_test(frame, switch, horizon_days=horizon, trailing_window=trailing_window)
+
+    assert result.switching.n_obs > 60
+    assert result.switching.coefficients["distance"] < 0
+    assert abs(result.switching.t_stats["distance"]) > 3.0
+    assert result.horse_race.coefficients["distance"] < 0
+    assert 0.0 <= result.share_above <= 1.0
+    assert isinstance(result.n_overlapping, int) and result.n_overlapping > result.switching.n_obs
+
+
+def test_ceiling_test_refuses_a_verdict_on_too_short_a_sample():
+    idx = _dates(80)
+    frame = pd.DataFrame({"ttf_eur_mwh": np.linspace(50, 55, 80)}, index=idx)
+    switch = pd.Series(50.0, index=idx)
+    with pytest.raises(ValueError, match="non-overlapping windows"):
+        ceiling_test(frame, switch, horizon_days=20, trailing_window=10)

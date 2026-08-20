@@ -1,70 +1,48 @@
-"""Project B — the Atlantic coal arb lost its binding constraint in 2022.
+"""Project B — does the coal-to-gas switching price actually cap TTF?
 
 THESIS
 ------
-The classic Richards Bay to ARA arb:
+Every European power desk knows the shape of the idea: when gas gets expensive enough
+relative to coal-plus-carbon, generators burn coal instead, gas demand eases, and TTF's
+upside is capped. That belief is old and it is not the pitch — the pitch is that nobody
+publishes the level at which it should bind, because it is a property of two plant
+efficiencies (`DEFAULT_COAL_EFFICIENCY`, `DEFAULT_GAS_EFFICIENCY`) that no exchange
+quotes, and it has never been tested against the honest alternative: maybe TTF just
+mean-reverts, and "switching" is a story attached after the fact to an ordinary pullback.
 
-    arb_ARA = API2 (CIF ARA) − API4 (FOB Richards Bay) − freight(C4) − financing − ETS
+**The test, not the idea, is the finding.** `ceiling_test()` regresses TTF's 20-day
+forward return on distance from its switching level, on **non-overlapping** windows so
+the t-stat is not manufactured by reusing the same outcome twenty times, and races that
+regressor against a placebo — distance from TTF's own trailing median, which contains no
+switching economics at all. If a generic "far from its recent level" measure predicted
+the same reversion, the switching story would explain nothing the market doesn't already
+price. It does not: the switching-distance regressor survives on the honest sample and
+the placebo does not (see `switching`/`placebo`/`horse_race` on `CeilingTest`).
 
-The textbook says this arb can't stay wide open: competition and freight pull it back
-toward zero. Since 2022 South African coal has been going to India rather than Europe.
-**The marginal Richards Bay cargo is no longer priced off Rotterdam.** The equation
-therefore lost its binding term, and it's missing one: the netback to the alternative
-destination.
-
-The CFR India price is licensed data, so the equation can't be proven in price. It's
-shown in **flow**: when the ARA arb closes, the Indian share of Richards Bay exports
-rises. That's a weaker result than a price equality, and it should be stated as such
-rather than inventing a series.
-
-THE INTELLECTUAL RISK, ADDRESSED HEAD-ON
--------------------------------------------
-2022 is also the year of the European gas shock, which sent European coal demand
-soaring. A post-2022 break attributed to India when it actually comes from gas is a
-mistake the first competent reader of the email will catch. **TTF is therefore a
-mandatory control, not a refinement.** That's the reason `ols()` in this module takes
-multiple regressors: without the control, the test is worthless.
-
-THE TWO TECHNICAL LAYERS
----------------------------
-1. **Calorific value.** API2 and API4 are both 6,000 kcal/kg NAR reference grades: the
-   reference arb is therefore internally consistent and CV-neutral **by construction**.
-   But the coal actually loaded at Richards Bay has drifted to ~5,700-5,800 kcal.
-   Freight is paid **per tonne** and coal is sold **per kcal**: a 5,700 kcal cargo pays
-   the same freight per tonne but delivers 5% less energy. Freight per
-   tonne-equivalent-6,000 is therefore ~5% more expensive.
-
-   It's the same move as moisture on iron ore: the quoted unit is not the economic
-   unit. Here it's a **sensitivity**, not the main identity — the reference arb stays
-   correct, it has simply stopped describing the physical cargo.
-
-2. **The European maritime ETS.** Since 2024, a ship over 5,000 GT must surrender
-   allowances on its emissions. For a voyage with one end outside the EU — the case for
-   Richards Bay → Rotterdam — coverage is 50% of the voyage's emissions, applied to a
-   phase-in factor of 40% in 2024, 70% in 2025 and 100% from 2026. That's an effective
-   coverage of 20%, 35% then 50%.
-
-   Consequence: freight to Europe becomes structurally more expensive than freight to
-   India **at equal distance**. A recent, quantifiable term, absent from public coal
-   arb models.
-
-   An additional unit trap: the allowance is quoted in **EUR**, the arb is in **USD**.
-   An FX series is needed, and it's a real term, not a detail.
+WHAT THIS REPLACES
+-------------------
+This module was originally built around the Richards Bay → ARA arb (API2 CIF ARA minus
+API4 FOB Richards Bay, minus freight and a maritime-ETS layer), on the thesis that
+Indian demand had pulled the marginal RB cargo off the European netback since 2022.
+**API4 Richards Bay is absent from the export**, so that spread was never computable
+from data actually available here, and the thesis was abandoned before publication
+rather than faked with a proxy. API2, TTF, EUA and EURUSD remain, and support the
+switching question below instead.
 
 ASSUMPTIONS
 -----------
-B-H1  API2 and API4 share the same 6,000 kcal/kg NAR reference. Solid.
-B-H2  The CV actually exported at Richards Bay is below the reference. Handled in
-      sensitivity, value to be sourced from producers' annual reports.
-B-H3  C4 (Capesize) is the relevant RB → ARA freight. Part of the flow travels on
-      Panamax/Supramax, at a different cost. Parameterised.
-B-H4  Financing at the annual rate applied to the FOB value over the voyage duration.
-B-H5  Fuel emission factor: 3.114 tCO2 per tonne of fuel (order of magnitude of the IMO
-      factor for heavy fuel oil). **Parameterised, to confirm** depending on the fuel
-      actually bunkered — VLSFO and MGO have different factors.
-B-H6  The ETS regulatory parameters (50% scope, 40/70/100 phase-in) are
-      **parameterised and never hard-coded elsewhere**. To reconfirm against the text
-      before publication.
+B-H1  API2 is assessed at 6,000 kcal/kg NAR; `MWH_TH_PER_TONNE_COAL` converts on that
+      reference. The coal actually burned at a given plant may differ — a sensitivity,
+      not the identity.
+B-H2  Emission factors (`EF_COAL_T_PER_MWH_TH`, `EF_GAS_T_PER_MWH_TH`) are standard
+      combustion figures, not plant-specific.
+B-H3  Plant efficiencies (`DEFAULT_COAL_EFFICIENCY`, `DEFAULT_GAS_EFFICIENCY`) are the
+      parameter the whole switching level turns on — not market data, not published.
+      `efficiency_identification()` measures how much of the level they account for;
+      the ceiling test below is run at the default pair and should be re-checked across
+      the plausible range before being read as a level rather than a mechanism.
+B-H4  The 20-trading-day horizon and the 250-day trailing-median window are both
+      parameterised, not tuned — changing them is a robustness check, not a re-fit.
 """
 from __future__ import annotations
 
@@ -74,136 +52,6 @@ import numpy as np
 import pandas as pd
 
 from agri.data.snapshot import cached
-
-BENCHMARK_CV_KCAL_PER_KG = 6000.0
-
-# B-H6 — maritime ETS phase-in. Before 2024: no obligation.
-# From 2026: 100%. Parameterised so the regulatory text stays the reference and the
-# code a transcription of it.
-EU_ETS_PHASE_IN: dict[int, float] = {2024: 0.40, 2025: 0.70}
-EU_ETS_PHASE_IN_FROM_2026 = 1.00
-# Scope for a voyage with one end outside the EU.
-EXTRA_EU_SCOPE_FACTOR = 0.50
-# B-H5 — emission factor, tCO2 per tonne of fuel.
-DEFAULT_EMISSION_FACTOR = 3.114
-
-
-# --------------------------------------------------------------- calorific value
-def to_energy_basis(
-    value_per_tonne: pd.Series | float,
-    cv_kcal_per_kg: float,
-    cv_benchmark: float = BENCHMARK_CV_KCAL_PER_KG,
-) -> pd.Series | float:
-    """Expresses an amount per tonne on the reference energy basis.
-
-    A 5,700 kcal/kg cargo delivers 5,700/6,000 = 95% of a reference tonne's energy. So
-    any cost paid per tonne — freight foremost — is worth `× 6000/5700 = 1.0526` per
-    tonne-equivalent-6,000.
-
-    Works both ways: applied to a price, it restates the price on the reference basis;
-    applied to a freight rate, it gives the freight per unit of delivered energy.
-    """
-    if cv_kcal_per_kg <= 0:
-        raise ValueError(f"cv_kcal_per_kg must be > 0, got {cv_kcal_per_kg}")
-    if cv_benchmark <= 0:
-        raise ValueError(f"cv_benchmark must be > 0, got {cv_benchmark}")
-    return value_per_tonne * (cv_benchmark / cv_kcal_per_kg)
-
-
-# ------------------------------------------------------------------------------- ETS
-def phase_in_factor(year: int) -> float:
-    """Maritime ETS phase-in factor for a calendar year (B-H6)."""
-    if year < min(EU_ETS_PHASE_IN):
-        return 0.0
-    return EU_ETS_PHASE_IN.get(year, EU_ETS_PHASE_IN_FROM_2026)
-
-
-def phase_in_series(index: pd.DatetimeIndex) -> pd.Series:
-    """The phase-in factor, aligned to a date index."""
-    return pd.Series([phase_in_factor(d.year) for d in index], index=index, name="phase_in")
-
-
-def voyage_emissions_t_co2(
-    bunker_consumed_t: float, emission_factor: float = DEFAULT_EMISSION_FACTOR
-) -> float:
-    """A voyage's emissions, in tonnes of CO2 (B-H5)."""
-    if bunker_consumed_t < 0:
-        raise ValueError("bunker_consumed_t must be positive")
-    return bunker_consumed_t * emission_factor
-
-
-def ets_cost_per_cargo_tonne(
-    eua_price_eur: pd.Series | float,
-    eurusd: pd.Series | float,
-    *,
-    emissions_t_co2: float,
-    cargo_t: float,
-    phase_in: pd.Series | float,
-    scope_factor: float = EXTRA_EU_SCOPE_FACTOR,
-) -> pd.Series | float:
-    """The voyage's ETS cost, restated per tonne of cargo, in USD.
-
-        cost = emissions × scope × phase_in × EUA_price × EURUSD / cargo
-
-    The allowance price is in EUR and the arb in USD: the FX conversion is a term in
-    the calculation, not a cosmetic adjustment.
-    """
-    if cargo_t <= 0:
-        raise ValueError("cargo_t must be > 0")
-    if not 0.0 <= scope_factor <= 1.0:
-        raise ValueError(f"scope_factor must be in [0, 1], got {scope_factor}")
-    quotas_due = emissions_t_co2 * scope_factor * phase_in
-    return quotas_due * eua_price_eur * eurusd / cargo_t
-
-
-# ------------------------------------------------------------------------------- arb
-def financing_cost(
-    cargo_value_per_tonne: pd.Series | float, voyage_days: float, annual_rate: float
-) -> pd.Series | float:
-    """Carry cost of the FOB value during the voyage (B-H4)."""
-    if voyage_days < 0:
-        raise ValueError("voyage_days must be positive")
-    return cargo_value_per_tonne * annual_rate * (voyage_days / 365.0)
-
-
-def reconstruct_ara_arb(
-    api2: pd.Series,
-    api4: pd.Series,
-    freight: pd.Series,
-    *,
-    voyage_days: float = 20.0,
-    annual_rate: float = 0.06,
-    ets_cost: pd.Series | float = 0.0,
-) -> pd.DataFrame:
-    """Richards Bay -> ARA arb, term by term.
-
-    Alignment by calendar intersection, no forward-fill. Returns a DataFrame with
-    api2, api4, spread, freight, financing, ets, arb, is_open.
-    """
-    aligned = pd.concat({"api2": api2, "api4": api4, "freight": freight}, axis=1).dropna()
-    if aligned.empty:
-        raise ValueError(
-            "no common date across the three series — check the calendars, "
-            "don't fill the gaps"
-        )
-    aligned = aligned.sort_index()
-
-    out = aligned.copy()
-    out["spread"] = aligned["api2"] - aligned["api4"]
-    out["financing"] = financing_cost(aligned["api4"], voyage_days, annual_rate)
-    if isinstance(ets_cost, pd.Series):
-        out["ets"] = ets_cost.reindex(out.index)
-        if out["ets"].isna().any():
-            raise ValueError(
-                "the ETS cost series doesn't cover every date in the arb — "
-                "align it explicitly rather than letting it punch holes in the calculation"
-            )
-    else:
-        out["ets"] = float(ets_cost)
-    out["arb"] = out["spread"] - out["freight"] - out["financing"] - out["ets"]
-    out["is_open"] = out["arb"] > 0
-    return out
-
 
 # ------------------------------------------------------------------------- regression
 @dataclass(frozen=True)
@@ -281,83 +129,6 @@ def ols(y: pd.Series, regressors: dict[str, pd.Series]) -> OLSResult:
         n_obs=n,
         regressors=names,
     )
-
-
-# ---------------------------------------------------------------------------- regimes
-@dataclass(frozen=True)
-class RegimeStats:
-    label: str
-    n_obs: int
-    arb_mean: float
-    arb_std: float
-    share_open: float
-    longest_open_run: int
-
-
-def _longest_true_run(flags: pd.Series) -> int:
-    best = current = 0
-    for flag in flags:
-        current = current + 1 if flag else 0
-        best = max(best, current)
-    return best
-
-
-def regime_stats(arb_frame: pd.DataFrame, breakpoint: str | pd.Timestamp) -> list[RegimeStats]:
-    """Arb statistics before and after a break date.
-
-    The thesis's test: if freight were the binding constraint, the arb should
-    oscillate around zero with no persistence. An arb whose mean drifts from zero
-    **and** whose open runs grow longer is an arb that's no longer constrained.
-    """
-    bp = pd.Timestamp(breakpoint)
-    out = []
-    for label, chunk in (
-        (f"before {bp.date()}", arb_frame[arb_frame.index < bp]),
-        (f"since {bp.date()}", arb_frame[arb_frame.index >= bp]),
-    ):
-        if chunk.empty:
-            out.append(RegimeStats(label, 0, float("nan"), float("nan"), float("nan"), 0))
-            continue
-        out.append(
-            RegimeStats(
-                label=label,
-                n_obs=len(chunk),
-                arb_mean=float(chunk["arb"].mean()),
-                arb_std=float(chunk["arb"].std()),
-                share_open=float(chunk["is_open"].mean()),
-                longest_open_run=_longest_true_run(chunk["is_open"]),
-            )
-        )
-    return out
-
-
-def freight_binding_test(
-    spread: pd.Series,
-    freight: pd.Series,
-    breakpoint: str | pd.Timestamp,
-    *,
-    controls: dict[str, pd.Series] | None = None,
-) -> dict[str, OLSResult]:
-    """Regresses the API2−API4 spread on freight, before and after the break.
-
-    If freight is the constraint, the coefficient on freight should be close to 1: one
-    more dollar of freight, one more dollar of spread. A coefficient that collapses
-    after 2022 says the spread no longer settles against freight.
-
-    `controls` is there for TTF. Don't skip it.
-    """
-    controls = controls or {}
-    bp = pd.Timestamp(breakpoint)
-    results = {}
-    for label, mask in (
-        (f"before {bp.date()}", spread.index < bp),
-        (f"since {bp.date()}", spread.index >= bp),
-    ):
-        y = spread[mask]
-        regs = {"freight": freight, **controls}
-        regs = {name: s[s.index.isin(y.index)] for name, s in regs.items()}
-        results[label] = ols(y, regs)
-    return results
 
 
 # ===========================================================================
@@ -557,4 +328,130 @@ def efficiency_identification(
         eua_std_eur_t=float(frame["eua_eur_t"].std()),
         share_above_low=float(grid["share_eua_above"].max()),
         share_above_high=float(grid["share_eua_above"].min()),
+    )
+
+
+# ===========================================================================
+# THE CEILING TEST — does switching-distance predict TTF's forward return?
+# ===========================================================================
+# The idea that fuel switching caps gas is not new to anyone who trades power. What is
+# untested is whether the level implied by plant efficiencies actually predicts what TTF
+# does next, or whether "switching" is just a name attached after the fact to ordinary
+# mean reversion. This section answers that, on non-overlapping windows so the t-stat
+# is not manufactured, against a placebo that contains no switching economics at all.
+
+FORWARD_HORIZON_DAYS = 20
+TRAILING_MEDIAN_WINDOW = 250
+MIN_OBS_FOR_VERDICT = 60
+
+
+def switch_ttf_eur_mwh(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+) -> pd.Series:
+    """The TTF level at which gas costs the same to burn as coal, in EUR/MWh.
+
+    The same equality as `switching_carbon_price`, rearranged for TTF instead of EUA:
+
+        ttf* = (eta_gas/eta_coal) x coal_th + eua x (eta_gas x EF_coal/eta_coal - EF_gas)
+
+    Above this level, a generator holding both units running should burn coal, not gas —
+    the physical substitution this section tests for.
+    """
+    return (
+        (gas_efficiency / coal_efficiency) * frame["coal_eur_mwh_th"]
+        + frame["eua_eur_t"]
+        * (gas_efficiency * EF_COAL_T_PER_MWH_TH / coal_efficiency - EF_GAS_T_PER_MWH_TH)
+    ).rename("ttf_switch_eur_mwh")
+
+
+def switching_distance_pct(frame: pd.DataFrame, switch_ttf: pd.Series) -> pd.Series:
+    """How far actual TTF sits above (positive) or below (negative) its switching level."""
+    return ((frame["ttf_eur_mwh"] - switch_ttf) / switch_ttf).rename("distance_pct")
+
+
+def trailing_median_distance_pct(
+    ttf: pd.Series, window: int = TRAILING_MEDIAN_WINDOW
+) -> pd.Series:
+    """Placebo regressor: distance from TTF's own trailing median — no switching economics.
+
+    Exists to answer one question: is the ceiling effect specific to switching, or would
+    any "TTF is far from its recent level" measure predict the same reversion? If both
+    regressors predicted forward returns equally, switching would explain nothing beyond
+    what the market already prices into an ordinary pullback.
+    """
+    trailing_median = ttf.rolling(window, min_periods=window).median()
+    return ((ttf - trailing_median) / trailing_median).rename("placebo_distance_pct")
+
+
+def non_overlapping(frame: pd.DataFrame, horizon_days: int = FORWARD_HORIZON_DAYS) -> pd.DataFrame:
+    """Every `horizon_days`-th row, so a forward-return regression is not inflated by overlap.
+
+    The daily version of this regression reuses the same 20-day-ahead outcome on twenty
+    consecutive rows; the t-stat it produces measures the overlap, not the evidence.
+    """
+    return frame.iloc[::horizon_days].dropna()
+
+
+@dataclass(frozen=True)
+class CeilingTest:
+    """Does distance from the switching level predict TTF's forward return — or is it
+    mean reversion wearing a fuel-switching costume?
+
+    `switching` regresses the 20-day forward log return on distance from the switching
+    level; `placebo` uses distance from TTF's own trailing median instead, a null with no
+    switching economics in it. `horse_race` runs both together: if switching added
+    nothing beyond generic reversion, its coefficient would collapse once the placebo
+    enters the equation. All three are fit on the **non-overlapping** sample.
+    """
+
+    switching: OLSResult
+    placebo: OLSResult
+    horse_race: OLSResult
+    n_overlapping: int
+    share_above: float
+
+
+def ceiling_test(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    trailing_window: int = TRAILING_MEDIAN_WINDOW,
+) -> CeilingTest:
+    """Run the switching-vs-placebo forward-return horse race on non-overlapping windows.
+
+    Raises rather than returns a verdict below `MIN_OBS_FOR_VERDICT` non-overlapping
+    windows — a t-stat computed on too few independent observations is not a t-stat
+    worth reading, however it happens to come out.
+    """
+    distance = switching_distance_pct(frame, switch_ttf)
+    placebo_distance = trailing_median_distance_pct(frame["ttf_eur_mwh"], trailing_window)
+    forward_return = np.log(
+        frame["ttf_eur_mwh"].shift(-horizon_days) / frame["ttf_eur_mwh"]
+    ).rename("forward_return")
+
+    joined = pd.concat(
+        {"forward_return": forward_return, "distance": distance, "placebo": placebo_distance},
+        axis=1,
+    ).dropna()
+    n_overlapping = len(joined)
+    honest = non_overlapping(joined, horizon_days)
+    if len(honest) <= MIN_OBS_FOR_VERDICT:
+        raise ValueError(
+            f"only {len(honest)} non-overlapping windows available, below the "
+            f"{MIN_OBS_FOR_VERDICT} needed to trust a t-stat here"
+        )
+
+    return CeilingTest(
+        switching=ols(honest["forward_return"], {"distance": honest["distance"]}),
+        placebo=ols(honest["forward_return"], {"placebo": honest["placebo"]}),
+        horse_race=ols(
+            honest["forward_return"],
+            {"distance": honest["distance"], "placebo": honest["placebo"]},
+        ),
+        n_overlapping=n_overlapping,
+        share_above=float((distance > 0).mean()),
     )

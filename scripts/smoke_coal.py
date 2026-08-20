@@ -1,89 +1,94 @@
-"""Smoke test for project B on the SYNTHETIC dataset, whose break is imposed by hand.
+"""Smoke test for project B on a SYNTHETIC switching frame with an imposed reversion.
 
-Proves nothing about the coal market. Proves that fixture -> arb -> regimes -> break
-test with and without control -> ETS layer -> CV sensitivity chain together.
+Proves nothing about the coal or gas market. Proves that the frame -> switching level ->
+distance -> non-overlapping regression -> horse race chain runs end to end and produces
+finite numbers, on data specifically constructed so the switching regressor should win
+and a flat placebo shouldn't confuse it.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from freight.chains.coal import (
-    BENCHMARK_CV_KCAL_PER_KG,
-    ets_cost_per_cargo_tonne,
-    freight_binding_test,
-    phase_in_series,
-    reconstruct_ara_arb,
-    regime_stats,
-    to_energy_basis,
-    voyage_emissions_t_co2,
+    DEFAULT_COAL_EFFICIENCY,
+    DEFAULT_GAS_EFFICIENCY,
+    ceiling_test,
+    efficiency_identification,
+    generation_cost_eur_mwh_e,
+    switch_ttf_eur_mwh,
+    switching_carbon_price,
+    switching_distance_pct,
 )
-from freight.ingest.fixture_coal import BREAKPOINT, SYNTHETIC_TICKERS, synthetic_coal
-from freight.ingest.series import to_series
+
+HORIZON_DAYS = 20
+TRAILING_WINDOW = 60
+N_ANCHORS = 120
+
+
+def synthetic_switching_frame(seed: int = 3) -> pd.DataFrame:
+    """coal, EUA and EURUSD wander; TTF is built to revert to its own switching level
+    every `HORIZON_DAYS`, by construction — the same shape the real ceiling test looks
+    for, imposed by hand so the pipeline has something to find.
+    """
+    rng = np.random.default_rng(seed)
+    n = TRAILING_WINDOW + N_ANCHORS * HORIZON_DAYS + HORIZON_DAYS + 10
+    idx = pd.bdate_range("2019-01-01", periods=n)
+
+    coal_th = 25.0 + np.cumsum(rng.normal(0, 0.08, n))
+    coal_th = np.clip(coal_th, 8.0, None)
+    eua = 55.0 + np.cumsum(rng.normal(0, 0.30, n))
+    eua = np.clip(eua, 10.0, None)
+    eurusd = 1.10 + np.cumsum(rng.normal(0, 0.0015, n))
+
+    frame = pd.DataFrame(
+        {"coal_eur_mwh_th": coal_th, "eua_eur_t": eua, "eurusd": eurusd}, index=idx
+    )
+    switch = switch_ttf_eur_mwh(frame.assign(ttf_eur_mwh=0.0))
+
+    ttf = switch.to_numpy().copy()
+    for start in range(0, n, HORIZON_DAYS):
+        end = min(start + HORIZON_DAYS, n)
+        ttf[start:end] = switch.to_numpy()[start:end] + rng.normal(0, 5.0)
+    frame["ttf_eur_mwh"] = ttf
+    frame.attrs["synthetic"] = True
+    return frame
 
 
 def main() -> None:
     print("=" * 78)
-    print("SYNTHETIC DATA — the 2022 break is IMPOSED in the generator.")
+    print("SYNTHETIC DATA — the reversion-to-switching-level is IMPOSED by hand.")
     print("No economic reading of these numbers is valid.")
     print("=" * 78)
 
-    raw = synthetic_coal()
-    assert raw.attrs.get("synthetic") is True
-    s = {role: to_series(raw, tk) for role, tk in SYNTHETIC_TICKERS.items()}
+    frame = synthetic_switching_frame()
+    assert frame.attrs.get("synthetic") is True
 
-    emissions = voyage_emissions_t_co2(480.0)
-    ets = ets_cost_per_cargo_tonne(
-        eua_price_eur=s["eua"], eurusd=s["eurusd"], emissions_t_co2=emissions,
-        cargo_t=150_000.0, phase_in=phase_in_series(s["api2"].index),
+    switch = switch_ttf_eur_mwh(frame)
+    distance = switching_distance_pct(frame, switch)
+    print(f"\nswitching level: last {switch.iloc[-1]:.2f} EUR/MWh, TTF last {frame['ttf_eur_mwh'].iloc[-1]:.2f}")
+    print(f"share of sample above the ceiling: {100 * (distance > 0).mean():.1f}%")
+
+    gen = generation_cost_eur_mwh_e(frame)
+    print(f"generation cost spread (coal - gas), mean: {gen['spread'].mean():.2f} EUR/MWh")
+
+    switch_eua = switching_carbon_price(frame)
+    print(f"switching EUA, mean: {switch_eua.mean():.1f} EUR/t")
+
+    identification = efficiency_identification(frame)
+    print(f"\n{identification.headline}")
+
+    print("\n-- ceiling test (non-overlapping) ---------------------------------------")
+    test = ceiling_test(
+        frame, switch, horizon_days=HORIZON_DAYS, trailing_window=TRAILING_WINDOW
     )
-    print(f"\nvoyage emissions: {emissions:,.2f} tCO2")
+    print(f"switching  | {test.switching.summary()}")
+    print(f"placebo    | {test.placebo.summary()}")
+    print(f"horse race | {test.horse_race.summary()}")
 
-    arb = reconstruct_ara_arb(
-        api2=s["api2"], api4=s["api4"], freight=s["freight"],
-        voyage_days=20.0, annual_rate=0.06, ets_cost=ets.reindex(s["api2"].index),
-    )
-    print(f"arb computed over {len(arb)} dates")
-    print(
-        arb[["spread", "freight", "financing", "ets", "arb"]]
-        .describe().round(2).to_string()
-    )
-
-    print("\n-- regimes -------------------------------------------------------------")
-    for st_ in regime_stats(arb, BREAKPOINT):
-        print(
-            f"{st_.label:>20} | n={st_.n_obs:5d} | mean arb {st_.arb_mean:7.2f} "
-            f"| open {100 * st_.share_open:5.1f}% | longest run "
-            f"{st_.longest_open_run:4d} d"
-        )
-
-    print("\n-- break test, WITHOUT control ------------------------------------------")
-    for label, res in freight_binding_test(arb["spread"], arb["freight"], BREAKPOINT).items():
-        print(f"{label:>20} | {res.summary()}")
-
-    print("\n-- break test, WITH TTF control ------------------------------------------")
-    for label, res in freight_binding_test(
-        arb["spread"], arb["freight"], BREAKPOINT,
-        controls={"ttf": s["ttf"].reindex(arb.index)},
-    ).items():
-        print(f"{label:>20} | {res.summary()}")
-
-    print("\n-- ETS layer -------------------------------------------------------------")
-    for year in (2023, 2024, 2025, 2026):
-        chunk = arb.loc[str(year)]
-        if not chunk.empty:
-            print(f"{year}: average ETS cost {chunk['ets'].mean():.3f} $/t")
-
-    print("\n-- calorific value drift --------------------------------------------------")
-    for cv in (5500, 5750, 6000):
-        freight_energy = to_energy_basis(arb["freight"], float(cv))
-        print(
-            f"CV {cv}: factor {BENCHMARK_CV_KCAL_PER_KG / cv:.4f} | quoted freight "
-            f"{arb['freight'].mean():.2f} -> per t-eq-6000 {freight_energy.mean():.2f} "
-            f"(+{freight_energy.mean() - arb['freight'].mean():.2f} $/t)"
-        )
-
-    assert pd.notna(arb["arb"]).all()
-    print("\nOK — project B's pipeline runs end to end.")
+    assert test.switching.coefficients["distance"] < 0, "the imposed reversion should show up"
+    assert pd.notna(distance).all()
+    print("\nOK — project B's ceiling-test pipeline runs end to end.")
 
 
 if __name__ == "__main__":

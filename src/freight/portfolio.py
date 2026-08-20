@@ -78,36 +78,39 @@ FREIGHT_PROJECTS: list[Project] = [
         id="coal",
         code="B",
         tier=TIER_FREIGHT,
-        title="The coal-to-gas switching price is not a property of the fuels",
+        title="The coal-switching ceiling — a known idea, tested honestly for the first time",
         thesis=(
-            "A European generator does not choose between coal and gas on fuel price. It "
-            "chooses on fuel plus carbon, per MWh of electricity, at plant efficiencies "
-            "that differ by a factor of nearly two. Three units and two currencies stack "
-            "up before any comparison is possible."
+            "Every power desk believes fuel switching caps TTF's upside once gas gets "
+            "expensive enough relative to coal plus carbon. The belief is old; whether "
+            "distance from the switching level actually predicts TTF's next move — versus "
+            "just being ordinary mean reversion with a story attached — has not been tested "
+            "on a sample that doesn't reuse the same outcome twenty times over."
         ),
         disagreement=(
-            "Inferred tension. The switching price is widely quoted as a single number, as "
-            "if it were a property of the two fuels. It is not: it is a property of the "
-            "two plants' efficiencies and of the carbon price, and it moves when neither "
-            "fuel moves."
+            "Tested, not inferred. A non-overlapping forward-return regression shows "
+            "distance from the switching level predicting TTF's next 20 days, while a "
+            "placebo — distance from TTF's own trailing median, with no switching economics "
+            "in it — does not survive the same test, including in a head-to-head horse race."
         ),
         pivot=(
-            "The carbon price at which the switch flips at today's fuel prices — one "
-            "number a power trader confirms or denies immediately"
+            "The switching-distance regressor's t-stat versus the placebo's, on identical "
+            "non-overlapping windows — the one number that separates a mechanism from a "
+            "narrative"
         ),
         mail_question=(
-            "Which pair of efficiencies does your switching calculation actually use, and "
-            "how often is it re-estimated against the plants that are really at the margin?"
+            "Does your desk's switching calculation get backtested against a mean-reversion "
+            "null on non-overlapping windows, or is the ceiling more of a heuristic applied "
+            "on the day than a level anyone has checked actually binds in the data?"
         ),
         targets="European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal)",
         data_gate=GATE_NONE,
         data_fallback=(
             "API4 Richards Bay is absent from the export, so the original API2 − API4 arb "
-            "is not computable. API2, TTF, EUA and EURUSD are all real and support a better "
-            "question."
+            "is not computable. API2, TTF, EUA and EURUSD are all real and support the "
+            "switching-ceiling test instead."
         ),
         status=STATUS_READY,
-        dashboard_page="pages/2_Coal_Atlantic_Arb.py",
+        dashboard_page="pages/2_Coal_Gas_Switching.py",
         chain_module="freight.chains.coal",
         data_mode=DATA_REAL,
         n_tests=30,
