@@ -1,19 +1,39 @@
 # Physical arbitrage — freight as the decisive term
 
-A portfolio, not three isolated projects: every chain added follows the same template
+A portfolio, not eighteen isolated projects: every chain added follows the same template
 (`docs/NOUVELLE_CHAINE.md`), rebuilds its margin from raw series, and confronts it with
 an **official, free physical-flow series**. The question is never just "is the arb
 open," it's **"did the cargo actually leave."**
 
-| | Project | Sector | Thesis | Status |
-|---|---|---|---|---|
-| **A** | Iron ore | Dry bulk — ores | The 65-62% Fe premium is partly a disguised Capesize freight spread | Engine + dashboard ready, waiting on the 4 series |
-| **B** | Atlantic coal | Dry bulk — energy | The API2 − API4 arb lost its binding constraint in 2022 | Engine + dashboard ready, waiting on series |
-| **C** | Transatlantic distillate | Tankers — refined products | Volume is not mass, and Worldscale points are not a cost | Engine + dashboard ready, C-2/C-3 variants coded |
-| **D** | TBD | Dry bulk — agriculture | — | Sector identified, nothing coded |
-| **E** | TBD | Gas (LNG) | — | Sector identified, nothing coded |
+**Freight — dry bulk, tankers and bunkers, freight as the deciding term**
 
-This table is a human-readable summary — the source of truth is
+| | Project | Sector | The question it settles |
+|---|---|---|---|
+| **A** | Iron ore 65–62 premium | Dry bulk — ores | The high-grade premium does contain a Capesize freight spread — at about half the weight the raw decomposition suggests |
+| **B** | Coal-to-gas switching ceiling | Power & gas | Distance from the switching level predicts TTF's 20-day forward return; a trailing-median placebo does not survive the horse race |
+| **C** | Transatlantic distillate | Tankers — refined products | Volume is not mass, and Worldscale points are not a cost |
+| **D** | Grain seasonality in freight | Dry bulk — agriculture | The Brazilian harvest, the largest cargo flow in the market, leaves no mark on 27 years of the Baltic Panamax Index |
+| **E** | Freight incidence in the ore price | Dry bulk — ores | The CFR buyer does not absorb the freight — a null backed by a power benchmark, not a weak test |
+| **F** | Bunker basis | Bunkers — fuel risk | The crude hedge ratio for VLSFO has fallen threefold since 2016, and it is drift rather than a break |
+| **G** | The marginal ship | Dry bulk — chartering | How much less efficient a ship can be and still cover its fuel bill on P8, solved in closed form from the voyage engine |
+| **H** | Index-vs-route basis | Freight derivatives | The BPI tracks P8 *better* in the tails, yet the unhedged residual still scales with the size of the move |
+| **I** | CII and the ballast leg | Shipping regulation | The rating rewards slow-steaming an empty leg, with no cargo consequence at all |
+
+**Agri, softs and biofuels — the same method applied to the crush, the refinery and the subsidy**
+
+| | Project | Sector | The question it settles |
+|---|---|---|---|
+| **T1-1** | Freight inside the C&F | Grains & oilseeds | What the freight term is actually doing inside a C&F price nobody decomposes |
+| **T1-2** | The full cost of hedging | Softs — cocoa & coffee | The hedge costs more than the spread: financing plus collateral, not just the basis |
+| **T2-3** | Board crush | Oilseeds | The board crush is a yield in disguise, not a price |
+| **T2-4** | White premium | Sugar | What a price can and cannot tell you about a refiner's rent |
+| **T2-5** | The plant as an option | Processing | Hysteresis: restart and shutdown are not the same threshold, and the gap is the option |
+| **T2-6** | Palm–soy substitution | Vegetable oils | The substitution bound everyone quotes does not exist in the data |
+| **T3-1** | LCFS against 45Z | Biofuels feedstock | Two subsidies that point the feedstock choice in opposite directions |
+| **T3-2** | The Brazilian cost floor | Sugar & ethanol | The "cost floor" is an exchange rate wearing a cost's clothes |
+| **T3-4** | China soy origination | Oilseeds — origination | The windows in which no origin works |
+
+All eighteen are `STATUS_READY`. This table is a human-readable summary — the source of truth is
 **`src/freight/portfolio.py`**, which `app/Home.py` reads. Adding a project there is
 enough to make it appear on the platform; see **`docs/NOUVELLE_CHAINE.md`** for the exact
 template of the seven files a new chain touches.
@@ -63,48 +83,41 @@ unit is not the economic unit, and doing the conversion properly is half the job
 
 ## Project B — the thesis in five lines
 
+Every European power desk knows the shape of the idea: push gas expensive enough
+relative to coal-plus-carbon and generation switches fuel, capping TTF's further upside.
+That belief is old and it is not the pitch. The pitch is that the level at which it's
+supposed to bind is never published — it's a property of two plant efficiencies no
+exchange quotes — and the belief has an honest, testable alternative: TTF might simply
+mean-revert on its own, with "switching" attached to the chart after the fact.
+
 ```
-arb_ARA = API2 (CIF ARA) − API4 (FOB Richards Bay) − freight(C4) − financing − ETS
+ttf_switch = (eta_gas/eta_coal) x coal_th + eua x (eta_gas x EF_coal/eta_coal - EF_gas)
 ```
 
-The textbook says this arb can't stay wide open: competition and freight pull it back
-toward zero. Since 2022, South African coal has been going to India rather than Europe,
-so the marginal Richards Bay cargo is no longer priced off Rotterdam. The equation lost
-its binding term. Since the CFR India price is licensed data, price equality isn't
-proven directly: the reorientation is shown in **flow**, and presented as the weaker
-result it is.
+### The test, not the idea, is the finding
 
-### The control that decides everything
+Regressing TTF's 20-day forward return on distance from `ttf_switch`, on
+**non-overlapping** windows (daily overlap would reuse the same 20-day outcome twenty
+times and manufacture the t-stat), against a placebo — distance from TTF's own 250-day
+trailing median, which contains no switching economics at all:
 
-2022 is also the year of the European gas shock. Attributing the break to India without
-controlling for TTF is getting the mechanism wrong. On the synthetic set — whose true
-post-break slope is **0.15** by construction — the regression gives:
+| regressor | coefficient | t-stat | reading |
+|---|---|---|---|
+| switching distance | negative | significant | survives the honest sample |
+| placebo (trailing median) | ~0 | not significant | does not survive alone |
+| both, horse race | switching keeps sign | placebo does not | one mechanism, not two |
 
-| | coefficient on freight, post-break |
-|---|---|
-| without control | **0.71** — the conclusion would be that freight still binds |
-| with TTF control | **0.18** — close to the truth, freight no longer binds |
+n = 98 non-overlapping windows out of 1,945 overlapping daily rows since 2018 — a small
+sample on purpose, and the page refuses a verdict below `MIN_OBS_FOR_VERDICT = 60`.
 
-The control isn't an econometrician's refinement: without it, the conclusion is
-reversed.
+### What this replaced
 
-### The two technical layers
-
-**Calorific value.** API2 and API4 are both 6,000 kcal/kg NAR reference grades: the
-reference arb is CV-neutral **by construction** and stays correct. The problem is it has
-stopped describing the physical cargo, whose real CV has drifted to ~5,700-5,800. Freight
-is paid per tonne, coal is sold per kcal: at 5,750 kcal, freight per
-tonne-equivalent-6,000 is worth 1.0435× the quoted freight.
-
-**Maritime ETS.** Since 2024, a voyage with one end outside the EU — Richards Bay →
-Rotterdam — is covered on 50% of emissions, phased in at 40% in 2024, 70% in 2025 and
-100% from 2026. Effective coverage: 20%, 35%, 50%. The allowance is quoted in EUR and the
-arb in USD, so FX is a term in the calculation.
-
-**Order of magnitude, not to be oversold:** with realistic parameters, this term is worth
-on the order of 0.2 $/t in 2024 and up to ~0.9 $/t at full phase-in. On an arb of a few
-dollars, that's significant without being dominant. It's a term **nobody prices in**,
-which is not the same thing as a term that decides everything.
+The module was originally built around the Richards Bay → ARA arb
+(`API2 CIF ARA − API4 FOB Richards Bay − freight − ETS`), on the thesis that Indian
+demand pulled the marginal RB cargo off the European netback after 2022. **API4 Richards
+Bay is absent from the export**, so that spread was never computable here and the thesis
+was abandoned before publication rather than faked with a proxy. API2, TTF, EUA and
+EURUSD remain and support the switching-ceiling test instead.
 
 ---
 
@@ -161,15 +174,25 @@ src/freight/
                         one more Project here is enough to make it appear on the platform
   chains/ironore.py     project A: moisture, decomposition, variance explained,
                         negative-residual episodes, hedging effect, carry
-  chains/coal.py        project B: ARA arb, ETS layer with phase-in and FX, CV energy
-                        basis, controlled MCO, break test
+  chains/coal.py        project B: switching level (coal/gas/carbon reconciled to
+                        EUR/MWh electricity), non-overlapping ceiling test vs. a
+                        trailing-median placebo
   chains/products.py    project C: volume/mass conversion, Worldscale decomposition,
                         open-days illusion, TCE inversion
+  chains/grain_seasonal.py, freight_incidence.py, bunker_basis.py,
+  chains/marginal_ship.py, index_basis.py, cii_ballast.py
+                        projects D-I: the six freight-native chains
+src/agri/
+  portfolio.py           the canonical Project type and the nine agri entries;
+                        src/freight/portfolio.py re-exports it and prepends A-I
+  chains/                the nine agri, softs and biofuels chains (T1-1 ... T3-4)
+  core/                  the shared toolkit: voyage economics, regression, seasonality
+  data/snapshot.py       @cached: live Bloomberg export when present locally,
+                        pre-computed parquet snapshot on the public deployment
   ingest/contract.py    data contract — nothing goes in without a filled-in contract
   ingest/loader.py      raw exports -> canonical long format (date, ticker, value)
   ingest/series.py      long format -> series, + coverage table
   ingest/fixture.py     SYNTHETIC GENERATOR for project A, tickers prefixed SYNTH_
-  ingest/fixture_coal.py  same for project B — the 2022 break is IMPOSED by hand
   ingest/fixture_products.py  same for project C — the flat-rate jumps are IMPOSED
   ingest/audit.py       coverage audit over data/raw/
   voyage/               TCE, consumption, distances, owner's indifference C3*/C5*
@@ -212,12 +235,14 @@ make audit     # once data/raw/ is filled and data_dictionary.csv is complete
 
 ## Test status
 
-90 tests, all green, with no market data at all: 16 for project A, 22 for B, 20 for C,
-the rest for the shared base. Every expected value is hand-computed in the comment
-preceding it. Three tests carry their own argument:
+**692 tests, all green, with no market data at all.** Every expected value is hand-computed
+in the comment preceding it. Four tests carry their own argument:
 
-- `test_omitting_the_control_biases_the_freight_coefficient` — why TTF is mandatory in
-  project B
+- `test_omitting_the_control_biases_the_freight_coefficient` — why `ols()` taking
+  multiple regressors matters at all; the same reasoning is what makes project B's
+  switching-vs-placebo horse race meaningful rather than decorative
+- `test_ceiling_test_recovers_a_designed_reversion_and_rejects_a_flat_placebo` —
+  project B's switching-ceiling mechanism, on data where the reversion is imposed by hand
 - `test_reset_moves_cost_with_zero_market_move` — project C's Worldscale result, in its
   barest form
 - `test_implied_freight_round_trips_through_the_tce_engine` — if this loop doesn't close,
