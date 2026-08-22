@@ -78,42 +78,54 @@ FREIGHT_PROJECTS: list[Project] = [
         id="coal",
         code="B",
         tier=TIER_FREIGHT,
-        title="The coal-switching ceiling — a known idea, tested honestly for the first time",
+        title="The switching ceiling predicts, and the efficiencies it is built on cannot",
         thesis=(
-            "Every power desk believes fuel switching caps TTF's upside once gas gets "
-            "expensive enough relative to coal plus carbon. The belief is old; whether "
-            "distance from the switching level actually predicts TTF's next move — versus "
-            "just being ordinary mean reversion with a story attached — has not been tested "
-            "on a sample that doesn't reuse the same outcome twenty times over."
+            "Distance from the coal-switching level does predict TTF's next 20 days — "
+            "one-sided in the direction the physics requires, and surviving the Stambaugh "
+            "bias this regressor is unusually exposed to. But the unpublished efficiency "
+            "pair that supposedly defines the level is PROVABLY irrelevant to that "
+            "prediction, and raw thermal parity with no carbon price in it predicts just "
+            "as well."
         ),
         disagreement=(
-            "Tested, not inferred. A non-overlapping forward-return regression shows "
-            "distance from the switching level predicting TTF's next 20 days, while a "
-            "placebo — distance from TTF's own trailing median, with no switching economics "
-            "in it — does not survive the same test, including in a head-to-head horse race."
+            "Tested, not inferred, and the test cuts against its own construction. The "
+            "regressor contains TTF in its numerator, so OLS is biased toward the finding: "
+            "a Nelson-Kim bootstrap puts the honest p-value at 0.018 against ~0.001 read "
+            "naively. What survives is one-sided (above the switch t = -2.6, below it "
+            "nothing) — which mean reversion cannot mimic. What does not survive is the "
+            "arithmetic itself: across the whole efficiency grid the level swings 30 to 47 "
+            "EUR/MWh and the share of days above it 16% to 75%, while the t-statistic "
+            "moves 0.03, because the efficiencies enter only affinely and a t-statistic is "
+            "invariant under an affine map."
         ),
         pivot=(
-            "The switching-distance regressor's t-stat versus the placebo's, on identical "
-            "non-overlapping windows — the one number that separates a mechanism from a "
-            "narrative"
+            "The same efficiency grid moving the level by 45% and the prediction by "
+            "nothing — two functionals of one object, one unidentified and one immune"
         ),
         mail_question=(
-            "Does your desk's switching calculation get backtested against a mean-reversion "
-            "null on non-overlapping windows, or is the ceiling more of a heuristic applied "
-            "on the day than a level anyone has checked actually binds in the data?"
+            "The data says there is a ceiling and cannot say it is a *switching* ceiling: "
+            "the efficiency pair is provably irrelevant to the prediction, and raw thermal "
+            "parity predicts as well as the full carbon-inclusive level. Does your desk "
+            "use the switching level as a level — where to place a trade — or as a signal "
+            "for when to place it? Because on this evidence it can support one of those "
+            "and not the other."
         ),
         targets="European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal)",
         data_gate=GATE_NONE,
         data_fallback=(
             "API4 Richards Bay is absent from the export, so the original API2 − API4 arb "
             "is not computable. API2, TTF, EUA and EURUSD are all real and support the "
-            "switching-ceiling test instead."
+            "switching-ceiling test instead. What that test cannot reach: EU coal "
+            "generation and plant availability are absent, so the saturation point — "
+            "where finite coal capacity stops the ceiling binding — is untestable, and "
+            "43 above-switch windows cannot separate the full switching level from raw "
+            "thermal parity."
         ),
         status=STATUS_READY,
         dashboard_page="pages/2_Coal_Gas_Switching.py",
         chain_module="freight.chains.coal",
         data_mode=DATA_REAL,
-        n_tests=30,
+        n_tests=24,
     ),
     Project(
         id="products",

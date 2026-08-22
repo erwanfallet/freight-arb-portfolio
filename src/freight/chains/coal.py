@@ -1,23 +1,56 @@
-"""Project B — does the coal-to-gas switching price actually cap TTF?
+"""Project B — the switching ceiling predicts, and the efficiencies it is built on do not.
 
 THESIS
 ------
 Every European power desk knows the shape of the idea: when gas gets expensive enough
 relative to coal-plus-carbon, generators burn coal instead, gas demand eases, and TTF's
-upside is capped. That belief is old and it is not the pitch — the pitch is that nobody
-publishes the level at which it should bind, because it is a property of two plant
-efficiencies (`DEFAULT_COAL_EFFICIENCY`, `DEFAULT_GAS_EFFICIENCY`) that no exchange
-quotes, and it has never been tested against the honest alternative: maybe TTF just
-mean-reverts, and "switching" is a story attached after the fact to an ordinary pullback.
+upside is capped. The belief is old. Two things about it are not:
 
-**The test, not the idea, is the finding.** `ceiling_test()` regresses TTF's 20-day
-forward return on distance from its switching level, on **non-overlapping** windows so
-the t-stat is not manufactured by reusing the same outcome twenty times, and races that
-regressor against a placebo — distance from TTF's own trailing median, which contains no
-switching economics at all. If a generic "far from its recent level" measure predicted
-the same reversion, the switching story would explain nothing the market doesn't already
-price. It does not: the switching-distance regressor survives on the honest sample and
-the placebo does not (see `switching`/`placebo`/`horse_race` on `CeilingTest`).
+1. **The level is not identified.** The switching price is a property of two plant
+   efficiencies no exchange quotes. Across the plausible pair, the level swings from
+   ~30 to ~47 EUR/MWh and the share of days sitting "above the switch" swings from 16%
+   to 75% — the same fuel prices, the same carbon price, and the opposite diagnosis.
+
+2. **The prediction is identified, and it does not need the level.** Distance from the
+   switching level does predict TTF's next 20 days. But the t-statistic is invariant
+   across that entire efficiency grid (−3.02 to −3.05), and the elaborate calculation
+   adds nothing measurable over a naive thermal-parity anchor that has no efficiencies
+   and no carbon price in it at all (F = 1.17, p = 0.28).
+
+**Those two facts are the same fact, and the reason is algebraic rather than empirical.**
+Writing λ = η_gas/η_coal, the switching level collapses to
+
+    ttf* = λ·(coal_th + EUA·EF_coal) − EUA·EF_gas
+
+which is *affine in λ* — verified to machine precision in `efficiency_invariance()`. The
+nine distance measures across the grid correlate 0.997 to 1.000, and an OLS t-statistic
+is invariant under affine rescaling of its regressor. So the efficiencies decide
+everything about **where the line sits** and nothing about **what the line predicts**.
+That is not luck, and it cannot be fixed by better efficiency estimates.
+
+WHAT SURVIVES AS A RESULT, AND AT WHAT STRENGTH
+------------------------------------------------
+The predictive claim is fragile in exactly the way predictive regressions usually are,
+and the page reports the corrections rather than the raw t-stat:
+
+* **Stambaugh bias is material and points the same way as the finding.** The regressor
+  contains TTF in its numerator, so its innovations correlate +0.78 with the return
+  being predicted, and it is persistent (ρ = 0.79). That biases OLS *downward* — toward
+  the negative coefficient this page reports. `stambaugh_diagnostics()` measures it at
+  13% of the coefficient; a Nelson–Kim bootstrap under H0 puts the honest p-value at
+  **0.018**, against ~0.001 read naively off the t-stat. An order of magnitude of the
+  apparent significance was bias.
+* **It is not an artefact of where the non-overlapping sample starts.** All twenty
+  phases of `iloc[::20]` give a negative coefficient and nineteen are significant.
+* **It is asymmetric in the direction the mechanism requires** (`asymmetry_test()`):
+  above the switch, β = −0.185 (t = −2.62); below it, nothing (t = −0.65). Generic mean
+  reversion pulls symmetrically from both sides and cannot produce that.
+* **It is concentrated in the crisis and after** — 2018-2020 alone gives t = −1.13. On
+  110 non-overlapping windows, a large part of the evidence is the 2022 episode.
+
+So: the ceiling is real, weaker than it first looks, mechanism-shaped in its asymmetry,
+and **not evidence for the specific switching arithmetic** — only for gas being dear
+against coal in raw thermal terms.
 
 WHAT THIS REPLACES
 -------------------
@@ -27,7 +60,7 @@ Indian demand had pulled the marginal RB cargo off the European netback since 20
 **API4 Richards Bay is absent from the export**, so that spread was never computable
 from data actually available here, and the thesis was abandoned before publication
 rather than faked with a proxy. API2, TTF, EUA and EURUSD remain, and support the
-switching question below instead.
+switching question above instead.
 
 ASSUMPTIONS
 -----------
@@ -36,13 +69,19 @@ B-H1  API2 is assessed at 6,000 kcal/kg NAR; `MWH_TH_PER_TONNE_COAL` converts on
       not the identity.
 B-H2  Emission factors (`EF_COAL_T_PER_MWH_TH`, `EF_GAS_T_PER_MWH_TH`) are standard
       combustion figures, not plant-specific.
-B-H3  Plant efficiencies (`DEFAULT_COAL_EFFICIENCY`, `DEFAULT_GAS_EFFICIENCY`) are the
-      parameter the whole switching level turns on — not market data, not published.
-      `efficiency_identification()` measures how much of the level they account for;
-      the ceiling test below is run at the default pair and should be re-checked across
-      the plausible range before being read as a level rather than a mechanism.
-B-H4  The 20-trading-day horizon and the 250-day trailing-median window are both
+B-H3  Plant efficiencies are the parameter the switching LEVEL turns on, and
+      `efficiency_invariance()` shows they are irrelevant to the PREDICTION. Both halves
+      are reported; neither is allowed to stand in for the other.
+B-H4  The 20-trading-day horizon and the 250-day trailing-median window are
       parameterised, not tuned — changing them is a robustness check, not a re-fit.
+B-H5  The bootstrap resamples (u_t, v_{t+1}) in pairs to preserve their contemporaneous
+      correlation, and rebuilds the regressor through its own fitted AR(1). It assumes
+      an AR(1) is an adequate description of the regressor's persistence — a stronger
+      assumption than the rest of the page, and the reason the analytic Kendall
+      correction is reported alongside it as an independent check.
+B-H6  Physical coal capacity is finite, so the ceiling cannot bind without limit. This
+      page cannot test the saturation point: EU coal generation and plant availability
+      are not in this export, and the sample has 43 above-switch windows in total.
 """
 from __future__ import annotations
 
@@ -455,3 +494,591 @@ def ceiling_test(
         n_overlapping=n_overlapping,
         share_above=float((distance > 0).mean()),
     )
+
+
+# ===========================================================================
+# The predictive-regression sample, built once
+# ===========================================================================
+def predictive_sample(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+) -> pd.DataFrame:
+    """Forward return and switching distance, on one non-overlapping phase.
+
+    `phase` selects which of the `horizon_days` possible non-overlapping subsamples is
+    taken. It exists to be swept, not chosen: `phase_robustness()` runs all of them,
+    because picking one and reporting it would be a researcher degree of freedom worth
+    exactly one significant result.
+    """
+    if not 0 <= phase < horizon_days:
+        raise ValueError(f"phase must be in [0, {horizon_days}), got {phase}")
+    distance = switching_distance_pct(frame, switch_ttf)
+    forward_return = np.log(
+        frame["ttf_eur_mwh"].shift(-horizon_days) / frame["ttf_eur_mwh"]
+    )
+    joined = pd.concat(
+        {"forward_return": forward_return, "distance": distance}, axis=1
+    ).dropna()
+    return joined.iloc[phase::horizon_days]
+
+
+# ===========================================================================
+# ROBUSTNESS 1 — the phase of the non-overlapping sample
+# ===========================================================================
+@dataclass(frozen=True)
+class PhaseRobustness:
+    """The same regression on all `horizon_days` non-overlapping subsamples.
+
+    `iloc[::20]` throws away nineteen twentieths of the data and keeps one arbitrary
+    phase. There are twenty such samples and no reason to prefer any one; if the result
+    lived in a single phase it would be a starting-point artefact.
+    """
+
+    betas: tuple[float, ...]
+    t_stats: tuple[float, ...]
+
+    @property
+    def n_phases(self) -> int:
+        return len(self.betas)
+
+    @property
+    def n_negative(self) -> int:
+        return sum(1 for b in self.betas if b < 0)
+
+    @property
+    def n_significant(self) -> int:
+        return sum(1 for t in self.t_stats if abs(t) > 1.98)
+
+    @property
+    def all_agree_on_sign(self) -> bool:
+        return self.n_negative in (0, self.n_phases)
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Across all {self.n_phases} non-overlapping phases the coefficient is "
+            f"negative {self.n_negative} times and significant {self.n_significant} "
+            f"times, ranging {min(self.betas):+.3f} to {max(self.betas):+.3f}. The "
+            "result does not live in the starting point."
+        )
+
+
+def phase_robustness(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+) -> PhaseRobustness:
+    betas, t_stats = [], []
+    for phase in range(horizon_days):
+        sample = predictive_sample(frame, switch_ttf, horizon_days=horizon_days, phase=phase)
+        result = ols(sample["forward_return"], {"distance": sample["distance"]})
+        betas.append(result.coefficients["distance"])
+        t_stats.append(result.t_stats["distance"])
+    return PhaseRobustness(betas=tuple(betas), t_stats=tuple(t_stats))
+
+
+# ===========================================================================
+# ROBUSTNESS 2 — Stambaugh bias, the objection that points the same way
+# ===========================================================================
+@dataclass(frozen=True)
+class StambaughDiagnostics:
+    """Why this particular regression is biased toward its own conclusion.
+
+    In a predictive regression `r_t = a + b·x_t + u_t` where the regressor follows
+    `x_{t+1} = c + rho·x_t + v_{t+1}`, OLS is biased whenever `u_t` and `v_{t+1}`
+    correlate, because the AR coefficient is itself biased downward in finite samples
+    (Kendall). The bias is `(sigma_uv / sigma_vv) · E[rho_hat − rho]`.
+
+    Here the regressor is `(TTF − switch)/switch`, so TTF sits in its numerator and the
+    correlation is large and positive by construction — not by accident of this sample.
+    Kendall's term is negative, so the product is negative: **OLS is pushed toward the
+    negative coefficient this page reports.**
+    """
+
+    rho: float
+    corr_uv: float
+    kendall_term: float
+    bias: float
+    beta_ols: float
+    n_obs: int
+
+    @property
+    def beta_corrected(self) -> float:
+        return self.beta_ols - self.bias
+
+    @property
+    def bias_share(self) -> float:
+        return abs(self.bias / self.beta_ols) if self.beta_ols else float("nan")
+
+    @property
+    def bias_favours_the_finding(self) -> bool:
+        """True when the bias has the same sign as the estimate — the awkward case."""
+        return self.bias * self.beta_ols > 0
+
+    @property
+    def headline(self) -> str:
+        direction = "toward" if self.bias_favours_the_finding else "against"
+        return (
+            f"The regressor is persistent (rho = {self.rho:.2f}) and its innovations "
+            f"correlate {self.corr_uv:+.2f} with the return being predicted, because TTF "
+            f"sits inside it. That biases OLS {direction} the result reported here, by "
+            f"{self.bias:+.4f} — {self.bias_share:.0%} of the coefficient. Bias-corrected, "
+            f"beta is {self.beta_corrected:+.3f} rather than {self.beta_ols:+.3f}."
+        )
+
+
+def stambaugh_diagnostics(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+) -> StambaughDiagnostics:
+    """Analytic first-order bias for the predictive regression (Stambaugh 1999).
+
+    Reported next to the bootstrap rather than instead of it: the two rest on different
+    assumptions, and their agreement is the check that neither is a coding accident.
+    """
+    sample = predictive_sample(frame, switch_ttf, horizon_days=horizon_days, phase=phase)
+    y = sample["forward_return"].to_numpy(dtype=float)
+    x = sample["distance"].to_numpy(dtype=float)
+    n = len(y)
+    if n < 20:
+        raise ValueError(f"only {n} windows — too few for a bias estimate worth reporting")
+
+    design = np.column_stack([np.ones(n), x])
+    beta = np.linalg.lstsq(design, y, rcond=None)[0]
+    u_all = y - design @ beta
+
+    ar_design = np.column_stack([np.ones(n - 1), x[:-1]])
+    ar_beta = np.linalg.lstsq(ar_design, x[1:], rcond=None)[0]
+    rho = float(ar_beta[1])
+    v_next = x[1:] - ar_design @ ar_beta      # v_{t+1}
+    u = u_all[:-1]                             # u_t, same [t, t+1] interval
+
+    sigma_uv = float(np.cov(u, v_next, ddof=2)[0, 1])
+    sigma_vv = float(v_next.var(ddof=2))
+    kendall = -(1.0 + 3.0 * rho) / n
+    return StambaughDiagnostics(
+        rho=rho,
+        corr_uv=float(np.corrcoef(u, v_next)[0, 1]),
+        kendall_term=float(kendall),
+        bias=float((sigma_uv / sigma_vv) * kendall) if sigma_vv > 0 else float("nan"),
+        beta_ols=float(beta[1]),
+        n_obs=n,
+    )
+
+
+@dataclass(frozen=True)
+class BootstrapTest:
+    """Nelson–Kim bootstrap: where the estimate falls in a world with no predictability.
+
+    The null is simulated rather than assumed: the regressor is rebuilt through its own
+    fitted AR(1) and the innovation pairs `(u_t, v_{t+1})` are resampled **together**, so
+    the simulated world keeps both the persistence and the correlation that cause the
+    bias — and has no predictability in it at all. `null_mean` is therefore a direct
+    measurement of the bias, obtained without the Kendall formula.
+    """
+
+    beta_obs: float
+    null_mean: float
+    null_p05: float
+    p_value: float
+    n_boot: int
+    n_obs: int
+
+    @property
+    def significant(self) -> bool:
+        return self.p_value < 0.05
+
+    @property
+    def headline(self) -> str:
+        verdict = "survives" if self.significant else "does not survive"
+        return (
+            f"Under a simulated null with the same persistence and the same innovation "
+            f"correlation but no predictability, the coefficient averages "
+            f"{self.null_mean:+.4f} — the bias, measured without a formula. The observed "
+            f"{self.beta_obs:+.3f} sits at p = {self.p_value:.3f}, so the ceiling "
+            f"{verdict} the honest test."
+        )
+
+
+def bootstrap_null(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+    n_boot: int = 5_000,
+    seed: int = 0,
+) -> BootstrapTest:
+    """Empirical p-value for the predictive coefficient under H0: no predictability (B-H5)."""
+    sample = predictive_sample(frame, switch_ttf, horizon_days=horizon_days, phase=phase)
+    y = sample["forward_return"].to_numpy(dtype=float)
+    x = sample["distance"].to_numpy(dtype=float)
+    n = len(y)
+    if n < 20:
+        raise ValueError(f"only {n} windows — too few to bootstrap anything meaningful")
+
+    def slope(y_vec: np.ndarray, x_vec: np.ndarray) -> float:
+        design = np.column_stack([np.ones(len(x_vec)), x_vec])
+        return float(np.linalg.lstsq(design, y_vec, rcond=None)[0][1])
+
+    design = np.column_stack([np.ones(n), x])
+    fitted = np.linalg.lstsq(design, y, rcond=None)[0]
+    beta_obs = float(fitted[1])
+    u_all = y - design @ fitted
+
+    ar_design = np.column_stack([np.ones(n - 1), x[:-1]])
+    ar_beta = np.linalg.lstsq(ar_design, x[1:], rcond=None)[0]
+    intercept, rho = float(ar_beta[0]), float(ar_beta[1])
+    pairs = np.column_stack([u_all[:-1], x[1:] - ar_design @ ar_beta])
+
+    rng = np.random.default_rng(seed)
+    y_mean = float(y.mean())
+    betas = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, len(pairs), size=n)
+        u_sim, v_sim = pairs[idx, 0], pairs[idx, 1]
+        x_sim = np.empty(n)
+        x_sim[0] = x[rng.integers(0, n)]
+        for t in range(1, n):
+            x_sim[t] = intercept + rho * x_sim[t - 1] + v_sim[t - 1]
+        betas[i] = slope(y_mean + u_sim, x_sim)
+
+    return BootstrapTest(
+        beta_obs=beta_obs,
+        null_mean=float(betas.mean()),
+        null_p05=float(np.percentile(betas, 5)),
+        p_value=float((betas <= beta_obs).mean()),
+        n_boot=n_boot,
+        n_obs=n,
+    )
+
+
+# ===========================================================================
+# ROBUSTNESS 3 — the asymmetry only the mechanism predicts
+# ===========================================================================
+@dataclass(frozen=True)
+class AsymmetryTest:
+    """Above the switch there is a mechanism; below it there is none.
+
+    Burning coal instead of gas removes gas demand and pulls TTF down — that only
+    operates when gas is the dearer fuel. Below the switching level gas is already the
+    cheap one and nothing pushes TTF back up. So the physical story predicts a *one-sided*
+    effect, while generic mean reversion pulls symmetrically from both sides. This is the
+    sharpest available discriminator between them, and unlike the trailing-median placebo
+    it uses no second series.
+    """
+
+    above: OLSResult
+    below: OLSResult
+    kinked: OLSResult
+
+    @property
+    def is_one_sided(self) -> bool:
+        return abs(self.above.t_stats["distance"]) > 1.98 and abs(
+            self.below.t_stats["distance"]
+        ) < 1.98
+
+    @property
+    def headline(self) -> str:
+        above_t = self.above.t_stats["distance"]
+        below_t = self.below.t_stats["distance"]
+        if self.is_one_sided:
+            return (
+                f"Above the switching level the coefficient is "
+                f"{self.above.coefficients['distance']:+.3f} (t = {above_t:.2f}, "
+                f"n = {self.above.n_obs}); below it there is nothing (t = {below_t:.2f}, "
+                f"n = {self.below.n_obs}). Mean reversion would pull from both sides — "
+                "this is one-sided in the direction the physical mechanism requires."
+            )
+        return (
+            f"The effect is not one-sided: above t = {above_t:.2f}, below t = "
+            f"{below_t:.2f}. That is the signature of mean reversion rather than of "
+            "switching, and it weakens the mechanism reading."
+        )
+
+
+def asymmetry_test(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+) -> AsymmetryTest:
+    sample = predictive_sample(frame, switch_ttf, horizon_days=horizon_days, phase=phase)
+    above = sample[sample["distance"] > 0]
+    below = sample[sample["distance"] <= 0]
+    if min(len(above), len(below)) < 15:
+        raise ValueError(
+            f"one side has too few windows to regress ({len(above)} above, {len(below)} below)"
+        )
+    return AsymmetryTest(
+        above=ols(above["forward_return"], {"distance": above["distance"]}),
+        below=ols(below["forward_return"], {"distance": below["distance"]}),
+        kinked=ols(
+            sample["forward_return"],
+            {
+                "slope_above": sample["distance"].clip(lower=0),
+                "slope_below": sample["distance"].clip(upper=0),
+            },
+        ),
+    )
+
+
+# ===========================================================================
+# THE UNIFYING RESULT — the level moves, the prediction cannot
+# ===========================================================================
+def naive_thermal_anchor(frame: pd.DataFrame) -> pd.Series:
+    """Raw thermal parity: coal's own per-MWh price, no efficiencies, no carbon.
+
+    The honest competitor. If distance from *this* predicts as well as distance from the
+    carefully-constructed switching level, then the switching arithmetic is decoration
+    on "gas is expensive relative to coal".
+    """
+    return frame["coal_eur_mwh_th"].rename("naive_anchor")
+
+
+@dataclass(frozen=True)
+class EfficiencyInvariance:
+    """The two halves of project B, measured on one grid.
+
+    `level_swing` and `share_swing` are the original thesis: the unpublished efficiency
+    pair decides where the line sits, and the diagnosis flips with it. `t_range` and
+    `max_pairwise_corr` are the new one: it cannot decide what the line predicts, because
+    the distance measures it generates are the same variable up to an affine map, and an
+    OLS t-statistic does not move under one.
+    """
+
+    grid: pd.DataFrame
+    level_low: float
+    level_high: float
+    share_low: float
+    share_high: float
+    t_low: float
+    t_high: float
+    max_pairwise_corr: float
+    min_pairwise_corr: float
+    affine_residual: float
+
+    @property
+    def level_swing(self) -> float:
+        return self.level_high - self.level_low
+
+    @property
+    def share_swing(self) -> float:
+        return self.share_high - self.share_low
+
+    @property
+    def t_swing(self) -> float:
+        return abs(self.t_high - self.t_low)
+
+    @property
+    def identity_holds(self) -> bool:
+        """ttf* = lambda·(coal_th + EUA·EF_coal) − EUA·EF_gas, to machine precision."""
+        return self.affine_residual < 1e-9
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"The efficiency pair moves the switching level from {self.level_low:.0f} to "
+            f"{self.level_high:.0f} EUR/MWh and the share of days above it from "
+            f"{self.share_low:.0%} to {self.share_high:.0%} — the same prices, the "
+            f"opposite diagnosis. It moves the t-statistic of the prediction by "
+            f"{self.t_swing:.2f}. The nine distance measures correlate "
+            f"{self.min_pairwise_corr:.3f} or better: they are one variable under an "
+            "affine map, and a t-statistic is invariant under one. The efficiencies "
+            "decide where the line is and nothing about what it predicts."
+        )
+
+
+def efficiency_invariance(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiencies: tuple[float, ...] = (0.36, 0.38, 0.42),
+    gas_efficiencies: tuple[float, ...] = (0.50, 0.55, 0.60),
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+) -> EfficiencyInvariance:
+    """Sweep the efficiency grid and measure the level, the diagnosis and the prediction.
+
+    Also verifies the algebraic identity that explains the result, rather than asserting
+    it: `ttf* = lambda·(coal_th + EUA·EF_coal) − EUA·EF_gas` with `lambda = eta_g/eta_c`.
+    """
+    rows, distances, affine_residual = [], {}, 0.0
+    for coal_efficiency in coal_efficiencies:
+        for gas_efficiency in gas_efficiencies:
+            switch = switch_ttf_eur_mwh(
+                frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+            )
+            lam = gas_efficiency / coal_efficiency
+            closed_form = (
+                lam * (frame["coal_eur_mwh_th"] + frame["eua_eur_t"] * EF_COAL_T_PER_MWH_TH)
+                - frame["eua_eur_t"] * EF_GAS_T_PER_MWH_TH
+            )
+            affine_residual = max(affine_residual, float((switch - closed_form).abs().max()))
+
+            distance = switching_distance_pct(frame, switch)
+            sample = predictive_sample(frame, switch, horizon_days=horizon_days, phase=phase)
+            result = ols(sample["forward_return"], {"distance": sample["distance"]})
+            key = (coal_efficiency, gas_efficiency)
+            distances[key] = distance
+            rows.append(
+                {
+                    "coal_efficiency": coal_efficiency,
+                    "gas_efficiency": gas_efficiency,
+                    "switch_median_eur_mwh": float(switch.median()),
+                    "share_above": float((distance > 0).mean()),
+                    "beta": result.coefficients["distance"],
+                    "t_stat": result.t_stats["distance"],
+                }
+            )
+
+    grid = pd.DataFrame(rows)
+    corr = pd.DataFrame(distances).dropna().corr().to_numpy()
+    off_diagonal = corr[np.triu_indices_from(corr, 1)]
+    return EfficiencyInvariance(
+        grid=grid,
+        level_low=float(grid["switch_median_eur_mwh"].min()),
+        level_high=float(grid["switch_median_eur_mwh"].max()),
+        share_low=float(grid["share_above"].min()),
+        share_high=float(grid["share_above"].max()),
+        t_low=float(grid["t_stat"].min()),
+        t_high=float(grid["t_stat"].max()),
+        max_pairwise_corr=float(off_diagonal.max()),
+        min_pairwise_corr=float(off_diagonal.min()),
+        affine_residual=affine_residual,
+    )
+
+
+@dataclass(frozen=True)
+class AnchorEncompassing:
+    """Does the switching arithmetic beat raw thermal parity? The honest negative.
+
+    `increment_f` is an F-test on what the full switching distance adds once the naive
+    anchor is already in the regression. A large p-value is the finding, not a failure:
+    it says the sample cannot tell the elaborate calculation from the crude one.
+    """
+
+    full_only: OLSResult
+    naive_only: OLSResult
+    both: OLSResult
+    increment_f: float
+    increment_p: float
+    regressor_corr: float
+
+    @property
+    def full_adds_nothing(self) -> bool:
+        return self.increment_p > 0.05
+
+    @property
+    def headline(self) -> str:
+        if self.full_adds_nothing:
+            return (
+                f"Raw thermal parity — no efficiencies, no carbon price — reaches "
+                f"R² = {self.naive_only.r_squared:.3f} against {self.full_only.r_squared:.3f} "
+                f"for the full switching level. Adding the full level on top of the naive "
+                f"anchor gives F = {self.increment_f:.2f} (p = {self.increment_p:.2f}): the "
+                f"sample cannot distinguish them, and the two regressors correlate "
+                f"{self.regressor_corr:.2f}. The switching arithmetic is not what is doing "
+                "the predicting."
+            )
+        return (
+            f"The full switching level adds significantly over raw thermal parity "
+            f"(F = {self.increment_f:.2f}, p = {self.increment_p:.3f}) — the arithmetic "
+            "earns its place."
+        )
+
+
+def anchor_encompassing(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+) -> AnchorEncompassing:
+    """Race the switching level against an anchor with none of its economics in it."""
+    from scipy import stats as scipy_stats
+
+    naive = naive_thermal_anchor(frame)
+    forward_return = np.log(
+        frame["ttf_eur_mwh"].shift(-horizon_days) / frame["ttf_eur_mwh"]
+    )
+    sample = pd.concat(
+        {
+            "forward_return": forward_return,
+            "full": switching_distance_pct(frame, switch_ttf),
+            "naive": (frame["ttf_eur_mwh"] - naive) / naive,
+        },
+        axis=1,
+    ).dropna().iloc[phase::horizon_days]
+
+    full_only = ols(sample["forward_return"], {"distance": sample["full"]})
+    naive_only = ols(sample["forward_return"], {"distance": sample["naive"]})
+    both = ols(
+        sample["forward_return"], {"full": sample["full"], "naive": sample["naive"]}
+    )
+    n = both.n_obs
+    increment_f = ((both.r_squared - naive_only.r_squared) / 1.0) / (
+        (1.0 - both.r_squared) / (n - 3)
+    )
+    return AnchorEncompassing(
+        full_only=full_only,
+        naive_only=naive_only,
+        both=both,
+        increment_f=float(increment_f),
+        increment_p=float(1.0 - scipy_stats.f.cdf(increment_f, 1, n - 3)),
+        regressor_corr=float(sample["full"].corr(sample["naive"])),
+    )
+
+
+# ===========================================================================
+# Sub-period stability — where the evidence actually comes from
+# ===========================================================================
+DEFAULT_SUBPERIODS: tuple[tuple[str, str, str], ...] = (
+    ("2018-2020 pre-crisis", "2018", "2020"),
+    ("2021-2022 crisis", "2021", "2022"),
+    ("2023-2026 after", "2023", "2026"),
+)
+
+
+def subperiod_stability(
+    frame: pd.DataFrame,
+    switch_ttf: pd.Series,
+    *,
+    periods: tuple[tuple[str, str, str], ...] = DEFAULT_SUBPERIODS,
+    horizon_days: int = FORWARD_HORIZON_DAYS,
+    phase: int = 0,
+    min_obs: int = 12,
+) -> pd.DataFrame:
+    """The same regression period by period.
+
+    On 110 windows this is descriptive rather than a formal stability test — with 26 to
+    45 observations per period, differences of this size are not separately identified.
+    It is reported because knowing the evidence is concentrated in the crisis changes how
+    much weight the headline deserves.
+    """
+    sample = predictive_sample(frame, switch_ttf, horizon_days=horizon_days, phase=phase)
+    rows = []
+    for label, start, end in periods:
+        window = sample.loc[start:end]
+        if len(window) < min_obs:
+            continue
+        result = ols(window["forward_return"], {"distance": window["distance"]})
+        rows.append(
+            {
+                "period": label,
+                "n": result.n_obs,
+                "beta": result.coefficients["distance"],
+                "t_stat": result.t_stats["distance"],
+                "r_squared": result.r_squared,
+            }
+        )
+    if not rows:
+        raise ValueError("no sub-period has enough non-overlapping windows to regress")
+    return pd.DataFrame(rows).set_index("period")

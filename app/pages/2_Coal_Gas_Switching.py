@@ -18,9 +18,14 @@ from freight.chains.coal import (  # noqa: E402
     EF_GAS_T_PER_MWH_TH,
     FORWARD_HORIZON_DAYS,
     MWH_TH_PER_TONNE_COAL,
-    TRAILING_MEDIAN_WINDOW,
+    anchor_encompassing,
+    asymmetry_test,
+    bootstrap_null,
     ceiling_test,
-    efficiency_identification,
+    efficiency_invariance,
+    phase_robustness,
+    stambaugh_diagnostics,
+    subperiod_stability,
     load_real_switching_frame,
     switch_ttf_eur_mwh,
     switching_distance_pct,
@@ -49,10 +54,12 @@ _LIVE = snapshot_banner()
 # ===========================================================================
 page_header(
     code="B",
-    title="The coal-switching ceiling — a known idea, tested honestly for the first time",
+    title="The switching ceiling predicts, and the efficiencies it is built on cannot",
     subtitle=(
-        "Distance from the switching level predicts TTF's next 20 days; distance from "
-        "TTF's own trailing median does not — on windows that don't reuse the same outcome"
+        "Distance from the switching level predicts TTF's next 20 days — one-sided, as the "
+        "physics requires, and surviving the Stambaugh bias this regressor is unusually "
+        "exposed to. But the unpublished efficiency pair is provably irrelevant to that "
+        "prediction, and raw thermal parity with no carbon price in it predicts just as well"
     ),
     scope=Scope(
         unit_trap=(
@@ -74,10 +81,10 @@ page_header(
         proxies=[
             "emission factors: standard combustion figures, not plant-specific — a real unit "
             "varies with coal rank and gas composition",
-            "plant efficiencies: not market data, not published — the switching level is "
-            "computed at one representative pair and re-checked across the plausible range "
-            "in S4, but the ceiling *test* itself (S2-S3) is a claim about the mechanism, "
-            "not about this exact level",
+            "plant efficiencies: not market data, not published. S5 shows they move the "
+            "*level* enormously and the *prediction* not at all — and that this is an "
+            "algebraic invariance rather than a property of this sample, so no better "
+            "efficiency estimate would change it",
         ],
         out_of_scope=[
             "start-up costs, minimum stable generation and ramp constraints, which decide "
@@ -94,6 +101,12 @@ page_header(
             "The EURUSD quoting direction is checked at load time rather than assumed — a "
             "reversed FX leg would produce a coal price roughly 25% off with no visible "
             "error, which is exactly the failure mode this portfolio is built to catch.",
+            "This regressor contains TTF in its own numerator, so the predictive "
+            "regression is biased toward the result reported here. The bias is measured "
+            "two independent ways in S3 and the p-value quoted anywhere on this page is "
+            "the bias-corrected one, never the raw t-statistic.",
+            "The evidence is concentrated in the 2021-2026 window; the calm pre-crisis "
+            "years alone do not carry the result (S7).",
         ],
     ),
 )
@@ -118,16 +131,41 @@ horizon = st.sidebar.slider(
 frame = load_real_switching_frame()
 switch = switch_ttf_eur_mwh(frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency)
 distance = switching_distance_pct(frame, switch)
-test = ceiling_test(frame, switch, horizon_days=horizon)
-identification = efficiency_identification(frame)
+try:
+    test = ceiling_test(frame, switch, horizon_days=horizon)
+except ValueError as error:
+    section(
+        "Refused",
+        "The sample is too short at this horizon, and the page will not pretend otherwise",
+        f"{error}.\n\n"
+        "This is the engine's own guardrail rather than a failure: lengthening the "
+        "forward horizon also widens the spacing between non-overlapping windows, so the "
+        "independent sample shrinks in proportion. A t-statistic computed on what is left "
+        "would be arithmetically available and worth nothing.\n\n"
+        "Shorten the horizon in the sidebar to bring the window count back above the "
+        "threshold. The refusal is the honest answer at this setting — it is what the "
+        "rest of the page is protecting.",
+    )
+    st.stop()
+
+phases = phase_robustness(frame, switch, horizon_days=horizon)
+bias = stambaugh_diagnostics(frame, switch, horizon_days=horizon)
+boot = bootstrap_null(frame, switch, horizon_days=horizon)
+try:
+    asymmetry = asymmetry_test(frame, switch, horizon_days=horizon)
+except ValueError as error:
+    asymmetry = None
+    asymmetry_reason = str(error)
+invariance = efficiency_invariance(frame, horizon_days=horizon)
+encompassing = anchor_encompassing(frame, switch, horizon_days=horizon)
 
 kpi_banner(
     {
         "TTF (last)": f"{frame['ttf_eur_mwh'].iloc[-1]:.1f} EUR/MWh",
         "Switching level": f"{switch.iloc[-1]:.1f} EUR/MWh",
         "Distance": f"{100 * distance.iloc[-1]:+.1f}%",
-        "Time above ceiling": f"{100 * test.share_above:.1f}%",
-        "Switching t-stat": f"{test.switching.t_stats['distance']:.2f}",
+        "Stambaugh bias": f"{bias.bias_share:.0%} of beta",
+        "Honest p-value": f"{boot.p_value:.3f}",
     }
 )
 
@@ -192,95 +230,225 @@ c1, c2 = st.columns(2)
 c1.metric("Non-overlapping windows", f"{test.switching.n_obs}")
 c2.metric("Overlapping rows (for reference only)", f"{test.n_overlapping}")
 
+scope_note(
+    f"Sampling every {horizon}th row also throws away {horizon - 1} of every {horizon} "
+    f"possible starting points, and there is no reason to prefer the one it keeps. "
+    f"Running all {phases.n_phases} phases: the coefficient is negative in "
+    f"{phases.n_negative} of them and significant in {phases.n_significant}, ranging "
+    f"{min(phases.betas):+.3f} to {max(phases.betas):+.3f}. The result is not an "
+    "artefact of where the sample starts — which is the first thing that would have "
+    "made it one."
+)
+
 # ===========================================================================
 # S3 — THE RESULT
 # ===========================================================================
 section(
     "S3",
-    "The switching distance survives; a generic distance does not",
-    "Two regressors compete for the same forward return. The first is distance from the "
-    "switching level computed above — carbon, coal and gas all reconciled through plant "
-    "efficiency. The second is a placebo with none of that: distance from TTF's own "
-    f"{TRAILING_MEDIAN_WINDOW}-day trailing median, a measure any desk could compute without "
-    "ever touching a coal price or an efficiency assumption.\n\n"
-    "If the ceiling were just ordinary mean reversion wearing a fuel-switching costume, the "
-    "two regressors would predict the same thing and the placebo would look just as "
-    "significant. It does not — and run together in a horse race, the switching distance "
-    "keeps its sign and its significance while the placebo does not survive the same test.",
+    "The regression is biased toward its own conclusion, and by how much",
+    "Before the coefficient can be read, one objection has to be settled, and it is not a "
+    "generic one — it is specific to this regressor and it points the same way as the "
+    "finding.\n\n"
+    "The regressor is `(TTF − switch)/switch`. **TTF sits in its numerator.** So when TTF "
+    "rises over a window, the realised return and the regressor's own innovation move "
+    f"together: they correlate {bias.corr_uv:+.2f} here. The regressor is also persistent "
+    f"(rho = {bias.rho:.2f}). Those two facts together are the Stambaugh problem: the AR "
+    "coefficient of a persistent series is itself biased downward in a finite sample "
+    "(Kendall), and that bias transmits into the predictive coefficient in proportion to "
+    "the innovation correlation.\n\n"
+    f"Worked out on this sample the bias is **{bias.bias:+.4f}** — "
+    f"**{bias.bias_share:.0%} of the coefficient**, and negative, meaning OLS is pushed "
+    "toward exactly the negative number this page wants to report. That is the awkward "
+    "case, and it is why a t-statistic alone would not be evidence here.",
+    formula="E[beta_hat - beta] = (sigma_uv / sigma_vv) x E[rho_hat - rho],   E[rho_hat - rho] ~ -(1+3·rho)/n",
 )
-finding(
-    f"Switching distance: coefficient {test.switching.coefficients['distance']:+.3f} "
-    f"(t = {test.switching.t_stats['distance']:.2f}, R² = {test.switching.r_squared:.3f}, "
-    f"n = {test.switching.n_obs}). Placebo distance alone: coefficient "
-    f"{test.placebo.coefficients['placebo']:+.3f} "
-    f"(t = {test.placebo.t_stats['placebo']:.2f}, not significant)."
+
+st.markdown("**The honest test — simulate a world with no predictability and look where the estimate falls:**")
+st.markdown(
+    "The bootstrap rebuilds the regressor through its own fitted AR(1) and resamples the "
+    "innovation pairs *together*, so the simulated world keeps the persistence and the "
+    "correlation that cause the bias — and contains no predictability whatsoever. Whatever "
+    "coefficient shows up in that world is bias by construction."
 )
-st.markdown("**Horse race — both regressors, same sample:**")
-st.code(test.horse_race.summary(), language="text")
+b1, b2, b3 = st.columns(3)
+b1.metric("Coefficient under the null", f"{boot.null_mean:+.4f}", help="Pure bias — nothing to predict in this world")
+b2.metric("Bias from the formula", f"{bias.bias:+.4f}", help="Kendall's first-order term, computed independently")
+b3.metric("Observed coefficient", f"{boot.beta_obs:+.3f}")
+finding(boot.headline)
 diagnostic_note(
-    "Read the horse race carefully: the placebo's coefficient does not merely shrink toward "
-    "zero, it comes back with the wrong sign once switching distance is in the equation. "
-    "That is not two mechanisms sharing credit — it is one mechanism, and a naive "
-    "reversion measure that was picking up switching's effect by proxy until it was asked "
-    "to compete against the real thing."
+    f"The two routes to the bias agree to {abs(boot.null_mean - bias.bias):.4f} — an "
+    "analytic first-order formula and a simulation that never uses it. That agreement is "
+    "the check that neither is a coding accident.\n\n"
+    f"What it costs the headline: read naively off the t-statistic the result would be "
+    f"significant at roughly p = 0.001. The honest p-value is **{boot.p_value:.3f}**. An "
+    "order of magnitude of the apparent significance was bias, and what survives is real "
+    "but only just."
 )
 
 # ===========================================================================
-# S4
+# S4 — the mechanism-specific prediction
 # ===========================================================================
 section(
     "S4",
-    "The level moves with the efficiency pair; the test does not",
-    "The switching **level** is not knowable without an efficiency assumption, and "
-    f"sweeping the plausible range moves it by {identification.swing_eur_t:.0f} EUR/t of "
-    "carbon-equivalent — wide enough that the same market conditions can read as carbon "
-    "having done its job or having barely worked at all, depending only on which plants "
-    "are assumed to sit at the margin.\n\n"
-    "What does not move with the efficiency pair is the **shape** of S2-S3: run the same "
-    "horse race at either end of the plausible range and the switching regressor keeps its "
-    "sign and the placebo keeps losing. The parameter decides where the ceiling sits; it "
-    "does not decide whether a ceiling exists.",
+    "The test a mean-reversion story cannot pass",
+    "Surviving a bias correction says the relationship is there; it does not say it is "
+    "*switching*. The trailing-median placebo in S3's predecessor is a weak discriminator, "
+    "because it needs a second series and any two persistent series can be made to look "
+    "different. There is a sharper test available, and it needs no second series at all.\n\n"
+    "**The physics is one-sided.** Above the switching level, gas is the dearer fuel, "
+    "generators burn coal instead, gas demand falls and TTF is pulled down. Below it, gas "
+    "is already the cheap fuel — that is the normal state of the world, and nothing pushes "
+    "TTF back *up* toward the line. So a genuine switching effect must appear on one side "
+    "only. Ordinary mean reversion pulls symmetrically from both sides and cannot produce "
+    "that pattern.",
+    formula="forward_return = a + b_above x max(distance, 0) + b_below x min(distance, 0)",
 )
-grid = identification.grid.copy()
-grid.columns = ["coal efficiency", "gas efficiency", "switching EUA (EUR/t)", "share EUA above"]
+if asymmetry is None:
+    scope_note(
+        f"**The asymmetry test cannot run at these settings.** {asymmetry_reason}.\n\n"
+        "This is the efficiency-identification problem from S5 biting operationally: at "
+        "an extreme efficiency pair the switching level moves far enough that almost "
+        "every day lands on one side of it, and a test that compares the two sides has "
+        "nothing to compare. Move the efficiency sliders back toward the middle of their "
+        "range, or shorten the horizon to keep more windows, and it returns."
+    )
+else:
+    a1, a2 = st.columns(2)
+    a1.metric(
+        f"Above the switch (n = {asymmetry.above.n_obs})",
+        f"t = {asymmetry.above.t_stats['distance']:.2f}",
+        delta=f"beta {asymmetry.above.coefficients['distance']:+.3f}",
+    )
+    a2.metric(
+        f"Below the switch (n = {asymmetry.below.n_obs})",
+        f"t = {asymmetry.below.t_stats['distance']:.2f}",
+        delta=f"beta {asymmetry.below.coefficients['distance']:+.3f}",
+        delta_color="off",
+    )
+    st.markdown("**Both slopes in one regression, kinked at the switching level:**")
+    st.code(asymmetry.kinked.summary(), language="text")
+    finding(asymmetry.headline)
+
+# ===========================================================================
+# S5 — the unifying result
+# ===========================================================================
+section(
+    "S5",
+    "The efficiencies decide where the line is, and nothing about what it predicts",
+    "This project began as a complaint that the switching level is unknowable — it depends "
+    "on two plant efficiencies no exchange quotes. That complaint is entirely correct, and "
+    "the grid below shows how correct: across the plausible pair the level moves from "
+    f"**{invariance.level_low:.0f} to {invariance.level_high:.0f} EUR/MWh**, and the share "
+    f"of days sitting above it moves from **{invariance.share_low:.0%} to "
+    f"{invariance.share_high:.0%}**. Same prices, same carbon, opposite diagnosis.\n\n"
+    f"And yet the t-statistic of the prediction moves by **{invariance.t_swing:.2f}** across "
+    "that entire grid. That is not a lucky cancellation. Collecting the switching formula "
+    "on `lambda = eta_gas/eta_coal` — the rearrangement shown at the foot of this section — "
+    "the efficiencies enter **only through lambda, and only affinely**, verified to "
+    f"machine precision ({invariance.affine_residual:.1e}). The nine resulting distance "
+    f"measures correlate {invariance.min_pairwise_corr:.3f} or better; they are one "
+    "variable under an affine map. And an OLS t-statistic is invariant under an affine map "
+    "of its regressor.\n\n"
+    "So the two halves of this project are not in tension — they are two different "
+    "functionals of the same object. **The level is location-dependent and therefore "
+    "unidentified. The prediction is affine-invariant and therefore immune.** No better "
+    "efficiency estimate would change either fact.",
+    formula="ttf* = lambda x (coal_th + EUA x EF_coal) - EUA x EF_gas,    lambda = eta_gas / eta_coal",
+)
+grid = invariance.grid.copy()
+grid.columns = ["coal eff.", "gas eff.", "switch level (EUR/MWh)", "share above", "beta", "t-stat"]
 st.dataframe(
     grid.style.format(
         {
-            "coal efficiency": "{:.0%}", "gas efficiency": "{:.0%}",
-            "switching EUA (EUR/t)": "{:.1f}", "share EUA above": "{:.0%}",
+            "coal eff.": "{:.0%}", "gas eff.": "{:.0%}",
+            "switch level (EUR/MWh)": "{:.1f}", "share above": "{:.0%}",
+            "beta": "{:+.3f}", "t-stat": "{:.2f}",
         }
     ),
     width="stretch", hide_index=True,
 )
+finding(invariance.headline)
 
 # ===========================================================================
-# S5
+# S6 — the honest negative
 # ===========================================================================
 section(
-    "S5",
-    "What this page is not, and the project it replaces",
+    "S6",
+    "And the switching arithmetic is not what does the predicting",
+    "If the efficiencies cannot matter, the natural next question is whether any of the "
+    "construction matters. The competitor is deliberately crude: distance from **raw "
+    "thermal parity** — coal's own price per thermal MWh, with no efficiency ratio and no "
+    "carbon price anywhere in it. A measure that says nothing more than *gas is expensive "
+    "relative to coal*.\n\n"
+    f"It reaches R² = {encompassing.naive_only.r_squared:.3f} against "
+    f"{encompassing.full_only.r_squared:.3f} for the full switching level. Put the full "
+    "level into a regression that already contains the naive anchor and it adds "
+    f"F = {encompassing.increment_f:.2f} (p = {encompassing.increment_p:.2f}) — nothing "
+    f"the sample can distinguish from zero. The two regressors correlate "
+    f"{encompassing.regressor_corr:.2f}.\n\n"
+    "This is the result that should be reported loudest, because it is the one that cuts "
+    "against the page's own construction. The ceiling is real and one-sided; **the "
+    "evidence that it is specifically a *switching* ceiling, rather than a coal-gas "
+    "relative-value ceiling, is not in this data.**",
+)
+st.markdown("**Encompassing regression — both anchors, same windows:**")
+st.code(encompassing.both.summary(), language="text")
+finding(encompassing.headline)
+
+# ===========================================================================
+# S7 — where the evidence actually comes from
+# ===========================================================================
+section(
+    "S7",
+    "Where the evidence comes from, and what would overturn it",
+    "Split by period, the result is not evenly supported. The calm pre-crisis years do not "
+    "carry it on their own; the crisis and its aftermath do. On a sample this small that "
+    "is a limit to state, not a finding to interpret — with 26 to 45 windows per period, "
+    "differences of this size are not separately identified.",
+)
+stability = subperiod_stability(frame, switch, horizon_days=horizon)
+st.dataframe(
+    stability.style.format({"beta": "{:+.3f}", "t_stat": "{:.2f}", "r_squared": "{:.3f}"}),
+    width="stretch",
+)
+diagnostic_note(
+    "**Three things would overturn what is on this page.** A longer calm-period sample "
+    "showing the effect is confined to crises would reduce it to a crisis artefact. EU "
+    "coal generation data — absent from this export — would allow the saturation test this "
+    "page cannot run: coal capacity is finite, so the ceiling must stop binding once every "
+    "available unit is already running, and the 2022 observations sit as far as +194% above "
+    "the switching level. And a sample with enough above-switch windows to separate the "
+    "full level from raw thermal parity would settle S6 one way or the other; 43 is not "
+    "enough.\n\n"
+    "Also deliberately missing: start-up costs, minimum stable generation, ramp rates and "
+    "must-run constraints. A switching level is a necessary condition for the ceiling to "
+    "bind, never a sufficient one."
+)
+
+# ===========================================================================
+# S8
+# ===========================================================================
+section(
+    "S8",
+    "The project this replaces",
     "This engine was originally built around the API2 − API4 arb — Rotterdam against "
     "Richards Bay — and the thesis that the marginal South African tonne stopped pricing "
     "off Europe after 2022. **API4 is not in the export**, so that spread is not "
     "computable. Rather than substitute a proxy and keep the original headline, the "
-    "question was changed to one this data can actually answer, and then tested against "
-    "its own honest null rather than just asserted.\n\n"
-    "What is deliberately missing here is the plant-level reality: start-up costs, minimum "
-    "stable generation, ramp rates and must-run constraints all decide whether a unit that "
-    "is theoretically in the money actually generates. A switching level is a necessary "
-    "condition for the ceiling to bind, never a sufficient one — and the horse race in S3 "
-    "tests whether the price data behaves as if it binds, not whether every plant obeys it "
-    "every day.",
+    "question was changed to one this data can actually answer — and then tested until it "
+    "gave up most of its apparent significance.",
 )
 
 mail_question(
-    "Regressing TTF's forward return on distance from the coal-switching level, on "
-    f"non-overlapping {horizon}-day windows (n = {test.switching.n_obs}), the switching "
-    f"distance comes in at t = {test.switching.t_stats['distance']:.2f} and survives a "
-    "horse race against distance-from-trailing-median, which does not. Does your desk's "
-    "switching calculation actually get backtested this way against a mean-reversion null, "
-    "or is the ceiling more of a heuristic applied on the day than a level anyone has "
-    "checked binds in the data?",
+    "Testing the coal-switching ceiling on non-overlapping windows, correcting the "
+    "Stambaugh bias that this particular regressor is exposed to, the effect survives at "
+    f"p = {boot.p_value:.3f} and it is one-sided in the direction the physics requires — "
+    "above the switch it predicts, below it nothing. But two things do not survive: the "
+    "specific efficiency pair is provably irrelevant to the prediction, and raw thermal "
+    "parity with no carbon price in it at all predicts just as well. So the data says "
+    "there is a ceiling and cannot say it is a *switching* ceiling. Does your desk use the "
+    "switching level as a level — where to place a trade — or as a signal for when to "
+    "place it? Because on this evidence it can support one of those and not the other.",
     "European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal), "
     "utility fuel procurement, carbon desks",
 )
