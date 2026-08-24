@@ -223,3 +223,119 @@ def test_carry_cost_golden():
 def test_carry_cost_rejects_negative_days():
     with pytest.raises(ValueError):
         carry_cost_of_extra_voyage_days(100.0, -1.0, 0.06)
+
+
+# ===========================================================================
+# THE ATTRIBUTION AND THE THIRD ORIGIN
+# ===========================================================================
+# Two tests here may not be weakened by a later rework.
+#
+# `test_the_attribution_reports_the_sign_flip_threshold` is what keeps the 2026 result
+# honest: the sign of the quality residual depends on an assumed weight, and the page is
+# only allowed to state it alongside the weight at which it reverses.
+#
+# `test_guinea_is_a_brazil_length_haul_not_a_cheap_one` is the fact the whole Simandou
+# reading turns on. If Guinea were a short haul the two-opposing-effects argument would
+# collapse into a simple supply story.
+from freight.chains.ironore import (  # noqa: E402
+    AUSTRALIA_QINGDAO_NM,
+    BRAZIL_QINGDAO_NM,
+    GUINEA_QINGDAO_NM,
+    premium_attribution,
+    third_origin_arithmetic,
+)
+
+
+def _attribution_frame() -> pd.DataFrame:
+    """Two years, hand-built so the arithmetic below is checkable by eye.
+
+    2025: premium 10, freight_spread 9.10  -> freight_dry = 9.10/0.91 = 10.0
+    2026: premium 14, freight_spread 18.20 -> freight_dry = 18.20/0.91 = 20.0
+    so d(premium) = +4, d(freight_dry) = +10, and the residual flips sign at w = 0.4.
+    """
+    index = pd.to_datetime(["2025-06-30", "2025-12-31", "2026-06-30", "2026-12-31"])
+    return pd.DataFrame(
+        {
+            "premium": [10.0, 10.0, 14.0, 14.0],
+            "freight_spread": [9.10, 9.10, 18.20, 18.20],
+        },
+        index=index,
+    )
+
+
+def test_attribution_splits_the_move_exactly():
+    """d(premium) = freight_part + residual_part, by construction and to the decimal."""
+    result = premium_attribution(
+        _attribution_frame(), weight=0.5, year_from=2025, year_to=2026, moisture=0.09
+    )
+    assert result.premium_change == pytest.approx(4.0)
+    assert result.freight_change == pytest.approx(10.0)
+    assert result.freight_part == pytest.approx(5.0)      # 0.5 x 10
+    assert result.residual_part == pytest.approx(-1.0)    # 4 - 5
+    assert result.freight_part + result.residual_part == pytest.approx(result.premium_change)
+
+
+def test_the_attribution_reports_the_sign_flip_threshold():
+    """The honest object is the threshold, not the point estimate.
+
+    d(premium)/d(freight) = 4/10 = 0.4, so any weight above 0.4 makes the quality
+    residual negative and any weight below it makes it positive. A page that quoted the
+    residual without the threshold would be hiding the assumption that produced its sign.
+    """
+    frame = _attribution_frame()
+    above = premium_attribution(frame, weight=0.5, year_from=2025, year_to=2026, moisture=0.09)
+    below = premium_attribution(frame, weight=0.3, year_from=2025, year_to=2026, moisture=0.09)
+
+    assert above.threshold_weight == pytest.approx(0.4)
+    assert below.threshold_weight == pytest.approx(0.4)
+    assert above.quality_fell
+    assert not below.quality_fell
+    assert "flips at a weight of" in above.headline
+
+
+def test_attribution_rejects_an_implausible_weight():
+    with pytest.raises(ValueError, match="weight outside the plausible range"):
+        premium_attribution(
+            _attribution_frame(), weight=2.0, year_from=2025, year_to=2026
+        )
+
+
+def test_attribution_rejects_a_year_with_no_observations():
+    with pytest.raises(ValueError, match="no observations for"):
+        premium_attribution(
+            _attribution_frame(), weight=0.5, year_from=2019, year_to=2026
+        )
+
+
+def test_guinea_is_a_brazil_length_haul_not_a_cheap_one():
+    """The fact the Simandou reading depends on.
+
+    Simandou adds high-grade supply AND Capesize tonne-miles, which push the observed
+    premium in opposite directions. That argument only holds because Guinea is a
+    long haul comparable to Brazil — a short haul would make it a pure supply story.
+    """
+    arithmetic = third_origin_arithmetic()
+    assert arithmetic.is_long_haul_like_brazil
+    assert arithmetic.guinea_vs_brazil == pytest.approx(GUINEA_QINGDAO_NM / BRAZIL_QINGDAO_NM)
+    assert arithmetic.guinea_vs_australia > 3.0
+    assert "not cheap high-grade ore" in arithmetic.headline
+
+
+def test_the_derived_guinea_distance_agrees_with_published_voyage_time():
+    """The distance is derived, not looked up, so the derivation is pinned here.
+
+    Drewry: Guinea-China round voyage beyond 90 days. At 12 kn with 8 round-trip port
+    days, (90 - 8) x 12 x 24 / 2 = 11,808 nm per leg. The same arithmetic applied to
+    Australia's published 30-35 day rotation must recover its known 3,500 nm — that
+    cross-check is what makes the Guinea number usable rather than a guess.
+    """
+    def one_leg_nm(round_trip_days: float, speed_kn: float = 12.0, port_days: float = 8.0) -> float:
+        return (round_trip_days - port_days) * speed_kn * 24.0 / 2.0
+
+    assert one_leg_nm(90.0) == pytest.approx(GUINEA_QINGDAO_NM, rel=0.02)
+    assert one_leg_nm(32.5) == pytest.approx(AUSTRALIA_QINGDAO_NM, rel=0.02)
+
+
+def test_a_non_positive_distance_is_rejected():
+    with pytest.raises(ValueError, match="must be > 0 nm"):
+        third_origin_arithmetic(guinea_nm=0.0)

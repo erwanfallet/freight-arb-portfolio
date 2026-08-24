@@ -456,3 +456,183 @@ def implied_origin_weight(
             }
         )
     return ImpliedOriginWeight(curve=pd.DataFrame(rows), moisture=float(moisture))
+
+
+# ===========================================================================
+# THE THIRD ORIGIN — what Simandou does to a two-origin decomposition
+# ===========================================================================
+# Everything above assumes a two-origin world: 65 % Fe travels on C3 (Brazil), 62 % Fe on
+# C5 (Australia), and the premium carries the difference at some weight. That world ended
+# in January 2026, when the first Simandou cargo reached China.
+#
+# The distances below are not looked up in a routing table — no Guinea-China Capesize
+# benchmark exists yet, which is itself the point. They are DERIVED from two published
+# facts and cross-checked against the two distances the portfolio already uses:
+#
+#   Drewry: the Guinea-China round voyage runs beyond 90 days, against 30-35 days for
+#   Australia-China, and the Guinea distance is roughly three times the Western Australian
+#   one. At 12 knots with ~8 round-trip port days:
+#       Australia:  (32.5 - 8) x 12 x 24 / 2 = ~3 530 nm   vs NAMED_ROUTES' 3 500  [check]
+#       Guinea:     (90.0 - 8) x 12 x 24 / 2 = ~11 800 nm
+#   and 3 500 x 3 = 10 500 nm, the same order. Two independent published statements agree
+#   with each other and one of them reproduces a distance already in the repository.
+#
+# THE CONSEQUENCE, WHICH IS NOT THE OBVIOUS ONE. Simandou is not cheap high-grade ore. At
+# ~11 800 nm it sits at or beyond the Brazilian haul (11 000 nm), so it arrives in China
+# carrying a freight bill comparable to Vale's, not a smaller one. What it does do is add
+# an enormous amount of tonne-mileage to a fleet that has to serve it: roughly 180
+# Capesizes to move 120 Mtpa from Guinea against 64 for the same tonnage from Australia.
+GUINEA_QINGDAO_NM = 11_800.0        # derived above, not a published benchmark
+BRAZIL_QINGDAO_NM = 11_000.0        # NAMED_ROUTES C3 laden leg
+AUSTRALIA_QINGDAO_NM = 3_500.0      # NAMED_ROUTES C5 laden leg
+
+
+@dataclass(frozen=True)
+class PremiumAttribution:
+    """Split a move in the observed premium into a freight part and a residual part.
+
+    The identity is the same one the whole page runs on, applied to a *change* rather than
+    a level:
+
+        d(premium) = d(quality_FOB) + w x d(freight_dry)
+
+    so the residual — everything not explained by freight at weight `w` — is what the
+    underlying quality differential must have done. The weight is an assumption, so the
+    honest object is not a single number but `threshold_weight`: the weight at which the
+    residual changes sign. Where that threshold sits relative to the plausible range for
+    `w` is what decides whether the answer is knowable at all.
+    """
+
+    label_from: str
+    label_to: str
+    premium_change: float
+    freight_change: float
+    weight: float
+
+    @property
+    def freight_part(self) -> float:
+        return self.weight * self.freight_change
+
+    @property
+    def residual_part(self) -> float:
+        return self.premium_change - self.freight_part
+
+    @property
+    def threshold_weight(self) -> float:
+        """The weight at which the residual flips sign. Undefined if freight did not move."""
+        if self.freight_change == 0:
+            return float("nan")
+        return self.premium_change / self.freight_change
+
+    @property
+    def quality_fell(self) -> bool:
+        return self.residual_part < 0
+
+    @property
+    def headline(self) -> str:
+        direction = "fell" if self.quality_fell else "rose"
+        return (
+            f"From {self.label_from} to {self.label_to} the premium rose "
+            f"{self.premium_change:+.2f} USD/t while the moisture-corrected freight spread "
+            f"rose {self.freight_change:+.2f}. At a weight of {self.weight:.2f}, freight "
+            f"accounts for {self.freight_part:+.2f} of the move and the underlying quality "
+            f"differential {direction} by {abs(self.residual_part):.2f}. The sign of that "
+            f"residual flips at a weight of {self.threshold_weight:.3f} — so the answer "
+            "depends on a parameter this page can only bound, not measure."
+        )
+
+
+def premium_attribution(
+    frame: pd.DataFrame,
+    *,
+    weight: float,
+    year_from: int,
+    year_to: int,
+    moisture: float = DEFAULT_MOISTURE_BRAZIL,
+) -> PremiumAttribution:
+    """Attribute the change in the premium between two years to freight versus quality.
+
+    Annual means rather than endpoints: with a monthly series of this length, two endpoint
+    observations would be a coin flip dressed as a measurement.
+    """
+    if not 0.0 <= weight <= 1.5:
+        raise ValueError(f"weight outside the plausible range [0, 1.5]: {weight}")
+
+    working = frame.copy()
+    working["freight_dry"] = working["freight_spread"] / (1.0 - moisture)
+    a = working[working.index.year == year_from]
+    b = working[working.index.year == year_to]
+    if a.empty or b.empty:
+        raise ValueError(f"no observations for {year_from} or {year_to}")
+
+    return PremiumAttribution(
+        label_from=str(year_from),
+        label_to=str(year_to),
+        premium_change=float(b["premium"].mean() - a["premium"].mean()),
+        freight_change=float(b["freight_dry"].mean() - a["freight_dry"].mean()),
+        weight=float(weight),
+    )
+
+
+@dataclass(frozen=True)
+class ThirdOriginArithmetic:
+    """Simandou's two opposing effects on the same observed number.
+
+    Both follow from one fact — Guinea is a Brazil-length haul, not an Australia-length one
+    — and they push the 65-62 premium in opposite directions:
+
+      * **supply / quality**: more 65 % Fe ore competing for the same buyers compresses the
+        FOB quality differential, which pushes the premium DOWN;
+      * **freight**: serving that tonnage consumes far more Capesize capacity per tonne than
+        Australian ore does, which tightens the fleet, widens C3 - C5, and — at any weight
+        above zero — pushes the observed premium UP.
+
+    A desk watching only the headline premium sees the net of the two and cannot tell them
+    apart. That is what the decomposition is for, and it is the reason this page exists
+    beyond the arithmetic curiosity of its own weight estimate.
+    """
+
+    guinea_nm: float
+    brazil_nm: float
+    australia_nm: float
+
+    @property
+    def guinea_vs_australia(self) -> float:
+        return self.guinea_nm / self.australia_nm
+
+    @property
+    def guinea_vs_brazil(self) -> float:
+        return self.guinea_nm / self.brazil_nm
+
+    @property
+    def is_long_haul_like_brazil(self) -> bool:
+        """Guinea within 25 % of the Brazilian haul — i.e. not a cheaper source of 65 % Fe."""
+        return abs(self.guinea_vs_brazil - 1.0) < 0.25
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Guinea to Qingdao is about {self.guinea_nm:,.0f} nm against "
+            f"{self.brazil_nm:,.0f} for Brazil and {self.australia_nm:,.0f} for Australia — "
+            f"{self.guinea_vs_australia:.1f} times the Australian haul and "
+            f"{self.guinea_vs_brazil:.2f} times the Brazilian one. Simandou is not cheap "
+            "high-grade ore: it lands in China carrying a Brazil-sized freight bill, while "
+            "consuming far more fleet capacity per tonne than the Australian ore it displaces."
+        )
+
+
+def third_origin_arithmetic(
+    *,
+    guinea_nm: float = GUINEA_QINGDAO_NM,
+    brazil_nm: float = BRAZIL_QINGDAO_NM,
+    australia_nm: float = AUSTRALIA_QINGDAO_NM,
+) -> ThirdOriginArithmetic:
+    """The distance comparison the two-origin decomposition does not have a slot for."""
+    for value, label in ((guinea_nm, "guinea"), (brazil_nm, "brazil"), (australia_nm, "australia")):
+        if value <= 0:
+            raise ValueError(f"{label} distance must be > 0 nm, got {value}")
+    return ThirdOriginArithmetic(
+        guinea_nm=float(guinea_nm),
+        brazil_nm=float(brazil_nm),
+        australia_nm=float(australia_nm),
+    )

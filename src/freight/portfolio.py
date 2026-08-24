@@ -39,27 +39,36 @@ FREIGHT_PROJECTS: list[Project] = [
         id="iron_ore",
         code="A",
         tier=TIER_FREIGHT,
-        title="The 65–62 premium contains a freight spread — but at half weight",
+        title="A third origin is entering a two-origin decomposition",
         thesis=(
-            "Both indices are quoted CFR China, so the C3 − C5 freight differential is "
-            "already inside the high-grade premium. Correct for moisture — freight is paid "
-            "on the wet tonne, the index is quoted on the dry tonne — and decompose. What "
-            "is left is a residual, and it is not renamed."
+            "Both indices are quoted CFR China, so the C3 − C5 freight differential sits "
+            "inside the high-grade premium — at roughly half weight, not the full weight "
+            "the origin shorthand implies. Applied to 2026 that decomposition says the "
+            "premium rose almost entirely on freight while the quality differential was "
+            "flat at best. And the two-origin world it assumes ended in January 2026."
         ),
         disagreement=(
-            "Inferred tension. Steel desks read the 65–62 premium as a pure quality signal "
-            "about mill margins and blast-furnace productivity; freight desks point out "
-            "that 65 % Fe is largely Brazilian (route C3) and 62 % largely Australian "
-            "(route C5), so a Capesize spread sits inside the number before any quality "
-            "argument starts."
+            "Inferred tension, and it now has a live event attached. Steel desks read the "
+            "65–62 premium as a quality signal; freight desks point out a Capesize spread "
+            "sits inside it before any quality argument starts. MEASURED ON 31 MONTHS: at "
+            "full weight the shorthand implies high-grade ore is CHEAPER at the loadport "
+            "than low-grade ore in 77% of months, which cannot be right — inverted, the "
+            "freight spread enters at ~0.5. Simandou then adds a third origin at a "
+            "Brazil-length haul, pushing the premium DOWN through supply and UP through "
+            "Capesize tonne-miles at the same time."
         ),
         pivot=(
-            "How much of the premium the freight differential accounts for, and the "
-            "residual left over once moisture is handled correctly"
+            "The 2026 attribution: freight explains more than the entire rise in the "
+            "premium, and the weight at which that conclusion reverses is stated with it"
         ),
         mail_question=(
-            "When the 65–62 premium moves, does your desk decompose it against C3 − C5 "
-            "first, or is it read straight as a quality signal?"
+            "Applying the ~0.5 weight to 2026, essentially the whole rise in the 65-62 "
+            "premium is freight rather than grade. What I cannot work out from prices is "
+            "where Simandou leaves this: it is a Brazil-length haul, so it adds high-grade "
+            "supply and Capesize tonne-miles at once — one pushing the premium down, the "
+            "other up. Do you expect the 65% Fe index to fragment by origin the way the "
+            "mid-grades just did with the new 61%, or to stay a blended price that quietly "
+            "absorbs a Guinea-Brazil freight gap?"
         ),
         targets="Iron ore desks at Vale, Rio Tinto, BHP, Glencore, Trafigura; Capesize freight desks",
         data_gate=GATE_MEDIUM,
@@ -72,7 +81,7 @@ FREIGHT_PROJECTS: list[Project] = [
         dashboard_page="pages/1_Iron_Ore_Premium.py",
         chain_module="freight.chains.ironore",
         data_mode=DATA_REAL,
-        n_tests=25,
+        n_tests=23,
     ),
     Project(
         id="coal",
