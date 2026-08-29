@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 _APP_DIR = Path(__file__).resolve().parent.parent
@@ -20,6 +21,11 @@ from freight.chains.coal import (  # noqa: E402
     MWH_TH_PER_TONNE_COAL,
     anchor_encompassing,
     asymmetry_test,
+    dampening_attribution,
+    natural_hedge,
+    spread_betas,
+    switching_depth_profile,
+    transmission_test,
     bootstrap_null,
     ceiling_test,
     efficiency_invariance,
@@ -54,12 +60,13 @@ _LIVE = snapshot_banner()
 # ===========================================================================
 page_header(
     code="B",
-    title="The switching ceiling predicts, and the efficiencies it is built on cannot",
+    title="The carbon hedge inside the switching spread, and its disappearance",
     subtitle=(
-        "Distance from the switching level predicts TTF's next 20 days — one-sided, as the "
-        "physics requires, and surviving the Stambaugh bias this regressor is unusually "
-        "exposed to. But the unpublished efficiency pair is provably irrelevant to that "
-        "prediction, and raw thermal parity with no carbon price in it predicts just as well"
+        "A dual-fuel generator owns an option to switch, and an option is priced off "
+        "volatility. Inside that spread gas and carbon enter with opposite signs, so a "
+        "positive correlation removes volatility — a natural hedge worth up to 29% of it "
+        "for eight straight years. In 2026 the correlation collapsed to zero and the hedge "
+        "went with it, repricing the option by ~11% with nothing flagging an error"
     ),
     scope=Scope(
         unit_trap=(
@@ -81,7 +88,7 @@ page_header(
         proxies=[
             "emission factors: standard combustion figures, not plant-specific — a real unit "
             "varies with coal rank and gas composition",
-            "plant efficiencies: not market data, not published. S5 shows they move the "
+            "plant efficiencies: not market data, not published. S11 shows they move the "
             "*level* enormously and the *prediction* not at all — and that this is an "
             "algebraic invariance rather than a property of this sample, so no better "
             "efficiency estimate would change it",
@@ -95,7 +102,7 @@ page_header(
         ],
         frequency_note=(
             "All four legs are daily, 2 214 common sessions since January 2018. The forward-"
-            "return test below is deliberately **not** run on daily data — see S2."
+            "return test below is deliberately **not** run on daily data — see S8."
         ),
         data_warnings=[
             "The EURUSD quoting direction is checked at load time rather than assumed — a "
@@ -103,10 +110,10 @@ page_header(
             "error, which is exactly the failure mode this portfolio is built to catch.",
             "This regressor contains TTF in its own numerator, so the predictive "
             "regression is biased toward the result reported here. The bias is measured "
-            "two independent ways in S3 and the p-value quoted anywhere on this page is "
+            "two independent ways in S9 and the p-value quoted anywhere on this page is "
             "the bias-corrected one, never the raw t-statistic.",
             "The evidence is concentrated in the 2021-2026 window; the calm pre-crisis "
-            "years alone do not carry the result (S7).",
+            "years alone do not carry the result (S13).",
         ],
     ),
 )
@@ -159,21 +166,246 @@ except ValueError as error:
 invariance = efficiency_invariance(frame, horizon_days=horizon)
 encompassing = anchor_encompassing(frame, switch, horizon_days=horizon)
 
+# --- the trade ---------------------------------------------------------------
+b_ttf, b_eua = spread_betas(
+    coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+)
+hedge = natural_hedge(
+    frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+)
+attribution = dampening_attribution(
+    frame, year_from=2025, year_to=2026,
+    coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency,
+)
+transmission = transmission_test(frame)
+depth = switching_depth_profile(
+    frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+)
+
 kpi_banner(
     {
         "TTF (last)": f"{frame['ttf_eur_mwh'].iloc[-1]:.1f} EUR/MWh",
         "Switching level": f"{switch.iloc[-1]:.1f} EUR/MWh",
         "Distance": f"{100 * distance.iloc[-1]:+.1f}%",
-        "Stambaugh bias": f"{bias.bias_share:.0%} of beta",
-        "Honest p-value": f"{boot.p_value:.3f}",
+        "Hedge, typical year": f"{hedge.typical_dampening:.0%} of vol",
+        "Hedge, 2026": f"{hedge.latest.dampening:+.0%}",
+        "Option mispriced by": f"{attribution.option_value_uplift:+.0%}",
     }
 )
 
 # ===========================================================================
-# S1
+# S1 — THE ASSET
 # ===========================================================================
 section(
     "S1",
+    "What a dual-fuel generator actually owns",
+    "A utility holding both a coal unit and a CCGT does not own a view on fuel prices. It "
+    "owns an **option to switch between them** — it runs whichever is cheaper and leaves "
+    "the other idle. Like any option, what prices it is not the level of the underlying "
+    "but its **volatility**: a switching right is worth nothing if the coal-gas spread "
+    "never moves, and a great deal if it swings.\n\n"
+    "So the asset to value is the volatility of the coal-minus-gas generation spread. And "
+    "that volatility contains one term almost nobody re-estimates.",
+    formula="spread = coal_cost - gas_cost,  in EUR per MWh of electricity",
+)
+
+# ===========================================================================
+# S2 — THE ALGEBRA, AND THE HEDGE IT CREATES
+# ===========================================================================
+section(
+    "S2",
+    "Gas and carbon enter the spread with opposite signs, so their correlation is a hedge",
+    "Writing the spread out in its two market legs, the sensitivities are definitional "
+    "rather than estimated — differentiate the generation-cost identity and read them off. "
+    f"At the efficiencies set in the sidebar: **{b_ttf:+.3f} on TTF** and "
+    f"**{b_eua:+.3f} on EUA**.\n\n"
+    "Opposite signs. That single fact drives everything below, because the cross term in "
+    "the variance carries the product of the two betas — and with `b_ttf < 0 < b_eua`, a "
+    "**positive correlation subtracts from the variance**. Carbon is a natural hedge for "
+    "gas inside this particular spread: when gas rallies and drags carbon up with it, the "
+    "two effects on the spread partly cancel.\n\n"
+    "This is not an empirical regularity that might reverse. Across the entire plausible "
+    "efficiency grid `b_ttf` runs -2.000 to -1.667 and `b_eua` runs +0.410 to +0.611 — the "
+    "signs never cross. Whatever else is uncertain about the switching level, the "
+    "existence of this hedge is not.",
+    formula=(
+        "Var(spread) = (b_ttf x sigma_TTF)^2 + (b_eua x sigma_EUA)^2\n"
+        "              + 2 x b_ttf x b_eua x rho x sigma_TTF x sigma_EUA\n"
+        "                    ^^^^^^^^^^^^^^^ negative, so rho > 0 REDUCES the variance"
+    ),
+)
+_b1, _b2 = st.columns(2)
+_b1.metric("Sensitivity to TTF", f"{b_ttf:+.3f}", delta="per EUR/MWh of gas", delta_color="off")
+_b2.metric("Sensitivity to EUA", f"{b_eua:+.3f}", delta="per EUR/t of carbon", delta_color="off")
+
+# ===========================================================================
+# S3 — WHAT THE HEDGE WAS WORTH
+# ===========================================================================
+section(
+    "S3",
+    "Eight years of a working hedge, then 2026",
+    "The table below computes the spread's volatility twice each year: once as it actually "
+    "was, and once in a counterfactual where the two legs keep their own volatilities but "
+    "move independently. The gap between them is exactly what the carbon leg contributed "
+    "as a hedge.\n\n"
+    f"For eight years the answer is stable and material — a median "
+    f"**{abs(hedge.typical_dampening):.0%} of the spread's volatility removed**, reaching "
+    f"29% in 2024. Then {hedge.latest.year}: correlation {hedge.latest.rho:+.2f}, "
+    f"dampening {hedge.latest.dampening:+.0%}. The hedge is simply gone.",
+    formula="dampening = vol(actual) / vol(if independent) - 1",
+)
+_hedge_table = hedge.to_frame()
+_hedge_fig = go.Figure()
+_hedge_fig.add_trace(
+    go.Bar(
+        x=_hedge_table.index.astype(str), y=_hedge_table["dampening"],
+        marker_color=[
+            "crimson" if v >= -0.02 else "rgba(120,120,120,0.6)"
+            for v in _hedge_table["dampening"]
+        ],
+        text=[f"{v:.0%}" for v in _hedge_table["dampening"]], textposition="outside",
+    )
+)
+_hedge_fig.update_layout(
+    title="Share of switching-spread volatility removed by the gas-carbon correlation",
+    yaxis_title="dampening (negative = hedge working)", yaxis_tickformat=".0%",
+    height=400, margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
+)
+show(_hedge_fig)
+st.dataframe(
+    _hedge_table.rename(columns={
+        "rho": "correlation", "vol_actual": "vol actual (EUR/MWh)",
+        "vol_if_independent": "vol if independent",
+    }).style.format({
+        "correlation": "{:+.3f}", "vol actual (EUR/MWh)": "{:.1f}",
+        "vol if independent": "{:.1f}", "dampening": "{:+.0%}", "n": "{:.0f}",
+    }),
+    width="stretch",
+)
+finding(hedge.headline)
+
+# ===========================================================================
+# S4 — THE ATTRIBUTION
+# ===========================================================================
+section(
+    "S4",
+    "The part worth trading is not the biggest part",
+    "Spread volatility rose sharply into 2026, and most of that is not news: TTF's own "
+    "volatility roughly doubled, which is in every market report written this year. "
+    "Holding 2026's individual volatilities and swapping in 2025's correlation isolates "
+    "what the lost hedge cost on its own.\n\n"
+    f"**{1 - attribution.correlation_share:.0%} of the increase is individual "
+    f"volatilities. {attribution.correlation_share:.0%} is the collapsed correlation.** "
+    "The second number is the smaller one, and it is the only one a risk model carrying a "
+    "historical rho will miss — because nothing in that model changes when a correlation "
+    "silently goes to zero.\n\n"
+    f"On an at-the-money switching option, near-linear in volatility, that omission is "
+    f"worth **{attribution.option_value_uplift:+.0%}**. A dual-fuel fleet valued on a "
+    "historical correlation, a tolling agreement priced off one, or any book carrying gas "
+    "and EUA together under a stale covariance matrix — all three are wrong by roughly "
+    "that much, in the same direction, with no error anywhere on screen.",
+    formula="counterfactual = vol(2026 sigmas, 2025 rho)",
+)
+_t1, _t2, _t3 = st.columns(3)
+_t1.metric(f"Spread vol {attribution.year_from}", f"{attribution.vol_from:.0f} EUR/MWh")
+_t2.metric(
+    f"{attribution.year_to} at {attribution.year_from} correlation",
+    f"{attribution.vol_counterfactual:.0f}",
+    delta="volatilities only", delta_color="off",
+)
+_t3.metric(
+    f"Spread vol {attribution.year_to} actual", f"{attribution.vol_to:.0f}",
+    delta=f"{attribution.correlation_part:+.0f} from the lost hedge",
+)
+finding(attribution.headline)
+diagnostic_note(
+    "**Read the split honestly.** This page is not claiming the correlation is the main "
+    "driver of 2026 spread volatility — it plainly is not, gas is. The claim is narrower "
+    "and, for a book, more useful: the correlation term is the one that moves without "
+    "anyone noticing. A doubling of gas volatility gets re-marked immediately; a "
+    "correlation parameter set from history does not get re-marked at all."
+)
+
+# ===========================================================================
+# S5 — RULING OUT THE OBVIOUS CAUSE
+# ===========================================================================
+section(
+    "S5",
+    "It is not that the coal fleet ran out of room",
+    "The reflex explanation for a broken gas-carbon link is saturation: if every available "
+    "coal unit is already running, dearer gas cannot start another one, so the "
+    "transmission channel is exhausted. It is the right hypothesis to test first, and the "
+    "data rejects it.\n\n"
+    "Saturation requires sitting **deep** above the switching level, not merely above it. "
+    "The two years with nearly identical depth profiles have opposite correlations — and "
+    "2022, the sample's other negative year, is the only genuinely saturated one.\n\n"
+    "Nor is it a structural decline in the European coal fleet: **2024 has the strongest "
+    "correlation in the whole sample**, at +0.70, which is late in that decline. Whatever "
+    "changed in 2026 did not change gradually.",
+)
+st.dataframe(
+    depth.rename(columns={
+        "share_above": "share above switch", "median_distance": "median depth",
+        "share_deep": "share beyond +40%", "rho": "correlation",
+    }).style.format({
+        "share above switch": "{:.0%}", "median depth": "{:+.0%}",
+        "share beyond +40%": "{:.0%}", "correlation": "{:+.3f}", "n": "{:.0f}",
+    }),
+    width="stretch",
+)
+scope_note(
+    "2018 sat above the switching level 87% of the time at a median depth of +7%, with "
+    "**zero** days beyond +40% — and carbon tracked gas at +0.38. 2026 sits above 63% of "
+    "the time at a median depth of +9%, with 1% of days beyond +40% — and the correlation "
+    "is -0.09. Same room to switch, opposite transmission. Saturation is not the answer."
+)
+
+# ===========================================================================
+# S6 — THE TRANSMISSION FAILURE
+# ===========================================================================
+section(
+    "S6",
+    "A crisis-sized gas shock happened and carbon did not take it",
+    "A correlation can be dragged around by quiet days, so the cleanest version of the "
+    "question is non-parametric: take each year's largest moves in gas and count how often "
+    "carbon moved the same way that day. These are precisely the days on which the "
+    "switching channel would have to be working.",
+)
+_trans = transmission.table
+_trans_fig = go.Figure()
+_trans_fig.add_trace(
+    go.Bar(
+        x=_trans.index.astype(str), y=_trans["same_sign"],
+        marker_color=[
+            "crimson" if v < 5 else "rgba(120,120,120,0.6)" for v in _trans["same_sign"]
+        ],
+        text=[f"{int(v)}/{int(n)}" for v, n in zip(_trans["same_sign"], _trans["n_shocks"])],
+        textposition="outside",
+    )
+)
+_trans_fig.update_layout(
+    title=f"Carbon moving the same way as gas, on each year's {transmission.n_shocks} largest gas shocks",
+    yaxis_title="same-direction days", yaxis_range=[0, 11],
+    height=380, margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
+)
+show(_trans_fig)
+finding(transmission.headline)
+
+st.divider()
+st.markdown(
+    "### The ceiling test this page was built on\n\n"
+    "The sections that follow predate the trade above and are kept because they "
+    "**constrain** it. They establish that the switching *level* is not identified — it "
+    "depends on two plant efficiencies no exchange quotes — while the *sensitivities* used "
+    "in S2 are definitional. That distinction is what lets the hedge result stand on "
+    "ground the level result cannot."
+)
+
+# ===========================================================================
+# S7
+# ===========================================================================
+section(
+    "S7",
     "The belief is old; the level and the test are not",
     "Every power desk in Europe knows the shape of this idea: push gas expensive enough "
     "relative to coal-plus-carbon and generation switches fuel, which should cap TTF's "
@@ -212,7 +444,7 @@ scope_note(
 # S2 — THE HONEST TEST
 # ===========================================================================
 section(
-    "S2",
+    "S8",
     "Why the regression has to skip nineteen days out of twenty",
     f"Regressing TTF's {horizon}-day forward return on daily distance from the switching "
     f"level reuses the same {horizon}-day outcome on every one of the {horizon} consecutive "
@@ -244,7 +476,7 @@ scope_note(
 # S3 — THE RESULT
 # ===========================================================================
 section(
-    "S3",
+    "S9",
     "The regression is biased toward its own conclusion, and by how much",
     "Before the coefficient can be read, one objection has to be settled, and it is not a "
     "generic one — it is specific to this regressor and it points the same way as the "
@@ -289,7 +521,7 @@ diagnostic_note(
 # S4 — the mechanism-specific prediction
 # ===========================================================================
 section(
-    "S4",
+    "S10",
     "The test a mean-reversion story cannot pass",
     "Surviving a bias correction says the relationship is there; it does not say it is "
     "*switching*. The trailing-median placebo in S3's predecessor is a weak discriminator, "
@@ -306,7 +538,7 @@ section(
 if asymmetry is None:
     scope_note(
         f"**The asymmetry test cannot run at these settings.** {asymmetry_reason}.\n\n"
-        "This is the efficiency-identification problem from S5 biting operationally: at "
+        "This is the efficiency-identification problem from S11 biting operationally: at "
         "an extreme efficiency pair the switching level moves far enough that almost "
         "every day lands on one side of it, and a test that compares the two sides has "
         "nothing to compare. Move the efficiency sliders back toward the middle of their "
@@ -333,7 +565,7 @@ else:
 # S5 — the unifying result
 # ===========================================================================
 section(
-    "S5",
+    "S11",
     "The efficiencies decide where the line is, and nothing about what it predicts",
     "This project began as a complaint that the switching level is unknowable — it depends "
     "on two plant efficiencies no exchange quotes. That complaint is entirely correct, and "
@@ -373,7 +605,7 @@ finding(invariance.headline)
 # S6 — the honest negative
 # ===========================================================================
 section(
-    "S6",
+    "S12",
     "And the switching arithmetic is not what does the predicting",
     "If the efficiencies cannot matter, the natural next question is whether any of the "
     "construction matters. The competitor is deliberately crude: distance from **raw "
@@ -399,7 +631,7 @@ finding(encompassing.headline)
 # S7 — where the evidence actually comes from
 # ===========================================================================
 section(
-    "S7",
+    "S13",
     "Where the evidence comes from, and what would overturn it",
     "Split by period, the result is not evenly supported. The calm pre-crisis years do not "
     "carry it on their own; the crisis and its aftermath do. On a sample this small that "
@@ -426,10 +658,10 @@ diagnostic_note(
 )
 
 # ===========================================================================
-# S8
+# S14
 # ===========================================================================
 section(
-    "S8",
+    "S14",
     "The project this replaces",
     "This engine was originally built around the API2 − API4 arb — Rotterdam against "
     "Richards Bay — and the thesis that the marginal South African tonne stopped pricing "
@@ -440,15 +672,25 @@ section(
 )
 
 mail_question(
-    "Testing the coal-switching ceiling on non-overlapping windows, correcting the "
-    "Stambaugh bias that this particular regressor is exposed to, the effect survives at "
-    f"p = {boot.p_value:.3f} and it is one-sided in the direction the physics requires — "
-    "above the switch it predicts, below it nothing. But two things do not survive: the "
-    "specific efficiency pair is provably irrelevant to the prediction, and raw thermal "
-    "parity with no carbon price in it at all predicts just as well. So the data says "
-    "there is a ceiling and cannot say it is a *switching* ceiling. Does your desk use the "
-    "switching level as a level — where to place a trade — or as a signal for when to "
-    "place it? Because on this evidence it can support one of those and not the other.",
+    "Inside the coal-gas switching spread, gas and carbon enter with opposite signs, so a "
+    "positive correlation is a natural hedge on the spread's volatility. From 2018 to 2025 "
+    "it removed a median 12% of that volatility and as much as 29%. In 2026 the "
+    "correlation collapsed to zero and the dampening went with it — on an ATM switching "
+    "option that is roughly 11% of value, and it is the one input a risk model carrying a "
+    "historical rho never re-marks.\n\n"
+    "I tested the obvious cause and I do not think it holds. Saturation would need the "
+    "fleet sitting deep above the switching level, and 2026 sits at a median +9% with 1% "
+    "of days beyond +40% — almost exactly 2018's profile, when carbon tracked gas at "
+    "+0.38. A structural coal decline does not fit either, since 2024 is the strongest "
+    "correlation in the sample. On the ten largest gas shocks of 2026 carbon moved the "
+    "same way 3 times, against 7 to 9 in every normal year.\n\n"
+    "So a crisis-sized gas shock happened and the carbon market did not take it. Is that "
+    "the Q1 LNG and weather moves being read as transient, so no implication for annual "
+    "emissions? Is the generation stack hedged far enough forward that spot gas no longer "
+    "changes near-term burn? Or has carbon simply been trading on its own calendar since "
+    "January — CBAM's definitive regime, the cap and MSR reform? And separately: has the "
+    "spread-option market repriced for this, or is correlation still being marked off "
+    "history?",
     "European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal), "
     "utility fuel procurement, carbon desks",
 )

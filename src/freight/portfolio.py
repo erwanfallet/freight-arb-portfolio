@@ -87,37 +87,41 @@ FREIGHT_PROJECTS: list[Project] = [
         id="coal",
         code="B",
         tier=TIER_FREIGHT,
-        title="The switching ceiling predicts, and the efficiencies it is built on cannot",
+        title="The carbon hedge inside the switching spread, and its disappearance",
         thesis=(
-            "Distance from the coal-switching level does predict TTF's next 20 days — "
-            "one-sided in the direction the physics requires, and surviving the Stambaugh "
-            "bias this regressor is unusually exposed to. But the unpublished efficiency "
-            "pair that supposedly defines the level is PROVABLY irrelevant to that "
-            "prediction, and raw thermal parity with no carbon price in it predicts just "
-            "as well."
+            "A dual-fuel generator owns an option to switch, and an option is priced off "
+            "volatility. Inside that spread gas and carbon enter with OPPOSITE signs, so a "
+            "positive correlation removes volatility — a natural hedge worth a median 12% "
+            "of it, up to 29%, for eight straight years. In 2026 the correlation collapsed "
+            "to zero and the hedge went with it, repricing an ATM switching option by ~11% "
+            "with nothing flagging an error."
         ),
         disagreement=(
-            "Tested, not inferred, and the test cuts against its own construction. The "
-            "regressor contains TTF in its numerator, so OLS is biased toward the finding: "
-            "a Nelson-Kim bootstrap puts the honest p-value at 0.018 against ~0.001 read "
-            "naively. What survives is one-sided (above the switch t = -2.6, below it "
-            "nothing) — which mean reversion cannot mimic. What does not survive is the "
-            "arithmetic itself: across the whole efficiency grid the level swings 30 to 47 "
-            "EUR/MWh and the share of days above it 16% to 75%, while the t-statistic "
-            "moves 0.03, because the efficiencies enter only affinely and a t-statistic is "
-            "invariant under an affine map."
+            "Tested, and the obvious explanation is rejected rather than assumed. The "
+            "reflex answer to a broken gas-carbon link is saturation — every coal unit "
+            "already running, so dearer gas cannot start another. MEASURED: 2018 sat above "
+            "the switching level 87% of the time at a median depth of +7% with ZERO days "
+            "beyond +40%, and carbon tracked gas at +0.38. 2026 sits above 63% of the time "
+            "at +9% median depth with 1% deep — nearly identical room to switch, opposite "
+            "transmission. Nor is it a structural coal decline: 2024 has the sample's "
+            "strongest correlation at +0.70. On the ten largest gas shocks of 2026 carbon "
+            "moved the same way 3 times, against 7 to 9 in every normal year."
         ),
         pivot=(
-            "The same efficiency grid moving the level by 45% and the prediction by "
-            "nothing — two functionals of one object, one unidentified and one immune"
+            "84% of the 2026 volatility rise is gas and everyone re-marks it; 16% is the "
+            "lost correlation hedge and nobody does — that 16% is the whole trade"
         ),
         mail_question=(
-            "The data says there is a ceiling and cannot say it is a *switching* ceiling: "
-            "the efficiency pair is provably irrelevant to the prediction, and raw thermal "
-            "parity predicts as well as the full carbon-inclusive level. Does your desk "
-            "use the switching level as a level — where to place a trade — or as a signal "
-            "for when to place it? Because on this evidence it can support one of those "
-            "and not the other."
+            "The gas-carbon correlation is a natural hedge on the switching spread's "
+            "volatility, worth a median 12% and up to 29% from 2018 to 2025. In 2026 it "
+            "collapsed to zero — roughly 11% of an ATM switching option, and the one input "
+            "a risk model carrying a historical rho never re-marks. Saturation does not "
+            "explain it (2026 has 2018's depth profile and the opposite correlation) and "
+            "nor does a structural coal decline (2024 is the strongest in the sample). So "
+            "a crisis-sized gas shock happened and carbon did not take it: transient Q1 "
+            "LNG and weather, forward hedging that decouples spot gas from near-term burn, "
+            "or carbon trading its own calendar since CBAM went definitive? And has the "
+            "spread-option market repriced, or is correlation still marked off history?"
         ),
         targets="European power and gas desks (Uniper, RWE, EDF Trading, Vitol, Glencore coal)",
         data_gate=GATE_NONE,
@@ -134,7 +138,7 @@ FREIGHT_PROJECTS: list[Project] = [
         dashboard_page="pages/2_Coal_Gas_Switching.py",
         chain_module="freight.chains.coal",
         data_mode=DATA_REAL,
-        n_tests=24,
+        n_tests=33,
     ),
     Project(
         id="products",

@@ -1,56 +1,74 @@
-"""Project B — the switching ceiling predicts, and the efficiencies it is built on do not.
+"""Project B — the carbon hedge inside the switching spread, and its disappearance.
 
-THESIS
-------
-Every European power desk knows the shape of the idea: when gas gets expensive enough
-relative to coal-plus-carbon, generators burn coal instead, gas demand eases, and TTF's
-upside is capped. The belief is old. Two things about it are not:
+THE ASSET
+---------
+A generator holding both a coal unit and a CCGT owns an option to switch between them.
+An option is priced off VOLATILITY, not level — so what values that asset is the
+volatility of the coal-minus-gas generation spread. Written out, the two market legs
+enter that spread with **opposite signs**:
 
-1. **The level is not identified.** The switching price is a property of two plant
-   efficiencies no exchange quotes. Across the plausible pair, the level swings from
-   ~30 to ~47 EUR/MWh and the share of days sitting "above the switch" swings from 16%
-   to 75% — the same fuel prices, the same carbon price, and the opposite diagnosis.
+    spread = coal_cost - gas_cost
+           = const - (1/eta_gas) x TTF + (EF_coal/eta_coal - EF_gas/eta_gas) x EUA
 
-2. **The prediction is identified, and it does not need the level.** Distance from the
-   switching level does predict TTF's next 20 days. But the t-statistic is invariant
-   across that entire efficiency grid (−3.02 to −3.05), and the elaborate calculation
-   adds nothing measurable over a naive thermal-parity anchor that has no efficiencies
-   and no carbon price in it at all (F = 1.17, p = 0.28).
+    Var(spread) = (b_ttf x sigma_ttf)^2 + (b_eua x sigma_eua)^2
+                  + 2 x b_ttf x b_eua x rho x sigma_ttf x sigma_eua
 
-**Those two facts are the same fact, and the reason is algebraic rather than empirical.**
-Writing λ = η_gas/η_coal, the switching level collapses to
+with `b_ttf < 0 < b_eua`, so a **positive correlation SUBTRACTS from the variance**.
+Carbon is a natural hedge for gas inside this particular spread. That is algebra rather
+than an empirical regularity: across the whole plausible efficiency grid `b_ttf` runs
+-2.000 to -1.667 and `b_eua` runs +0.410 to +0.611, and the signs never cross.
 
-    ttf* = λ·(coal_th + EUA·EF_coal) − EUA·EF_gas
+THE TRADE
+---------
+From 2018 to 2025 the gas-carbon correlation ran +0.30 to +0.70 and removed a median
+**12%** of the spread's volatility, up to 29% in 2024. In 2026 it collapsed to zero — a
+95% interval spanning zero, against +0.48 the year before, a break significant at
+p < 0.00001 — and the dampening went with it.
 
-which is *affine in λ* — verified to machine precision in `efficiency_invariance()`. The
-nine distance measures across the grid correlate 0.997 to 1.000, and an OLS t-statistic
-is invariant under affine rescaling of its regressor. So the efficiencies decide
-everything about **where the line sits** and nothing about **what the line predicts**.
-That is not luck, and it cannot be fixed by better efficiency estimates.
+**The part worth trading is not the biggest part.** Spread volatility rose 175% into
+2026, and 84% of that is TTF's own volatility doubling, which is in every market report.
+Only 16% is the lost correlation hedge. But a risk model carrying rho at its historical
++0.4 misses exactly that 16%: it understates spread volatility by ~20% and an
+at-the-money switching option by **~11%**, with nothing anywhere flagging an error.
+`natural_hedge()`, `dampening_attribution()`.
 
-WHAT SURVIVES AS A RESULT, AND AT WHAT STRENGTH
-------------------------------------------------
-The predictive claim is fragile in exactly the way predictive regressions usually are,
-and the page reports the corrections rather than the raw t-stat:
+WHY THE OBVIOUS EXPLANATION IS WRONG
+------------------------------------
+The reflex answer is saturation: if every coal unit is already running, dearer gas cannot
+start another one and the transmission channel is exhausted. `switching_depth_profile()`
+rules it out. 2018 sat above the switching level 87% of the time at a median depth of
++7%, with **zero** days beyond +40% — and carbon tracked gas at rho = +0.38. 2026 sits
+above 63% of the time at a median depth of +9%, with 1% of days beyond +40%. Nearly
+identical depth, opposite correlation. Only 2022 was genuinely saturated (61% of days
+beyond +40%), and it is the sample's other negative year.
 
-* **Stambaugh bias is material and points the same way as the finding.** The regressor
-  contains TTF in its numerator, so its innovations correlate +0.78 with the return
-  being predicted, and it is persistent (ρ = 0.79). That biases OLS *downward* — toward
-  the negative coefficient this page reports. `stambaugh_diagnostics()` measures it at
-  13% of the coefficient; a Nelson–Kim bootstrap under H0 puts the honest p-value at
-  **0.018**, against ~0.001 read naively off the t-stat. An order of magnitude of the
-  apparent significance was bias.
-* **It is not an artefact of where the non-overlapping sample starts.** All twenty
-  phases of `iloc[::20]` give a negative coefficient and nineteen are significant.
-* **It is asymmetric in the direction the mechanism requires** (`asymmetry_test()`):
-  above the switch, β = −0.185 (t = −2.62); below it, nothing (t = −0.65). Generic mean
-  reversion pulls symmetrically from both sides and cannot produce that.
-* **It is concentrated in the crisis and after** — 2018-2020 alone gives t = −1.13. On
-  110 non-overlapping windows, a large part of the evidence is the 2022 episode.
+Nor is it a structural decline in the European coal fleet: 2024 has the **strongest**
+correlation in the whole sample at +0.70.
 
-So: the ceiling is real, weaker than it first looks, mechanism-shaped in its asymmetry,
-and **not evidence for the specific switching arithmetic** — only for gas being dear
-against coal in raw thermal terms.
+What is left is a transmission failure rather than an exhausted mechanism.
+`transmission_test()` puts it non-parametrically: on each year's ten largest gas moves,
+carbon moved the same way 7 to 9 times in seven of nine years, and **3 times in 2026**.
+A crisis-sized gas shock happened and the carbon market did not take it. Why that is —
+Q1 LNG and weather shocks read as transient, forward hedging that decouples spot gas
+from near-term generation, or a carbon market driven since January by CBAM's definitive
+regime and cap reform — is not answerable from price data alone, and is the question the
+page ends on.
+
+THE CEILING TEST THAT CAME FIRST
+--------------------------------
+The sections below predate the trade above and are kept because they constrain it. The
+switching LEVEL is not identified — it depends on two plant efficiencies no exchange
+quotes, and across the plausible pair the level swings ~30 to ~47 EUR/MWh while the share
+of days above it swings 16% to 75%. Distance from that level does predict TTF's next 20
+days, but the t-statistic is invariant across the entire efficiency grid (-3.02 to -3.05)
+because the efficiencies enter only affinely and a t-statistic is invariant under an
+affine map; and a naive thermal-parity anchor with no carbon price in it predicts just as
+well (F = 1.17, p = 0.28). The predictive claim also survives its own Stambaugh bias only
+at p = 0.018 against ~0.001 read naively.
+
+That matters for the trade: **the level is unidentified, the sensitivities are not.**
+`b_ttf` and `b_eua` are definitional, so the hedge result does not inherit the level's
+identification problem.
 
 WHAT THIS REPLACES
 -------------------
@@ -1082,3 +1100,380 @@ def subperiod_stability(
     if not rows:
         raise ValueError("no sub-period has enough non-overlapping windows to regress")
     return pd.DataFrame(rows).set_index("period")
+
+
+# ===========================================================================
+# THE TRADE — what a dual-fuel generator owns, and the hedge that vanished
+# ===========================================================================
+# A generator holding both a coal unit and a CCGT owns an option to switch between them.
+# An option is worth its VOLATILITY, not its level — so what prices that asset is the
+# volatility of the coal-minus-gas generation spread, and that volatility has a term in it
+# that almost nobody re-estimates.
+#
+# Writing the spread out, the two market legs enter with OPPOSITE SIGNS:
+#
+#     spread = coal_cost - gas_cost
+#            = const - (1/eta_gas) x TTF + (EF_coal/eta_coal - EF_gas/eta_gas) x EUA
+#
+# so
+#
+#     Var(spread) = (b_ttf x sigma_ttf)^2 + (b_eua x sigma_eua)^2
+#                   + 2 x b_ttf x b_eua x rho x sigma_ttf x sigma_eua
+#                                          ^^^ b_ttf < 0 < b_eua, so a POSITIVE rho
+#                                              SUBTRACTS from the variance
+#
+# Carbon is a natural hedge for gas inside this particular spread. That is algebra, not an
+# empirical regularity: across the whole plausible efficiency grid b_ttf runs -2.000 to
+# -1.667 and b_eua runs +0.410 to +0.611, and the signs never cross.
+#
+# WHAT THE HEDGE WAS WORTH, AND WHAT HAPPENED TO IT. From 2018 to 2025 the gas-carbon
+# correlation ran +0.30 to +0.70 and removed 9 % to 29 % of the spread's volatility. In
+# 2026 it collapsed to zero (95 % interval spanning zero) and the dampening went with it.
+#
+# THE PART WORTH TRADING IS NOT THE BIGGEST PART. Spread volatility rose 175 % into 2026,
+# and 84 % of that is simply TTF's own volatility doubling — which is in every market
+# report. Only 16 % is the lost correlation hedge. But a risk model carrying rho at its
+# historical +0.4 misses exactly that 16 %: it understates spread volatility by ~20 % and
+# an at-the-money switching option by ~11 %, with nothing anywhere flagging an error.
+
+SHOCK_COUNT_FOR_TRANSMISSION = 10
+
+
+def spread_betas(
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+) -> tuple[float, float]:
+    """(b_ttf, b_eua): the spread's exact sensitivities to the two market legs.
+
+    Derived by differentiating `generation_cost_eur_mwh_e`'s spread, so these are
+    definitional rather than estimated — there is no residual and no standard error.
+    """
+    for efficiency, label in ((coal_efficiency, "coal"), (gas_efficiency, "gas")):
+        if not 0.20 < efficiency < 0.70:
+            raise ValueError(f"{label} efficiency outside the plausible range: {efficiency}")
+    b_ttf = -1.0 / gas_efficiency
+    b_eua = EF_COAL_T_PER_MWH_TH / coal_efficiency - EF_GAS_T_PER_MWH_TH / gas_efficiency
+    return b_ttf, b_eua
+
+
+@dataclass(frozen=True)
+class DampeningYear:
+    """One year of the natural hedge: the spread's volatility with and without rho."""
+
+    year: int
+    rho: float
+    vol_actual: float
+    vol_if_independent: float
+    n_obs: int
+
+    @property
+    def dampening(self) -> float:
+        """Negative means the correlation REMOVED volatility from the spread."""
+        if self.vol_if_independent <= 0:
+            return float("nan")
+        return self.vol_actual / self.vol_if_independent - 1.0
+
+
+@dataclass(frozen=True)
+class NaturalHedge:
+    """The carbon-hedges-gas effect, measured year by year on the real spread."""
+
+    years: tuple[DampeningYear, ...]
+
+    def to_frame(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "year": y.year,
+                    "rho": y.rho,
+                    "vol_actual": y.vol_actual,
+                    "vol_if_independent": y.vol_if_independent,
+                    "dampening": y.dampening,
+                    "n": y.n_obs,
+                }
+                for y in self.years
+            ]
+        ).set_index("year")
+
+    @property
+    def hedged_years(self) -> tuple[DampeningYear, ...]:
+        """Years where the correlation was meaningfully positive — the hedge working."""
+        return tuple(y for y in self.years if y.rho > 0.2)
+
+    @property
+    def typical_dampening(self) -> float:
+        hedged = self.hedged_years
+        if not hedged:
+            return float("nan")
+        return float(np.median([y.dampening for y in hedged]))
+
+    @property
+    def latest(self) -> DampeningYear:
+        return self.years[-1]
+
+    @property
+    def headline(self) -> str:
+        hedged = self.hedged_years
+        worst = min(y.dampening for y in hedged)
+        return (
+            f"In the {len(hedged)} years where the gas-carbon correlation was positive it "
+            f"removed a median {abs(self.typical_dampening):.0%} of the switching spread's "
+            f"volatility, and as much as {abs(worst):.0%}. In "
+            f"{self.latest.year} the correlation is {self.latest.rho:+.2f} and the "
+            f"dampening is {self.latest.dampening:+.0%} — the hedge is gone."
+        )
+
+
+def natural_hedge(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+    min_obs: int = 50,
+    trading_days: int = 252,
+) -> NaturalHedge:
+    """Year-by-year volatility of the switching spread, with and without the correlation.
+
+    `vol_if_independent` is the counterfactual where the two legs move with the same
+    individual volatilities but no correlation at all — so the gap between the two columns
+    is exactly what the carbon leg was contributing as a hedge.
+    """
+    b_ttf, b_eua = spread_betas(
+        coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+    )
+    changes = frame[["ttf_eur_mwh", "eua_eur_t"]].diff().dropna()
+    scale = float(np.sqrt(trading_days))
+
+    years = []
+    for year, group in changes.groupby(changes.index.year):
+        if len(group) < min_obs:
+            continue
+        sigma_t = float(group["ttf_eur_mwh"].std())
+        sigma_e = float(group["eua_eur_t"].std())
+        rho = float(group["ttf_eur_mwh"].corr(group["eua_eur_t"]))
+        var_independent = (b_ttf * sigma_t) ** 2 + (b_eua * sigma_e) ** 2
+        var_actual = var_independent + 2 * b_ttf * b_eua * rho * sigma_t * sigma_e
+        years.append(
+            DampeningYear(
+                year=int(year),
+                rho=rho,
+                vol_actual=float(np.sqrt(max(var_actual, 0.0)) * scale),
+                vol_if_independent=float(np.sqrt(var_independent) * scale),
+                n_obs=int(len(group)),
+            )
+        )
+    if len(years) < 2:
+        raise ValueError("need at least two years to measure the hedge")
+    return NaturalHedge(years=tuple(years))
+
+
+@dataclass(frozen=True)
+class DampeningAttribution:
+    """Split a change in spread volatility into individual vols and the correlation.
+
+    The counterfactual holds the destination year's individual volatilities and swaps in
+    the origin year's correlation, so `correlation_part` is what the lost hedge cost on
+    its own — the term a risk model carrying a historical rho would silently miss.
+    """
+
+    year_from: int
+    year_to: int
+    vol_from: float
+    vol_to: float
+    vol_counterfactual: float
+    rho_from: float
+    rho_to: float
+
+    @property
+    def total_change(self) -> float:
+        return self.vol_to - self.vol_from
+
+    @property
+    def volatility_part(self) -> float:
+        return self.vol_counterfactual - self.vol_from
+
+    @property
+    def correlation_part(self) -> float:
+        return self.vol_to - self.vol_counterfactual
+
+    @property
+    def correlation_share(self) -> float:
+        return self.correlation_part / self.total_change if self.total_change else float("nan")
+
+    @property
+    def option_value_uplift(self) -> float:
+        """An ATM option is near-linear in volatility, so this is the mispricing a stale
+        correlation produces on a switching option."""
+        if self.vol_counterfactual <= 0:
+            return float("nan")
+        return self.vol_to / self.vol_counterfactual - 1.0
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Spread volatility went from {self.vol_from:.0f} to {self.vol_to:.0f} EUR/MWh "
+            f"between {self.year_from} and {self.year_to}, a {self.vol_to / self.vol_from - 1:+.0%} "
+            f"move. Individual volatilities account for {self.volatility_part:+.0f} of it "
+            f"({1 - self.correlation_share:.0%}) and the collapsed correlation for "
+            f"{self.correlation_part:+.0f} ({self.correlation_share:.0%}). The second term "
+            f"is the smaller one and the only one a stale rho hides: it lifts an ATM "
+            f"switching option by {self.option_value_uplift:+.0%} with nothing flagging it."
+        )
+
+
+def dampening_attribution(
+    frame: pd.DataFrame,
+    *,
+    year_from: int,
+    year_to: int,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+    trading_days: int = 252,
+) -> DampeningAttribution:
+    """How much of a change in spread volatility is the correlation rather than the legs."""
+    b_ttf, b_eua = spread_betas(
+        coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+    )
+    changes = frame[["ttf_eur_mwh", "eua_eur_t"]].diff().dropna()
+    scale = float(np.sqrt(trading_days))
+
+    def stats(year: int) -> tuple[float, float, float]:
+        group = changes[changes.index.year == year]
+        if len(group) < 30:
+            raise ValueError(f"only {len(group)} observations in {year}")
+        return (
+            float(group["ttf_eur_mwh"].std()),
+            float(group["eua_eur_t"].std()),
+            float(group["ttf_eur_mwh"].corr(group["eua_eur_t"])),
+        )
+
+    def vol(sigma_t: float, sigma_e: float, rho: float) -> float:
+        variance = (
+            (b_ttf * sigma_t) ** 2
+            + (b_eua * sigma_e) ** 2
+            + 2 * b_ttf * b_eua * rho * sigma_t * sigma_e
+        )
+        return float(np.sqrt(max(variance, 0.0)) * scale)
+
+    sigma_t_from, sigma_e_from, rho_from = stats(year_from)
+    sigma_t_to, sigma_e_to, rho_to = stats(year_to)
+    return DampeningAttribution(
+        year_from=year_from,
+        year_to=year_to,
+        vol_from=vol(sigma_t_from, sigma_e_from, rho_from),
+        vol_to=vol(sigma_t_to, sigma_e_to, rho_to),
+        vol_counterfactual=vol(sigma_t_to, sigma_e_to, rho_from),
+        rho_from=rho_from,
+        rho_to=rho_to,
+    )
+
+
+@dataclass(frozen=True)
+class TransmissionTest:
+    """Do the biggest gas shocks of each year reach the carbon price at all?
+
+    Deliberately non-parametric: take each year's largest moves in TTF and count how often
+    EUA moved the same way that day. A correlation can be dragged around by quiet days;
+    this asks only about the days the switching channel would have to be working.
+    """
+
+    table: pd.DataFrame  # index=year, columns=same_sign, n_shocks, mean_abs_ttf
+    n_shocks: int
+
+    @property
+    def latest_year(self) -> int:
+        return int(self.table.index.max())
+
+    @property
+    def latest_same_sign(self) -> int:
+        return int(self.table.loc[self.latest_year, "same_sign"])
+
+    @property
+    def normal_years(self) -> pd.DataFrame:
+        return self.table[self.table["same_sign"] >= 7]
+
+    @property
+    def headline(self) -> str:
+        normal = self.normal_years
+        return (
+            f"On each year's {self.n_shocks} largest gas moves, carbon moved the same way "
+            f"{normal['same_sign'].min():.0f} to {normal['same_sign'].max():.0f} times in "
+            f"{len(normal)} of the {len(self.table)} years. In {self.latest_year} it moved "
+            f"the same way {self.latest_same_sign} times. A crisis-sized gas shock happened "
+            "and the carbon market did not take it."
+        )
+
+
+def transmission_test(
+    frame: pd.DataFrame,
+    *,
+    n_shocks: int = SHOCK_COUNT_FOR_TRANSMISSION,
+    min_obs: int = 50,
+) -> TransmissionTest:
+    """Count same-direction responses on each year's largest gas shocks."""
+    returns = np.log(frame[["ttf_eur_mwh", "eua_eur_t"]]).diff().dropna()
+    rows = []
+    for year, group in returns.groupby(returns.index.year):
+        if len(group) < min_obs:
+            continue
+        largest = group.reindex(
+            group["ttf_eur_mwh"].abs().sort_values(ascending=False).index
+        ).head(n_shocks)
+        rows.append(
+            {
+                "year": int(year),
+                "same_sign": int(
+                    ((largest["ttf_eur_mwh"] * largest["eua_eur_t"]) > 0).sum()
+                ),
+                "n_shocks": int(len(largest)),
+                "mean_abs_ttf": float(largest["ttf_eur_mwh"].abs().mean()),
+            }
+        )
+    if not rows:
+        raise ValueError("no year has enough observations for the transmission test")
+    return TransmissionTest(
+        table=pd.DataFrame(rows).set_index("year"), n_shocks=n_shocks
+    )
+
+
+def switching_depth_profile(
+    frame: pd.DataFrame,
+    *,
+    coal_efficiency: float = DEFAULT_COAL_EFFICIENCY,
+    gas_efficiency: float = DEFAULT_GAS_EFFICIENCY,
+    deep_threshold: float = 0.40,
+    min_obs: int = 50,
+) -> pd.DataFrame:
+    """How far above the switching level each year sat — the saturation story's own test.
+
+    Saturation is the obvious explanation for a broken gas-carbon link: if every coal unit
+    is already running, more expensive gas cannot start another one. This table is what
+    rules it out. A year can only be saturated if it sat DEEP above the switching level,
+    and comparing years with the same depth but different correlations settles it.
+    """
+    switch = switch_ttf_eur_mwh(
+        frame, coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+    )
+    distance = switching_distance_pct(frame, switch)
+    changes = frame[["ttf_eur_mwh", "eua_eur_t"]].diff()
+    joined = pd.concat(
+        {"distance": distance, "dttf": changes["ttf_eur_mwh"], "deua": changes["eua_eur_t"]},
+        axis=1,
+    ).dropna()
+
+    rows = []
+    for year, group in joined.groupby(joined.index.year):
+        if len(group) < min_obs:
+            continue
+        rows.append(
+            {
+                "year": int(year),
+                "share_above": float((group["distance"] > 0).mean()),
+                "median_distance": float(group["distance"].median()),
+                "share_deep": float((group["distance"] > deep_threshold).mean()),
+                "rho": float(group["dttf"].corr(group["deua"])),
+                "n": int(len(group)),
+            }
+        )
+    return pd.DataFrame(rows).set_index("year")

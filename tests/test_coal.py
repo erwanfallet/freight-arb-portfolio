@@ -422,3 +422,147 @@ def test_asymmetry_refuses_a_one_sided_sample():
     )
     with pytest.raises(ValueError, match="too few windows"):
         asymmetry_test(frame, switch_ttf_eur_mwh(frame))
+
+
+# ===========================================================================
+# THE TRADE — the carbon hedge inside the switching spread
+# ===========================================================================
+# `test_the_two_betas_always_have_opposite_signs` is the one that may never be weakened:
+# the entire trade rests on the cross term being negative, and if the signs ever agreed
+# a positive correlation would AMPLIFY spread volatility instead of damping it.
+from freight.chains.coal import (  # noqa: E402
+    COAL_EFFICIENCY_RANGE,
+    GAS_EFFICIENCY_RANGE,
+    dampening_attribution,
+    natural_hedge,
+    spread_betas,
+    switching_depth_profile,
+    transmission_test,
+)
+
+
+def test_the_two_betas_always_have_opposite_signs():
+    """Structural, across the whole plausible efficiency grid.
+
+        b_ttf = -1/eta_gas                       < 0 always
+        b_eua = EF_coal/eta_coal - EF_gas/eta_gas
+
+    b_eua stays positive because coal emits far more per MWh of electricity than gas even
+    at coal's best efficiency and gas's worst: 0.34/0.42 = 0.810 > 0.20/0.50 = 0.400.
+    """
+    for coal_efficiency in (COAL_EFFICIENCY_RANGE[0], 0.38, COAL_EFFICIENCY_RANGE[1]):
+        for gas_efficiency in (GAS_EFFICIENCY_RANGE[0], 0.55, GAS_EFFICIENCY_RANGE[1]):
+            b_ttf, b_eua = spread_betas(
+                coal_efficiency=coal_efficiency, gas_efficiency=gas_efficiency
+            )
+            assert b_ttf < 0 < b_eua, (coal_efficiency, gas_efficiency)
+            assert b_ttf * b_eua < 0
+
+
+def test_the_betas_are_the_hand_derived_values():
+    """At the default pair, differentiating the generation-cost identity by hand:
+    b_ttf = -1/0.55 = -1.818 and b_eua = 0.34/0.38 - 0.20/0.55 = 0.895 - 0.364 = 0.531."""
+    b_ttf, b_eua = spread_betas(coal_efficiency=0.38, gas_efficiency=0.55)
+    assert b_ttf == pytest.approx(-1.8182, abs=1e-3)
+    assert b_eua == pytest.approx(+0.5311, abs=1e-3)
+
+
+def test_spread_betas_reject_an_implausible_efficiency():
+    with pytest.raises(ValueError, match="outside the plausible range"):
+        spread_betas(gas_efficiency=0.95)
+
+
+def test_a_positive_correlation_reduces_spread_volatility():
+    """The trade's whole mechanism, on synthetic data where the correlation is imposed.
+
+    Two series with identical marginal volatilities, differing only in correlation: the
+    positively-correlated pair must produce the LOWER spread volatility.
+    """
+    rng = np.random.default_rng(0)
+    n = 1500
+    dates = _dates(n)
+    base = rng.normal(size=n)
+
+    def frame_with(rho: float) -> pd.DataFrame:
+        other = rho * base + np.sqrt(1 - rho**2) * rng.normal(size=n)
+        return pd.DataFrame(
+            {
+                "ttf_eur_mwh": 40 + np.cumsum(base) * 0.1,
+                "eua_eur_t": 70 + np.cumsum(other) * 0.1,
+            },
+            index=dates,
+        )
+
+    hedged = natural_hedge(frame_with(0.8), min_obs=100)
+    independent = natural_hedge(frame_with(0.0), min_obs=100)
+    assert hedged.years[0].dampening < independent.years[0].dampening
+    assert hedged.years[0].dampening < 0          # correlation removed volatility
+    assert hedged.years[0].vol_actual < hedged.years[0].vol_if_independent
+
+
+@_real
+def test_the_hedge_worked_for_years_then_stopped(real_frame):
+    """The page's central empirical claim."""
+    hedge = natural_hedge(real_frame)
+    assert len(hedge.hedged_years) >= 6
+    assert hedge.typical_dampening < -0.05        # a median of at least 5% removed
+    assert min(y.dampening for y in hedge.hedged_years) < -0.20   # up to ~29% in 2024
+    # the most recent year lost it
+    assert hedge.latest.rho < 0.1
+    assert hedge.latest.dampening > -0.05
+    assert "the hedge is gone" in hedge.headline
+
+
+@_real
+def test_the_correlation_is_the_smaller_term_and_the_page_says_so(real_frame):
+    """The honesty check on the attribution: gas volatility dominates, and the claim is
+    only that the correlation term is the one nobody re-marks — not that it is the
+    largest."""
+    attribution = dampening_attribution(real_frame, year_from=2025, year_to=2026)
+    assert attribution.vol_to > attribution.vol_from
+    assert 0.0 < attribution.correlation_share < 0.5      # smaller than the vol term
+    assert attribution.volatility_part > attribution.correlation_part
+    assert 0.05 < attribution.option_value_uplift < 0.25
+    assert (
+        attribution.volatility_part + attribution.correlation_part
+        == pytest.approx(attribution.total_change)
+    )
+
+
+@_real
+def test_saturation_is_ruled_out_by_two_years_with_the_same_depth(real_frame):
+    """2018 and 2026 sit at nearly identical depth above the switching level and have
+    opposite correlations, so 'the coal fleet ran out of room' cannot be the explanation.
+    2022 is the only genuinely saturated year and is the sample's other negative one."""
+    depth = switching_depth_profile(real_frame)
+    assert depth.loc[2018, "share_deep"] < 0.05
+    assert depth.loc[2026, "share_deep"] < 0.05
+    assert abs(depth.loc[2018, "median_distance"] - depth.loc[2026, "median_distance"]) < 0.05
+    assert depth.loc[2018, "rho"] > 0.25
+    assert depth.loc[2026, "rho"] < 0.10
+    # 2022 is the genuinely saturated year
+    assert depth.loc[2022, "share_deep"] > 0.40
+    # and a late year in the coal decline has the strongest correlation, killing the
+    # 'structural fleet decline' story too
+    assert depth.loc[2024, "rho"] > 0.60
+
+
+@_real
+def test_transmission_breaks_only_in_the_two_anomalous_years(real_frame):
+    """Non-parametric version: on the largest gas shocks, does carbon respond at all?"""
+    transmission = transmission_test(real_frame)
+    table = transmission.table
+    assert table.loc[2026, "same_sign"] <= 4
+    assert table.loc[2022, "same_sign"] <= 4
+    normal = table.drop(index=[2022, 2026])
+    assert (normal["same_sign"] >= 7).all()
+    assert "did not take it" in transmission.headline
+
+
+def test_transmission_test_needs_enough_observations():
+    tiny = pd.DataFrame(
+        {"ttf_eur_mwh": [40.0, 41.0, 42.0], "eua_eur_t": [70.0, 71.0, 72.0]},
+        index=_dates(3),
+    )
+    with pytest.raises(ValueError, match="no year has enough observations"):
+        transmission_test(tiny)
