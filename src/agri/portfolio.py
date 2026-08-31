@@ -75,8 +75,8 @@ PROJECTS: list[Project] = [
         pivot=(
             "Three costs the desks do not argue about: the ballast is worth ~20 USD/t and "
             "twice as much out of Santos as out of the PNW, the market bounds it below at "
-            "a median 0.28 without settling it, and the smoothed internal rate sits on one "
-            "side of spot for up to 126 sessions"
+            "a median 0.28 without settling it, and the smoothed internal rate is off spot "
+            "by 10.6 USD/t in a volatile market against 1.8 in a calm one"
         ),
         mail_question=(
             "On Santos-Qingdao the ballast leg is worth about 20 USD per tonne of grain — "
@@ -99,7 +99,7 @@ PROJECTS: list[Project] = [
         status=STATUS_READY,
         dashboard_page="pages/4_T1_1_Freight_CF.py",
         chain_module="agri.chains.freight_cf",
-        n_tests=92,
+        n_tests=94,
         data_mode=DATA_HYBRID,
     ),
     Project(

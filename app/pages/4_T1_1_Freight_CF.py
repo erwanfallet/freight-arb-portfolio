@@ -424,29 +424,56 @@ st.dataframe(
 section(
     "T5",
     "A freight department has to quote a stable rate, and that puts it on one side of the market for months",
-    "This is the term nobody argues about, and it is larger than the one they do.\n\n"
-    "A trading desk cannot budget against a number that moves every day, so the internal "
+    "This is the term nobody argues about, and in a moving market it is larger than the one "
+    "they do.\n\n"
+    "A trading desk cannot budget against a number that changes every day, so the internal "
     f"rate is smoothed — here a {_bias.window}-session average. That is treated as a "
     "presentational convenience. It is not: a smoothed series does not sit around the "
     "market, it sits **on one side of it**, and it stays there while the market trends.\n\n"
-    f"Measured on the real published rate, within contiguous segments: the internal number "
-    f"is a median **{_bias.median_abs_error:.1f} USD/t** from spot and "
-    f"**{_bias.p90_abs_error:.1f}** at the 90th percentile. It holds the same side for up "
-    f"to **{_bias.longest_episode} consecutive sessions**, and "
-    f"**{_bias.share_in_episode:.0%}** of the sample sits inside such an episode.\n\n"
-    "The direction is what makes it a trading problem rather than a reporting one. While "
-    "the market rallies, the smoothed rate lags below it: the desk is quoted freight that "
-    "is too cheap, every arb looks better than it is, and it over-commits. While the market "
-    "falls, the rate lags above: freight looks dear and the desk under-commits — precisely "
-    "when physical tonnage is cheapest and most available. **The convention systematically "
-    "buys at the wrong point of the cycle**, and it does so for months at a time.",
+    "**And the error is not one number.** It scales with how much the market is moving, so "
+    "reporting a single pooled median would describe neither regime. The two contiguous "
+    "segments this export supports are shown separately below, with the market's own "
+    "volatility beside each.",
     formula="internal rate = rolling mean of spot, computed inside contiguous segments only",
 )
+_seg = _bias.segments.copy()
+st.dataframe(
+    _seg.rename(columns={
+        "label": "segment", "n_obs": "sessions",
+        "median_abs_error": "median error (USD/t)", "p90_abs_error": "p90 error (USD/t)",
+        "annualised_vol": "market volatility",
+    }).style.format({
+        "median error (USD/t)": "{:.1f}", "p90 error (USD/t)": "{:.1f}",
+        "market volatility": "{:.0%}", "sessions": "{:.0f}",
+    }),
+    width="stretch", hide_index=True,
+)
+_w, _c = _bias.worst_segment, _bias.calmest_segment
 _e1, _e2, _e3 = st.columns(3)
-_e1.metric("Median distance from spot", f"{_bias.median_abs_error:.1f} USD/t")
-_e2.metric("Longest one-sided run", f"{_bias.longest_episode} sessions")
-_e3.metric("Sample inside an episode", f"{_bias.share_in_episode:.0%}")
+_e1.metric(f"Error, {_w['label']}", f"{_w['median_abs_error']:.1f} USD/t",
+           delta=f"{_w['annualised_vol']:.0%} volatility", delta_color="off")
+_e2.metric(f"Error, {_c['label']}", f"{_c['median_abs_error']:.1f} USD/t",
+           delta=f"{_c['annualised_vol']:.0%} volatility", delta_color="off")
+_e3.metric("Worse in the volatile regime", f"{_bias.regime_ratio:.0f}x")
 
+section(
+    "T5b",
+    "Which is exactly the wrong way round",
+    "A convention that is nearly harmless in a quiet market and badly wrong in a violent "
+    "one is failing precisely when it is being relied on. The 2022 segment is where the "
+    "cargo decisions were hardest and the internal number was furthest from the market — "
+    f"a median {_w['median_abs_error']:.1f} USD/t, against a ballast argument the two desks "
+    f"were having over roughly {ballast_usd_t.median():.0f}.\n\n"
+    "The direction is what turns it from a reporting problem into a trading one. While the "
+    "market rallies, the smoothed rate lags below: the desk is quoted freight that is too "
+    "cheap, every arb looks better than it is, and it over-commits. While the market falls, "
+    "the rate lags above: freight looks dear and the desk under-commits — exactly when "
+    "physical tonnage is cheapest and most available.\n\n"
+    f"And it persists. The internal rate holds one side of spot for up to "
+    f"**{_bias.longest_episode} consecutive sessions**, including a "
+    f"{int(_bias.episodes.iloc[-1]['n_obs'])}-session stretch in the recent, calm segment. "
+    "Six months is not a rounding error in a chartering programme.",
+)
 _ep = _bias.episodes.copy()
 _ep["start"] = _ep["start"].dt.date.astype(str)
 _ep["end"] = _ep["end"].dt.date.astype(str)
@@ -462,6 +489,10 @@ _bias_fig.add_trace(
                line=dict(color="crimson", width=1), name="internal minus spot")
 )
 _bias_fig.add_hline(y=0.0, line_dash="dash", line_color="gray")
+_bias_fig.add_vrect(
+    x0="2022-11-12", x1="2025-01-02", fillcolor="rgba(120,120,120,0.18)",
+    line_width=0, annotation_text="no P8 quote in the export", annotation_position="top left",
+)
 _bias_fig.update_layout(
     title="Internal smoothed rate minus spot (below zero = freight quoted too cheap)",
     yaxis_title="USD per tonne", height=380,
@@ -470,11 +501,14 @@ _bias_fig.update_layout(
 show(_bias_fig)
 finding(_bias.headline)
 scope_note(
-    "Computed inside contiguous segments only. This export's P8 series has a 782-day hole "
-    "between November 2022 and January 2025, and a rolling mean run straight through it "
-    "would average 2022 prices into a 2025 rate — manufacturing a single 221-session "
-    "episode that never happened. Segments shorter than the smoothing window are dropped "
-    "rather than padded."
+    "The shaded band is a 782-day hole in the export: the P8 route has no quote at all "
+    "between November 2022 and January 2025, so 2023 and 2024 are simply absent. The "
+    "smoothing is computed inside each contiguous segment and never across the gap — a "
+    "rolling mean run straight through it would average 2022 prices into a 2025 rate and "
+    "manufacture a single 221-session episode that never happened. Segments shorter than "
+    "the smoothing window are dropped rather than padded, and no pooled median is reported "
+    "because it would blend two different volatility regimes into a number describing "
+    "neither."
 )
 
 mail_question(
@@ -487,11 +521,14 @@ mail_question(
     "market refutes the trading desk and does not vindicate the freight department; "
     "everything between is negotiated, not priced.\n\n"
     "Third, and this is the one I did not expect to be the largest: the internal rate has "
-    f"to be smoothed to be usable, and a {_bias.window}-session average sits on ONE side of "
-    f"spot for up to {_bias.longest_episode} consecutive sessions, "
-    f"{_bias.share_in_episode:.0%} of the time. In a rally the desk is quoted freight that "
-    "is too cheap and over-commits; in a fall it is quoted freight that is too dear and "
-    "under-commits, exactly when tonnage is most available.\n\n"
+    f"to be smoothed to be usable, and a {_bias.window}-session average is off spot by a "
+    f"median {_w['median_abs_error']:.1f} USD/t in the volatile 2022 segment against "
+    f"{_c['median_abs_error']:.1f} in the calm recent one — {_bias.regime_ratio:.0f} times "
+    "worse when the market moves, which is when the decisions are hardest. And it is "
+    f"directional, holding one side of spot for up to {_bias.longest_episode} consecutive "
+    "sessions: in a rally the desk is quoted freight that is too cheap and over-commits; "
+    "in a fall it is quoted freight that is too dear and under-commits, exactly when "
+    "tonnage is most available.\n\n"
     "And the ballast is worth "
     f"{_by_route.iloc[-1]['ballast_usd_t'] / _by_route.iloc[0]['ballast_usd_t']:.1f} times "
     "more out of Santos than out of the PNW, so a single fleet-wide policy quietly taxes "

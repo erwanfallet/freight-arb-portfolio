@@ -620,3 +620,37 @@ def test_smoothing_bias_rejects_a_series_with_no_usable_segment():
     tiny = pd.Series(50.0, index=pd.bdate_range("2022-01-03", periods=10))
     with pytest.raises(FreightCfError, match="no contiguous segment"):
         smoothing_bias(tiny, window=90)
+
+
+def test_the_smoothing_error_is_reported_per_regime_not_pooled():
+    """A pooled median blends a volatile market and a calm one into a number describing
+    neither. Two synthetic segments with very different volatility must come back as two
+    rows, and the pooled median must sit between them rather than represent either."""
+    calm = pd.Series(
+        50.0 + np.sin(np.arange(300) / 20.0) * 0.5,
+        index=pd.bdate_range("2022-01-03", periods=300),
+    )
+    wild = pd.Series(
+        50.0 + np.sin(np.arange(300) / 20.0) * 15.0,
+        index=pd.bdate_range("2025-01-03", periods=300),
+    )
+    bias = smoothing_bias(pd.concat([calm, wild]), window=60, min_run=30)
+    assert len(bias.segments) == 2
+    assert bias.regime_ratio > 5.0
+    assert bias.worst_segment["median_abs_error"] > bias.calmest_segment["median_abs_error"]
+    # the pooled figure represents neither regime
+    pooled = bias.median_abs_error
+    assert bias.calmest_segment["median_abs_error"] < pooled < bias.worst_segment["median_abs_error"]
+    assert "times worse when the market moves" in bias.headline
+
+
+def test_each_segment_carries_its_own_market_volatility():
+    """The comparison is only meaningful with the volatility beside it, so the segment
+    table must report it rather than leaving the reader to assume."""
+    index = pd.bdate_range("2022-01-03", periods=300)
+    bias = smoothing_bias(
+        pd.Series(50.0 + np.sin(np.arange(300) / 20.0) * 8.0, index=index),
+        window=60, min_run=30,
+    )
+    assert "annualised_vol" in bias.segments.columns
+    assert (bias.segments["annualised_vol"] > 0).all()

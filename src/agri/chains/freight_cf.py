@@ -56,7 +56,7 @@ F-H5  No demurrage cost is modelled. It is one of the terms the freight departme
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -937,13 +937,35 @@ class SmoothingBias:
     window: int
     min_run: int
 
+    segments: pd.DataFrame = field(default_factory=pd.DataFrame)
+
     @property
     def median_abs_error(self) -> float:
+        """Pooled median. Kept for tests and guardrails, NOT reported on the page.
+
+        Pooling two segments that sit in different volatility regimes averages a calm
+        market and a violent one into a number describing neither: 3.4 USD/t here, against
+        10.6 in 2022 and 1.8 in 2025-2026. Use `segments` to report.
+        """
         return float(self.error.abs().median())
 
     @property
     def p90_abs_error(self) -> float:
         return float(self.error.abs().quantile(0.90))
+
+    @property
+    def worst_segment(self) -> pd.Series:
+        return self.segments.loc[self.segments["median_abs_error"].idxmax()]
+
+    @property
+    def calmest_segment(self) -> pd.Series:
+        return self.segments.loc[self.segments["median_abs_error"].idxmin()]
+
+    @property
+    def regime_ratio(self) -> float:
+        """How much worse the smoothing is in the volatile regime than the calm one."""
+        calm = float(self.calmest_segment["median_abs_error"])
+        return float(self.worst_segment["median_abs_error"]) / calm if calm else float("nan")
 
     @property
     def longest_episode(self) -> int:
@@ -957,14 +979,17 @@ class SmoothingBias:
 
     @property
     def headline(self) -> str:
+        worst, calm = self.worst_segment, self.calmest_segment
         return (
-            f"A {self.window}-day internal rate sits a median "
-            f"{self.median_abs_error:.1f} USD/t away from spot and {self.p90_abs_error:.1f} "
-            f"at the 90th percentile. It is not noise: it stays on ONE side of the market "
-            f"for up to {self.longest_episode} consecutive sessions, and "
-            f"{self.share_in_episode:.0%} of the sample sits inside such an episode. "
-            "During those stretches the trading desk is systematically quoted freight that "
-            "is too cheap or too dear, and takes its cargo decisions on it."
+            f"The smoothing error is not one number, it is a function of how much the "
+            f"market is moving: a median {worst['median_abs_error']:.1f} USD/t in "
+            f"{worst['label']} at {worst['annualised_vol']:.0%} volatility, against "
+            f"{calm['median_abs_error']:.1f} in {calm['label']} at "
+            f"{calm['annualised_vol']:.0%} — {self.regime_ratio:.0f} times worse when the "
+            f"market moves. And it is directional: the internal rate holds one side of spot "
+            f"for up to {self.longest_episode} consecutive sessions. A convention that is "
+            "nearly harmless in a quiet market is badly wrong in a violent one, which is "
+            "when the cargo decisions matter."
         )
 
 
@@ -989,7 +1014,7 @@ def smoothing_bias(
         raise FreightCfError("no route rate to smooth")
 
     breaks = series.index.to_series().diff().dt.days > gap_days
-    errors, episodes = [], []
+    errors, episodes, segment_rows = [], [], []
     for _, segment in series.groupby(breaks.cumsum()):
         if len(segment) <= window:
             continue
@@ -997,6 +1022,16 @@ def smoothing_bias(
         if error.empty:
             continue
         errors.append(error)
+        span = segment.loc[error.index]
+        segment_rows.append(
+            {
+                "label": f"{error.index[0]:%Y-%m} to {error.index[-1]:%Y-%m}",
+                "n_obs": int(len(error)),
+                "median_abs_error": float(error.abs().median()),
+                "p90_abs_error": float(error.abs().quantile(0.90)),
+                "annualised_vol": float(span.pct_change().std() * np.sqrt(252)),
+            }
+        )
         sign = np.sign(error)
         for _, run in error.groupby((sign != sign.shift()).cumsum()):
             if len(run) >= min_run:
@@ -1020,6 +1055,7 @@ def smoothing_bias(
         episodes=pd.DataFrame(episodes),
         window=int(window),
         min_run=int(min_run),
+        segments=pd.DataFrame(segment_rows),
     )
 
 
