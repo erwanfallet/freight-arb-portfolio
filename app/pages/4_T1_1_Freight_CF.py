@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 _APP_DIR = Path(__file__).resolve().parent.parent
@@ -11,6 +12,8 @@ sys.path.insert(0, str(_APP_DIR.parent / "src"))
 sys.path.insert(0, str(_APP_DIR))
 
 from agri.chains.freight_cf import (  # noqa: E402
+    ballast_lower_bound,
+    ballast_value_usd_t,
     load_real_route_frame,
     market_implied_ballast_share,
 )
@@ -44,6 +47,22 @@ params = VoyageParams(speed_laden_kn=speed_laden, port_days=port_days)
 spread = load_real_route_frame(params=params, mgo_premium=mgo_premium)
 tce_2021 = series_or_live("t1_1_tce_2021", "p8_route_tce_2021")
 boom_peak = float(tce_2021.max())
+
+# --- the trade -----------------------------------------------------------------
+_vessel = VESSELS["panamax"]
+_route = ROUTES["santos_qingdao"]
+_vlsfo = series_or_live("t1_1_vlsfo", "vlsfo_singapore")
+ballast_usd_t = ballast_value_usd_t(
+    _vlsfo,
+    reference_tce_usd_day=float(spread.tce_full_ballast.median()),
+    vessel=_vessel, route=_route, params=params, mgo_premium=mgo_premium,
+)
+bound = ballast_lower_bound(
+    spread.route_rate_usd_t, _vlsfo,
+    vessel=_vessel, route=_route, params=params,
+    ceiling_usd_day=boom_peak, mgo_premium=mgo_premium,
+)
+_cargo_t = _vessel.cargo_t
 
 page_header(
     code="T1-1",
@@ -245,13 +264,139 @@ show(
     )
 )
 
+# ===========================================================================
+# T1 — WHAT THE ARGUMENT COSTS, IN THE UNIT THE DECISION IS TAKEN IN
+# ===========================================================================
+section(
+    "T1",
+    "The dispute is conducted in USD per day; the cargo is decided in USD per tonne",
+    "The gap above is real but unusable: a grain desk does not mark an arb in USD per "
+    "day. Restating the same disagreement per tonne of cargo is what turns an "
+    "inter-departmental argument into a number that changes whether a ship loads.\n\n"
+    f"On Santos-Qingdao the ballast leg is worth a median **{ballast_usd_t.median():.1f} "
+    f"USD per tonne of grain** — the difference between charging none of the repositioning "
+    f"and charging all of it. On a {int(_cargo_t):,} tonne Panamax that is "
+    f"**{ballast_usd_t.median() * _cargo_t / 1e6:.2f} million USD per voyage**.\n\n"
+    "And it barely moves. Across seventeen years of bunker prices the figure ranges "
+    f"{ballast_usd_t.min():.1f} to {ballast_usd_t.max():.1f} USD/t, with annual medians "
+    "in a narrow band — because ballast is mostly **time**, not fuel. A desk hoping the "
+    "argument will resolve itself when bunkers fall is waiting for something that does "
+    "not happen: this is a structural cost, not a cyclical one.",
+    formula="ballast value = freight(ballast = 1) - freight(ballast = 0),  at the same TCE",
+)
+_v1, _v2, _v3 = st.columns(3)
+_v1.metric("Ballast, per tonne of grain", f"{ballast_usd_t.median():.1f} USD/t")
+_v2.metric("Per Panamax voyage", f"{ballast_usd_t.median() * _cargo_t / 1e6:.2f} M USD")
+_v3.metric(
+    "Range over 17 years",
+    f"{ballast_usd_t.min():.0f} - {ballast_usd_t.max():.0f} USD/t",
+    delta="structural, not cyclical", delta_color="off",
+)
+_bal_annual = ballast_usd_t.groupby(ballast_usd_t.index.year).median()
+_bal_fig = go.Figure()
+_bal_fig.add_trace(
+    go.Bar(x=_bal_annual.index.astype(str), y=_bal_annual.values,
+           marker_color="rgba(120,120,120,0.65)")
+)
+_bal_fig.update_layout(
+    title="What the ballast leg is worth, per tonne of grain (annual median)",
+    yaxis_title="USD per tonne", height=360,
+    margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
+)
+show(_bal_fig)
+
+# ===========================================================================
+# T2 — WHAT THE MARKET SETTLES, AND WHAT IT LEAVES OPEN
+# ===========================================================================
+section(
+    "T2",
+    "The market refutes one desk and does not vindicate the other",
+    "The plausibility ceiling above rules out reading the rate at zero ballast. But it is "
+    "a one-sided test, and running it properly means asking not *whether* zero works but "
+    "**how little ballast would be enough** to keep the implied TCE plausible — date by "
+    "date, on the real published rate and real bunkers.\n\n"
+    f"Zero is tenable on **{bound.share_where_zero_works:.0%} of days**. That settles the "
+    "trading desk's position: it is not a defensible convention, it is an arithmetic "
+    f"impossibility. But the binding lower bound has a median of only "
+    f"**{bound.median_bound:.2f}**. At least half the ballast is required on "
+    f"{bound.share_needing_at_least(0.5):.0%} of days, at least eighty percent on "
+    f"{bound.share_needing_at_least(0.8):.0%}.\n\n"
+    "So the freight department's full-cost convention is far stronger than anything the "
+    "market imposes. **Between roughly a quarter and all of it, no price in this export "
+    "decides.** That range is not a measurement problem to be narrowed with better data — "
+    "it is the space in which an internal transfer rate is negotiated, and it is genuinely "
+    "empty of market information.",
+    formula="min ballast share such that implied TCE <= the route's own recorded peak",
+)
+_b1, _b2, _b3 = st.columns(3)
+_b1.metric("Days where zero ballast works", f"{bound.share_where_zero_works:.0%}",
+           delta="trading desk refuted", delta_color="off")
+_b2.metric("Median required ballast", f"{bound.median_bound:.2f}")
+_b3.metric("Days needing 80% or more", f"{bound.share_needing_at_least(0.8):.0%}")
+
+_bound_fig = go.Figure()
+_bound_fig.add_trace(
+    go.Scatter(x=bound.shares.index, y=bound.shares.values, mode="markers",
+               marker=dict(size=3, color="rgba(120,120,120,0.55)"), name="daily minimum")
+)
+_bound_fig.add_hline(y=bound.median_bound, line_dash="dash", line_color="crimson",
+                     annotation_text=f"median {bound.median_bound:.2f}", annotation_position="right")
+_bound_fig.add_hline(y=1.0, line_dash="dot", line_color="gray",
+                     annotation_text="freight department claims this", annotation_position="right")
+_bound_fig.update_layout(
+    title="Minimum ballast share the published rate is consistent with",
+    yaxis_title="ballast share", yaxis_range=[-0.05, 1.1], height=400,
+    margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
+)
+show(_bound_fig)
+finding(bound.headline)
+scope_note(
+    f"On {bound.n_impossible} days out of {bound.n_obs + bound.n_impossible} the rate is "
+    "so high that even charging every mile of repositioning still implies a TCE above the "
+    "route's own recorded peak. Those are not errors — they are the days the market was "
+    "paying more than any voyage economics can rationalise, and they are excluded rather "
+    "than forced into the bound."
+)
+
+# ===========================================================================
+# T3 — WHY THIS IS A VOLUME POLICY, NOT AN ACCOUNTING CHOICE
+# ===========================================================================
+section(
+    "T3",
+    "The internal rate decides how much grain moves, and nobody owns that",
+    "Put the two numbers together. The ballast is worth about "
+    f"{ballast_usd_t.median():.0f} USD/t, and the market leaves its allocation "
+    "undetermined across most of the range. So the internal rate is set by negotiation "
+    "between two profit centres — and whichever number they land on does not merely "
+    "split the P&L.\n\n"
+    "**It decides which cargoes exist.** On the marginal band — the days an arb sits a few "
+    f"dollars from breakeven — a {ballast_usd_t.median():.0f} USD/t swing in the freight "
+    "term is the difference between a cargo that clears and one that does not. Charge the "
+    "full ballast and the trading desk sees fewer open arbs and moves less grain. Charge "
+    "the index and it moves more, with the repositioning cost landing in the freight "
+    "book.\n\n"
+    "That is a volume policy expressed as an accounting convention. The trading desk owns "
+    "the tonnage target, the freight department owns the vessel cost, and the parameter "
+    "that reconciles them sits between the two mandates — which is precisely why the "
+    "argument recurs rather than resolving.",
+)
+
 mail_question(
-    f"On Santos → Qingdao, the published rate of {latest_rate:,.1f} USD/t implies a TCE "
-    f"of {spread.tce_no_ballast.iloc[-1]:,.0f} USD/day if no ballast is charged at all, "
-    f"against {spread.tce_full_ballast.iloc[-1]:,.0f} if it is charged in full — and the "
-    f"first reading would place the market above its 2021 peak "
-    f"{share_above_no_ballast:.0%} of the time. How much repositioning does your internal "
-    "rate actually charge, and is it negotiated with the trading desk or imposed by the "
-    "freight department?",
+    "On Santos-Qingdao the ballast leg is worth about "
+    f"{ballast_usd_t.median():.0f} USD per tonne of grain — roughly "
+    f"{ballast_usd_t.median() * _cargo_t / 1e6:.1f} million on a Panamax cargo — and it is "
+    "remarkably stable across seventeen years, because ballast is time rather than fuel.\n\n"
+    "Testing both conventions against the route's own recorded TCE peak: reading the "
+    f"published rate at zero ballast is arithmetically tenable on only "
+    f"{bound.share_where_zero_works:.0%} of days, so the trading desk's position does not "
+    f"survive. But the binding lower bound is a median of {bound.median_bound:.2f}, not 1 — "
+    "the market rules zero out and does not rule full cost in. Between about a quarter and "
+    "all of it, no price settles the question.\n\n"
+    "Which is why I think this is a volume policy rather than an accounting one: on the "
+    "marginal band that parameter decides whether the cargo clears at all, so the internal "
+    "rate is effectively setting tonnage. Is that owned explicitly on your side — is the "
+    "number calibrated against a volume or utilisation target — or is it negotiated as P&L "
+    "attribution between the two books, with the volume effect falling between the two "
+    "mandates?",
     "Freight desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra) and grain/oilseed traders",
 )

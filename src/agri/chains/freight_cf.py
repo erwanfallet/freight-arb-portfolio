@@ -69,7 +69,9 @@ from agri.core.voyage import (
     Route,
     VesselClass,
     VoyageParams,
+    implied_tce_from_freight,
     voyage_freight_series,
+    voyage_freight_usd_t,
 )
 
 # F-H2
@@ -681,15 +683,188 @@ def disagreement_episodes(frame: pd.DataFrame, *, min_days: int = 3) -> pd.DataF
     )
 
 
+# ===========================================================================
+# THE TRADE — what the argument costs, and what the market actually settles
+# ===========================================================================
+# Everything above frames the dispute. These two objects price it.
+#
+# 1. WHAT THE BALLAST IS WORTH, in the unit a grain trader decides in. The dispute is
+#    conducted in USD/day, which is the freight department's unit and means nothing to a
+#    desk marking an arb. Restated per tonne of cargo it is roughly 20 USD/t on
+#    Santos-Qingdao — and remarkably stable across seventeen years of bunker prices,
+#    because ballast is mostly TIME, not fuel. On a 66,000 t Panamax that is about
+#    1.3 million USD per voyage, every voyage, permanently.
+#
+# 2. WHAT THE MARKET ACTUALLY SETTLES, which is less than either desk claims. Reading the
+#    published rate at zero ballast implies a TCE above the real 2021 boom peak on 99% of
+#    days — so the trading desk's convention is arithmetically untenable. But inverting the
+#    same ceiling for the MINIMUM ballast share consistent with it gives a median of only
+#    0.28. The market rules out zero; it does not rule in one. Between 28% and 100% the
+#    number is a policy choice, and no price in the export narrows it further.
+#
+# That is the finding: **both desks are wrong, and the market only refutes one of them.**
+
+# The real TCE peak of the Jul-Oct 2021 segment, used as a plausibility ceiling. It is a
+# measured value from the export, not an assumption — see `load_real_route_frame`.
+DEFAULT_TCE_CEILING_USD_DAY = 38_000.0
+
+
+def ballast_value_usd_t(
+    vlsfo: pd.Series,
+    *,
+    reference_tce_usd_day: float,
+    vessel: VesselClass,
+    route: Route,
+    params: VoyageParams | None = None,
+    mgo_premium: float = 1.35,
+) -> pd.Series:
+    """The dispute restated per tonne of cargo: freight at full ballast minus at zero.
+
+    The two desks argue in USD/day because that is the freight department's unit. A grain
+    desk marks its arb in USD/tonne, and cannot act on the other. This is the same
+    disagreement in the unit where the decision is actually taken.
+    """
+    p = params or VoyageParams()
+    values = []
+    for date, price in vlsfo.items():
+        if not np.isfinite(price) or price <= 0:
+            continue
+        mgo = price * mgo_premium
+        at_zero = voyage_freight_usd_t(
+            reference_tce_usd_day, price, mgo,
+            vessel=vessel, route=route, params=p.with_ballast(0.0),
+        ).freight_usd_t
+        at_full = voyage_freight_usd_t(
+            reference_tce_usd_day, price, mgo,
+            vessel=vessel, route=route, params=p.with_ballast(1.0),
+        ).freight_usd_t
+        values.append((date, at_full - at_zero))
+    if not values:
+        raise FreightCfError("no usable bunker observation to price the ballast")
+    index, data = zip(*values)
+    return pd.Series(data, index=pd.DatetimeIndex(index), name="ballast_usd_t")
+
+
+@dataclass(frozen=True)
+class BallastBound:
+    """The lower bound on ballast the market imposes, and what it leaves undecided.
+
+    For each date, the smallest ballast share at which the published rate still implies a
+    TCE at or below `ceiling`. Below that share the reading is not an opinion one can hold
+    — it puts the route above the highest TCE the export ever recorded for it.
+
+    The bound is one-sided by construction. It can refute a convention that charges too
+    little ballast; it cannot refute one that charges too much. That asymmetry is the
+    result, not a limitation to apologise for: it is why the argument does not end.
+    """
+
+    shares: pd.Series          # daily minimum ballast share, NaN where even 1.0 fails
+    ceiling_usd_day: float
+
+    @property
+    def n_obs(self) -> int:
+        return int(self.shares.notna().sum())
+
+    @property
+    def n_impossible(self) -> int:
+        """Days where even full ballast leaves the implied TCE above the ceiling."""
+        return int(self.shares.isna().sum())
+
+    @property
+    def median_bound(self) -> float:
+        return float(self.shares.median())
+
+    @property
+    def share_where_zero_works(self) -> float:
+        """How often the trading desk's convention is arithmetically tenable."""
+        return float((self.shares <= 1e-3).mean())
+
+    def share_needing_at_least(self, threshold: float) -> float:
+        return float((self.shares >= threshold).mean())
+
+    @property
+    def refutes_zero(self) -> bool:
+        return self.share_where_zero_works < 0.05
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"Reading the published rate at zero ballast is arithmetically tenable on "
+            f"{self.share_where_zero_works:.0%} of days — the trading desk's convention is "
+            f"refuted. But the binding lower bound is a median of only "
+            f"{self.median_bound:.2f}, and at least half the ballast is required on just "
+            f"{self.share_needing_at_least(0.5):.0%} of days. The market rules zero out; "
+            "it does not rule one in. Everything between is a policy choice no price "
+            "in this export settles."
+        )
+
+
+def ballast_lower_bound(
+    route_rate_usd_t: pd.Series,
+    vlsfo: pd.Series,
+    *,
+    vessel: VesselClass,
+    route: Route,
+    params: VoyageParams | None = None,
+    ceiling_usd_day: float = DEFAULT_TCE_CEILING_USD_DAY,
+    mgo_premium: float = 1.35,
+    tolerance: float = 1e-4,
+) -> BallastBound:
+    """Minimum ballast share consistent with a plausible implied TCE, date by date.
+
+    Bisection rather than a formula because `implied_tce_from_freight` is monotone but not
+    analytically invertible in the ballast share: more ballast means more voyage days,
+    which means the same published rate implies a lower TCE.
+    """
+    if ceiling_usd_day <= 0:
+        raise FreightCfError("the plausibility ceiling must be a positive TCE")
+    p = params or VoyageParams()
+    aligned = pd.concat({"rate": route_rate_usd_t, "vlsfo": vlsfo}, axis=1).dropna()
+    if aligned.empty:
+        raise FreightCfError("no common date between the route rate and the bunker series")
+
+    def implied(rate: float, price: float, share: float) -> float:
+        return implied_tce_from_freight(
+            rate, price, price * mgo_premium,
+            vessel=vessel, route=route, params=p.with_ballast(share),
+        )
+
+    bounds = {}
+    for date, row in aligned.iterrows():
+        rate, price = float(row["rate"]), float(row["vlsfo"])
+        if implied(rate, price, 0.0) <= ceiling_usd_day:
+            bounds[date] = 0.0
+            continue
+        if implied(rate, price, 1.0) > ceiling_usd_day:
+            bounds[date] = np.nan      # not plausible at any share
+            continue
+        low, high = 0.0, 1.0
+        while high - low > tolerance:
+            mid = 0.5 * (low + high)
+            if implied(rate, price, mid) > ceiling_usd_day:
+                low = mid
+            else:
+                high = mid
+        bounds[date] = high
+    return BallastBound(
+        shares=pd.Series(bounds, name="min_ballast_share"),
+        ceiling_usd_day=float(ceiling_usd_day),
+    )
+
+
 __all__ = [
     "CONVENTIONS",
     "FreightCfError",
     "ImpliedTceSpread",
     "MarginalZone",
+    "BallastBound",
+    "DEFAULT_TCE_CEILING_USD_DAY",
     "MarketImpliedBallast",
     "NoBreakevenInRange",
     "arb_usd_t",
     "ballast_breakeven",
+    "ballast_lower_bound",
+    "ballast_value_usd_t",
     "build_conventions",
     "disagreement_episodes",
     "financing_cost_usd_t",

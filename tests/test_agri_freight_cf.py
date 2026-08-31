@@ -402,3 +402,137 @@ def test_different_seeds_give_different_data():
     a = build_frame(seed=1)
     b = build_frame(seed=2)
     assert not a["arb_full"].equals(b["arb_full"])
+
+
+# ===========================================================================
+# THE TRADE — what the ballast costs, and what the market actually settles
+# ===========================================================================
+# `test_the_bound_is_one_sided_and_says_so` is the one that may not be weakened: the
+# whole conclusion is that the market refutes one desk without vindicating the other,
+# and that rests on the bound being a LOWER bound rather than an estimate.
+from agri.chains.freight_cf import (  # noqa: E402
+    FreightCfError,
+    ballast_lower_bound,
+    ballast_value_usd_t,
+)
+
+
+def _flat_series(value: float, n: int = 40, start: str = "2022-01-03") -> pd.Series:
+    return pd.Series(value, index=pd.bdate_range(start, periods=n))
+
+
+def test_ballast_value_is_positive_and_scales_with_the_route():
+    """Charging the repositioning can only make freight dearer, never cheaper."""
+    vlsfo = _flat_series(500.0)
+    value = ballast_value_usd_t(
+        vlsfo, reference_tce_usd_day=20_000.0,
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+    )
+    assert (value > 0).all()
+    short = ballast_value_usd_t(
+        vlsfo, reference_tce_usd_day=20_000.0,
+        vessel=VESSELS["panamax"], route=ROUTES["pnw_qingdao"],
+    )
+    # a shorter ballast leg is worth less per tonne
+    assert short.median() < value.median()
+
+
+def test_ballast_value_is_driven_by_time_not_only_fuel():
+    """The page claims the figure is stable because ballast is mostly hire, not bunkers.
+
+    Doubling the bunker price must move it by far less than doubling, or that claim is
+    wrong and the 'structural, not cyclical' framing has to go.
+    """
+    kwargs = dict(
+        reference_tce_usd_day=20_000.0,
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+    )
+    cheap = ballast_value_usd_t(_flat_series(300.0), **kwargs).median()
+    dear = ballast_value_usd_t(_flat_series(600.0), **kwargs).median()
+    assert dear > cheap
+    assert dear / cheap < 1.5          # far from the 2x a fuel-driven cost would give
+
+
+def test_ballast_value_rejects_an_empty_series():
+    with pytest.raises(FreightCfError, match="no usable bunker observation"):
+        ballast_value_usd_t(
+            pd.Series(dtype=float), reference_tce_usd_day=20_000.0,
+            vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        )
+
+
+def test_a_cheap_rate_needs_no_ballast_to_be_plausible():
+    """A low published rate already implies a modest TCE, so the bound must be zero."""
+    bound = ballast_lower_bound(
+        _flat_series(20.0), _flat_series(500.0),
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        ceiling_usd_day=38_000.0,
+    )
+    assert bound.median_bound == pytest.approx(0.0)
+    assert bound.share_where_zero_works == pytest.approx(1.0)
+    assert not bound.refutes_zero
+
+
+def test_an_expensive_rate_forces_ballast_to_stay_plausible():
+    """A high rate read at zero ballast implies an implausible TCE, so the bound bites."""
+    bound = ballast_lower_bound(
+        _flat_series(50.0), _flat_series(500.0),
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        ceiling_usd_day=38_000.0,
+    )
+    assert bound.median_bound > 0.0
+    assert bound.refutes_zero
+
+
+def test_the_bound_is_one_sided_and_says_so():
+    """THE structural property. The ceiling can refute a convention charging too little
+    ballast; it cannot refute one charging too much. So a bound below 1 never licenses
+    the conclusion that full ballast is wrong — only that it is not required."""
+    bound = ballast_lower_bound(
+        _flat_series(50.0), _flat_series(500.0),
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        ceiling_usd_day=38_000.0,
+    )
+    # every share at or above the bound is consistent with the ceiling, including 1.0
+    assert bound.median_bound <= 1.0
+    assert bound.share_needing_at_least(bound.median_bound) > 0.4
+    assert "does not rule one in" in bound.headline
+
+
+def test_a_raised_ceiling_can_only_loosen_the_bound():
+    """Monotonicity: allowing a higher implied TCE cannot require MORE ballast."""
+    args = (_flat_series(50.0), _flat_series(500.0))
+    kwargs = dict(vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"])
+    tight = ballast_lower_bound(*args, ceiling_usd_day=38_000.0, **kwargs)
+    loose = ballast_lower_bound(*args, ceiling_usd_day=60_000.0, **kwargs)
+    assert loose.median_bound <= tight.median_bound
+
+
+def test_impossible_days_are_excluded_rather_than_forced():
+    """Where even full ballast leaves the TCE above the ceiling, the bound must be NaN —
+    not silently clipped to 1.0, which would understate how extreme those days were."""
+    bound = ballast_lower_bound(
+        _flat_series(300.0), _flat_series(500.0),
+        vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        ceiling_usd_day=38_000.0,
+    )
+    assert bound.n_impossible > 0
+    assert bound.shares.isna().all()
+
+
+def test_ballast_bound_rejects_a_non_positive_ceiling():
+    with pytest.raises(FreightCfError, match="positive TCE"):
+        ballast_lower_bound(
+            _flat_series(50.0), _flat_series(500.0),
+            vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+            ceiling_usd_day=0.0,
+        )
+
+
+def test_ballast_bound_rejects_disjoint_calendars():
+    with pytest.raises(FreightCfError, match="no common date"):
+        ballast_lower_bound(
+            _flat_series(50.0, start="2022-01-03"),
+            _flat_series(500.0, start="2024-01-03"),
+            vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
+        )

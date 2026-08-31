@@ -56,7 +56,11 @@ PROJECTS: list[Project] = [
         code="T1-1",
         tier=TIER_1,
         title="Freight inside the C&F calculation",
-        thesis="On the marginal cargo, freight does not add noise to the arb — it decides it.",
+        thesis=(
+            "On the marginal cargo freight does not add noise to the arb, it decides it — "
+            "and the internal rate that sets it is a volume policy wearing an accounting "
+            "convention."
+        ),
         disagreement=(
             "Mat Halsall interview (Commodity Conversations, 25 Nov 2024): at Louis Dreyfus, "
             "recurring arguments between trading desks and the freight department, with "
@@ -68,10 +72,21 @@ PROJECTS: list[Project] = [
             "the segment of the series the export quotes in USD per day, isolated first as "
             "a data defect."
         ),
-        pivot="The share of ballast repositioning the market actually prices into the published rate",
+        pivot=(
+            "The ballast is worth ~20 USD per tonne of grain, and the market bounds it "
+            "below at a median 0.28 — refuting one desk without vindicating the other"
+        ),
         mail_question=(
-            "How much ballast repositioning does your internal rate actually charge, and is "
-            "it negotiated with the trading desk or imposed by the freight department?"
+            "On Santos-Qingdao the ballast leg is worth about 20 USD per tonne of grain — "
+            "~1.3 M on a Panamax cargo — and it is stable across seventeen years, because "
+            "ballast is time rather than fuel. Tested against the route's own recorded TCE "
+            "peak, reading the rate at zero ballast is tenable on only 1% of days, so the "
+            "trading desk's position does not survive; but the binding lower bound has a "
+            "median of 0.28, not 1. The market rules zero out and does not rule full cost "
+            "in. On the marginal band that parameter decides whether the cargo clears at "
+            "all, so the internal rate is effectively setting tonnage. Is that owned "
+            "explicitly — calibrated against a volume or utilisation target — or negotiated "
+            "as P&L attribution, with the volume effect falling between the two mandates?"
         ),
         targets="Freight desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra) and grain/oilseed traders",
         data_gate=GATE_MEDIUM,
@@ -82,7 +97,7 @@ PROJECTS: list[Project] = [
         status=STATUS_READY,
         dashboard_page="pages/4_T1_1_Freight_CF.py",
         chain_module="agri.chains.freight_cf",
-        n_tests=74,
+        n_tests=84,
         data_mode=DATA_HYBRID,
     ),
     Project(
