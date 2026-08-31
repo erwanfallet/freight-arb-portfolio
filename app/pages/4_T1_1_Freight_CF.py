@@ -13,7 +13,9 @@ sys.path.insert(0, str(_APP_DIR))
 
 from agri.chains.freight_cf import (  # noqa: E402
     ballast_lower_bound,
+    ballast_value_by_route,
     ballast_value_usd_t,
+    smoothing_bias,
     load_real_route_frame,
     market_implied_ballast_share,
 )
@@ -63,6 +65,14 @@ bound = ballast_lower_bound(
     ceiling_usd_day=boom_peak, mgo_premium=mgo_premium,
 )
 _cargo_t = _vessel.cargo_t
+_by_route = ballast_value_by_route(
+    float(_vlsfo.median()),
+    reference_tce_usd_day=float(spread.tce_full_ballast.median()),
+    vessel=_vessel,
+    routes={k: ROUTES[k] for k in ("pnw_qingdao", "usgulf_qingdao", "santos_qingdao")},
+    params=params, mgo_premium=mgo_premium,
+)
+_bias = smoothing_bias(spread.route_rate_usd_t)
 
 page_header(
     code="T1-1",
@@ -381,22 +391,113 @@ section(
     "argument recurs rather than resolving.",
 )
 
+# ===========================================================================
+# T4 — THE SAME CONVENTION IS NOT WORTH THE SAME THING EVERYWHERE
+# ===========================================================================
+section(
+    "T4",
+    "One ballast policy, three different taxes",
+    "The ballast is a **time** cost, so what it is worth per tonne scales with the length "
+    "of the haul. Applying one internal convention across a whole programme therefore "
+    "applies a different effective charge to each origin — and the spread is not "
+    "marginal.\n\n"
+    f"Out of the Pacific Northwest the ballast is worth "
+    f"**{_by_route.iloc[0]['ballast_usd_t']:.1f} USD/t**. Out of Santos it is "
+    f"**{_by_route.iloc[-1]['ballast_usd_t']:.1f}** — "
+    f"{_by_route.iloc[-1]['ballast_usd_t'] / _by_route.iloc[0]['ballast_usd_t']:.1f} times "
+    "more, on the same policy, for the same house.\n\n"
+    "So a full-ballast convention does not merely make freight dearer; it makes "
+    "**long-haul origination dearer relative to short-haul**, by a margin large enough to "
+    "move an origin decision on the marginal band. That is an origin-selection distortion "
+    "produced by an accounting choice, and it is invisible to whoever picks the origin.",
+    formula="ballast value scales with laden distance, because it is hire, not fuel",
+)
+st.dataframe(
+    _by_route.rename(columns={"laden_nm": "laden nm", "ballast_usd_t": "ballast (USD/t)"})
+    .style.format({"laden nm": "{:,.0f}", "ballast (USD/t)": "{:.1f}"}),
+    width="stretch",
+)
+
+# ===========================================================================
+# T5 — THE SLEEPER: A STABLE RATE IS A BIASED RATE
+# ===========================================================================
+section(
+    "T5",
+    "A freight department has to quote a stable rate, and that puts it on one side of the market for months",
+    "This is the term nobody argues about, and it is larger than the one they do.\n\n"
+    "A trading desk cannot budget against a number that moves every day, so the internal "
+    f"rate is smoothed — here a {_bias.window}-session average. That is treated as a "
+    "presentational convenience. It is not: a smoothed series does not sit around the "
+    "market, it sits **on one side of it**, and it stays there while the market trends.\n\n"
+    f"Measured on the real published rate, within contiguous segments: the internal number "
+    f"is a median **{_bias.median_abs_error:.1f} USD/t** from spot and "
+    f"**{_bias.p90_abs_error:.1f}** at the 90th percentile. It holds the same side for up "
+    f"to **{_bias.longest_episode} consecutive sessions**, and "
+    f"**{_bias.share_in_episode:.0%}** of the sample sits inside such an episode.\n\n"
+    "The direction is what makes it a trading problem rather than a reporting one. While "
+    "the market rallies, the smoothed rate lags below it: the desk is quoted freight that "
+    "is too cheap, every arb looks better than it is, and it over-commits. While the market "
+    "falls, the rate lags above: freight looks dear and the desk under-commits — precisely "
+    "when physical tonnage is cheapest and most available. **The convention systematically "
+    "buys at the wrong point of the cycle**, and it does so for months at a time.",
+    formula="internal rate = rolling mean of spot, computed inside contiguous segments only",
+)
+_e1, _e2, _e3 = st.columns(3)
+_e1.metric("Median distance from spot", f"{_bias.median_abs_error:.1f} USD/t")
+_e2.metric("Longest one-sided run", f"{_bias.longest_episode} sessions")
+_e3.metric("Sample inside an episode", f"{_bias.share_in_episode:.0%}")
+
+_ep = _bias.episodes.copy()
+_ep["start"] = _ep["start"].dt.date.astype(str)
+_ep["end"] = _ep["end"].dt.date.astype(str)
+st.dataframe(
+    _ep.rename(columns={
+        "n_obs": "sessions", "mean_error": "mean error (USD/t)", "direction": "direction",
+    }).style.format({"mean error (USD/t)": "{:+.1f}"}),
+    width="stretch", hide_index=True,
+)
+_bias_fig = go.Figure()
+_bias_fig.add_trace(
+    go.Scatter(x=_bias.error.index, y=_bias.error.values, mode="lines",
+               line=dict(color="crimson", width=1), name="internal minus spot")
+)
+_bias_fig.add_hline(y=0.0, line_dash="dash", line_color="gray")
+_bias_fig.update_layout(
+    title="Internal smoothed rate minus spot (below zero = freight quoted too cheap)",
+    yaxis_title="USD per tonne", height=380,
+    margin=dict(t=50, b=20, l=10, r=10), showlegend=False,
+)
+show(_bias_fig)
+finding(_bias.headline)
+scope_note(
+    "Computed inside contiguous segments only. This export's P8 series has a 782-day hole "
+    "between November 2022 and January 2025, and a rolling mean run straight through it "
+    "would average 2022 prices into a 2025 rate — manufacturing a single 221-session "
+    "episode that never happened. Segments shorter than the smoothing window are dropped "
+    "rather than padded."
+)
+
 mail_question(
-    "On Santos-Qingdao the ballast leg is worth about "
-    f"{ballast_usd_t.median():.0f} USD per tonne of grain — roughly "
-    f"{ballast_usd_t.median() * _cargo_t / 1e6:.1f} million on a Panamax cargo — and it is "
-    "remarkably stable across seventeen years, because ballast is time rather than fuel.\n\n"
-    "Testing both conventions against the route's own recorded TCE peak: reading the "
-    f"published rate at zero ballast is arithmetically tenable on only "
-    f"{bound.share_where_zero_works:.0%} of days, so the trading desk's position does not "
-    f"survive. But the binding lower bound is a median of {bound.median_bound:.2f}, not 1 — "
-    "the market rules zero out and does not rule full cost in. Between about a quarter and "
-    "all of it, no price settles the question.\n\n"
-    "Which is why I think this is a volume policy rather than an accounting one: on the "
-    "marginal band that parameter decides whether the cargo clears at all, so the internal "
-    "rate is effectively setting tonnage. Is that owned explicitly on your side — is the "
-    "number calibrated against a volume or utilisation target — or is it negotiated as P&L "
-    "attribution between the two books, with the volume effect falling between the two "
-    "mandates?",
+    "Three numbers from the real P8 rate that I think belong together.\n\n"
+    f"First, the ballast is worth about {ballast_usd_t.median():.0f} USD per tonne of "
+    "grain and it is stable across seventeen years, because it is time rather than fuel. "
+    f"Second, testing both conventions against the route's own recorded TCE peak, reading "
+    f"the rate at zero ballast is tenable on only {bound.share_where_zero_works:.0%} of "
+    f"days — but the binding lower bound is a median {bound.median_bound:.2f}, not 1. The "
+    "market refutes the trading desk and does not vindicate the freight department; "
+    "everything between is negotiated, not priced.\n\n"
+    "Third, and this is the one I did not expect to be the largest: the internal rate has "
+    f"to be smoothed to be usable, and a {_bias.window}-session average sits on ONE side of "
+    f"spot for up to {_bias.longest_episode} consecutive sessions, "
+    f"{_bias.share_in_episode:.0%} of the time. In a rally the desk is quoted freight that "
+    "is too cheap and over-commits; in a fall it is quoted freight that is too dear and "
+    "under-commits, exactly when tonnage is most available.\n\n"
+    "And the ballast is worth "
+    f"{_by_route.iloc[-1]['ballast_usd_t'] / _by_route.iloc[0]['ballast_usd_t']:.1f} times "
+    "more out of Santos than out of the PNW, so a single fleet-wide policy quietly taxes "
+    "long-haul origination.\n\n"
+    "Is any of that owned explicitly on your side — is the smoothing window set against a "
+    "volume or utilisation target, and is the origin distortion something the chartering "
+    "desk corrects for — or does it all sit between the two mandates as P&L attribution?",
     "Freight desks (Cargill Ocean Transportation, Bunge, LDC, COFCO, Viterra) and grain/oilseed traders",
 )

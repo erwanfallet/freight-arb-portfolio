@@ -536,3 +536,87 @@ def test_ballast_bound_rejects_disjoint_calendars():
             _flat_series(500.0, start="2024-01-03"),
             vessel=VESSELS["panamax"], route=ROUTES["santos_qingdao"],
         )
+
+
+# ===========================================================================
+# ROUTE DEPENDENCE AND THE SMOOTHING BIAS
+# ===========================================================================
+# `test_smoothing_never_averages_across_a_data_gap` may not be weakened. Running a
+# rolling mean through this export's 782-day P8 hole manufactures a single 221-session
+# episode that never happened — the first version of this page reported exactly that.
+from agri.chains.freight_cf import (  # noqa: E402
+    ballast_value_by_route,
+    smoothing_bias,
+)
+
+
+def test_ballast_is_worth_more_on_a_longer_haul():
+    """It is a time cost, so it scales with distance — which is why one fleet-wide
+    convention applies a different effective charge to each origin."""
+    table = ballast_value_by_route(
+        550.0, reference_tce_usd_day=21_246.0, vessel=VESSELS["panamax"],
+        routes={k: ROUTES[k] for k in ("pnw_qingdao", "usgulf_qingdao", "santos_qingdao")},
+    )
+    assert list(table["laden_nm"]) == sorted(table["laden_nm"])
+    assert table["ballast_usd_t"].is_monotonic_increasing
+    ratio = table["ballast_usd_t"].iloc[-1] / table["ballast_usd_t"].iloc[0]
+    assert ratio > 1.8
+
+
+def test_ballast_by_route_rejects_an_empty_route_set():
+    with pytest.raises(FreightCfError, match="no route supplied"):
+        ballast_value_by_route(
+            550.0, reference_tce_usd_day=21_246.0,
+            vessel=VESSELS["panamax"], routes={},
+        )
+
+
+def test_smoothing_lags_a_trending_market_on_one_side():
+    """A rising series must leave the smoothed rate BELOW it throughout — that is the
+    whole mechanism: freight quoted too cheap for as long as the rally lasts."""
+    index = pd.bdate_range("2022-01-03", periods=300)
+    rising = pd.Series(np.linspace(30.0, 80.0, 300), index=index)
+    bias = smoothing_bias(rising, window=90, min_run=60)
+    assert (bias.error < 0).all()
+    assert len(bias.episodes) == 1
+    assert bias.episodes.iloc[0]["direction"] == "freight quoted too cheap"
+    assert bias.longest_episode >= 60
+
+
+def test_a_flat_market_produces_no_episode():
+    """The bias must come from the trend, not from the smoothing itself."""
+    index = pd.bdate_range("2022-01-03", periods=300)
+    flat = pd.Series(50.0, index=index)
+    bias = smoothing_bias(flat, window=90, min_run=60)
+    assert bias.median_abs_error == pytest.approx(0.0, abs=1e-9)
+
+
+def test_smoothing_never_averages_across_a_data_gap():
+    """THE guard. Two segments a year apart at different levels: a naive rolling mean
+    would blend them and report one long spurious episode spanning the gap. Segmented,
+    no episode may start in one segment and end in the other."""
+    first = pd.Series(40.0, index=pd.bdate_range("2022-01-03", periods=200))
+    second = pd.Series(90.0, index=pd.bdate_range("2024-01-03", periods=200))
+    bias = smoothing_bias(pd.concat([first, second]), window=60, min_run=30)
+    for _, row in bias.episodes.iterrows():
+        assert row["start"].year == row["end"].year
+    # and no error observation may sit inside the gap itself
+    assert not ((bias.error.index > "2022-11-01") & (bias.error.index < "2024-01-01")).any()
+
+
+def test_segments_shorter_than_the_window_are_dropped_not_padded():
+    short = pd.Series(40.0, index=pd.bdate_range("2022-01-03", periods=20))
+    long = pd.Series(50.0, index=pd.bdate_range("2024-01-03", periods=200))
+    bias = smoothing_bias(pd.concat([short, long]), window=90, min_run=30)
+    assert (bias.error.index.year == 2024).all()
+
+
+def test_smoothing_bias_rejects_a_degenerate_window():
+    with pytest.raises(FreightCfError, match="at least 2 sessions"):
+        smoothing_bias(pd.Series(50.0, index=pd.bdate_range("2022-01-03", periods=100)), window=1)
+
+
+def test_smoothing_bias_rejects_a_series_with_no_usable_segment():
+    tiny = pd.Series(50.0, index=pd.bdate_range("2022-01-03", periods=10))
+    with pytest.raises(FreightCfError, match="no contiguous segment"):
+        smoothing_bias(tiny, window=90)

@@ -852,11 +852,183 @@ def ballast_lower_bound(
     )
 
 
+# ===========================================================================
+# THE OTHER THREE THINGS THE FREIGHT DEPARTMENT CITES
+# ===========================================================================
+# Halsall's list is "vessel positioning, ballast, bunkers at the fixture date, laytime,
+# demurrage, round-trip time, the value of cargo options". The sections above price the
+# ballast. Two of the rest are priceable from this export, and one of them turns out to
+# matter more than the ballast argument the desks actually have.
+#
+# ROUTE DEPENDENCE. The ballast is worth 9.3 USD/t out of the Pacific Northwest and
+# 20.0 out of Santos — more than double, because it is a time cost and Santos is twice
+# the distance. A single internal rate applied fleet-wide therefore taxes long-haul
+# origination relative to short-haul, which is an origin-selection distortion rather than
+# an accounting one.
+#
+# THE SMOOTHING LAG, which is the sleeper. A freight department cannot sell a rate that
+# moves every day — a trading desk has to budget against something stable — so the
+# internal number is a moving average. That is not a rounding convention: it puts the
+# internal rate on the WRONG SIDE of spot for months at a time, in one direction. During
+# a rally the desk is quoted cheap freight and over-trades; during a collapse it is
+# quoted dear freight and under-trades, exactly when physical is most available. The bias
+# does not average out over a cycle because the desk's decisions are taken inside it.
+#
+# THE BUNKER TIMING CONVENTION is priceable and small: fixture-date versus voyage-average
+# bunkers moves the freight by a median 0.96 USD/t, p90 3.12. It is reported for
+# completeness and deliberately not given a section of its own.
+
+BUNKER_TIMING_NOTE_USD_T = 0.96      # median |fixture-date - voyage-average| on this route
+DEFAULT_INTERNAL_WINDOW = DEFAULT_INTERNAL_WINDOW_DAYS
+DEFAULT_MIN_RUN_DAYS = 60
+DEFAULT_GAP_DAYS = 30
+
+
+def ballast_value_by_route(
+    vlsfo_usd_t: float,
+    *,
+    reference_tce_usd_day: float,
+    vessel: VesselClass,
+    routes: dict[str, Route],
+    params: VoyageParams | None = None,
+    mgo_premium: float = 1.35,
+) -> pd.DataFrame:
+    """What the ballast is worth per tonne, route by route.
+
+    The same internal convention is not worth the same thing everywhere: ballast is a time
+    cost, so it scales with distance. A house that applies one ballast policy across its
+    whole programme is therefore applying a different effective tax to each origin.
+    """
+    p = params or VoyageParams()
+    rows = []
+    for key, route in routes.items():
+        at_zero = voyage_freight_usd_t(
+            reference_tce_usd_day, vlsfo_usd_t, vlsfo_usd_t * mgo_premium,
+            vessel=vessel, route=route, params=p.with_ballast(0.0),
+        ).freight_usd_t
+        at_full = voyage_freight_usd_t(
+            reference_tce_usd_day, vlsfo_usd_t, vlsfo_usd_t * mgo_premium,
+            vessel=vessel, route=route, params=p.with_ballast(1.0),
+        ).freight_usd_t
+        rows.append(
+            {
+                "route": route.name,
+                "laden_nm": route.distance_laden_nm,
+                "ballast_usd_t": at_full - at_zero,
+            }
+        )
+    if not rows:
+        raise FreightCfError("no route supplied to price the ballast against")
+    return pd.DataFrame(rows).set_index("route").sort_values("laden_nm")
+
+
+@dataclass(frozen=True)
+class SmoothingBias:
+    """How far, and for how long, a stable internal rate sits on one side of the market.
+
+    `episodes` lists every stretch of at least `min_run` consecutive observations where the
+    internal rate stayed on the same side of spot. The direction matters more than the
+    size: a negative mean is freight quoted BELOW the market, which flatters every arb the
+    trading desk looks at, for months.
+    """
+
+    error: pd.Series               # internal minus spot, USD/t
+    episodes: pd.DataFrame         # start, end, n_obs, mean_error, direction
+    window: int
+    min_run: int
+
+    @property
+    def median_abs_error(self) -> float:
+        return float(self.error.abs().median())
+
+    @property
+    def p90_abs_error(self) -> float:
+        return float(self.error.abs().quantile(0.90))
+
+    @property
+    def longest_episode(self) -> int:
+        return int(self.episodes["n_obs"].max()) if len(self.episodes) else 0
+
+    @property
+    def share_in_episode(self) -> float:
+        if not len(self.episodes):
+            return 0.0
+        return float(self.episodes["n_obs"].sum() / len(self.error))
+
+    @property
+    def headline(self) -> str:
+        return (
+            f"A {self.window}-day internal rate sits a median "
+            f"{self.median_abs_error:.1f} USD/t away from spot and {self.p90_abs_error:.1f} "
+            f"at the 90th percentile. It is not noise: it stays on ONE side of the market "
+            f"for up to {self.longest_episode} consecutive sessions, and "
+            f"{self.share_in_episode:.0%} of the sample sits inside such an episode. "
+            "During those stretches the trading desk is systematically quoted freight that "
+            "is too cheap or too dear, and takes its cargo decisions on it."
+        )
+
+
+def smoothing_bias(
+    route_rate_usd_t: pd.Series,
+    *,
+    window: int = DEFAULT_INTERNAL_WINDOW,
+    min_run: int = DEFAULT_MIN_RUN_DAYS,
+    gap_days: int = DEFAULT_GAP_DAYS,
+) -> SmoothingBias:
+    """Internal smoothed rate against spot, computed WITHIN contiguous segments.
+
+    The segmentation is not cosmetic. This export's P8 series has a 782-day hole, and a
+    rolling mean run straight through it would average 2022 prices into a 2025 rate and
+    manufacture an episode spanning the gap. Segments shorter than the window are dropped
+    rather than padded.
+    """
+    if window < 2:
+        raise FreightCfError(f"the internal window must be at least 2 sessions, got {window}")
+    series = route_rate_usd_t.dropna().sort_index()
+    if series.empty:
+        raise FreightCfError("no route rate to smooth")
+
+    breaks = series.index.to_series().diff().dt.days > gap_days
+    errors, episodes = [], []
+    for _, segment in series.groupby(breaks.cumsum()):
+        if len(segment) <= window:
+            continue
+        error = (segment.rolling(window).mean() - segment).dropna()
+        if error.empty:
+            continue
+        errors.append(error)
+        sign = np.sign(error)
+        for _, run in error.groupby((sign != sign.shift()).cumsum()):
+            if len(run) >= min_run:
+                episodes.append(
+                    {
+                        "start": run.index[0],
+                        "end": run.index[-1],
+                        "n_obs": int(len(run)),
+                        "mean_error": float(run.mean()),
+                        "direction": "freight quoted too cheap"
+                        if run.mean() < 0
+                        else "freight quoted too dear",
+                    }
+                )
+    if not errors:
+        raise FreightCfError(
+            f"no contiguous segment longer than the {window}-session window"
+        )
+    return SmoothingBias(
+        error=pd.concat(errors).rename("internal_minus_spot"),
+        episodes=pd.DataFrame(episodes),
+        window=int(window),
+        min_run=int(min_run),
+    )
+
+
 __all__ = [
     "CONVENTIONS",
     "FreightCfError",
     "ImpliedTceSpread",
     "MarginalZone",
+    "SmoothingBias",
     "BallastBound",
     "DEFAULT_TCE_CEILING_USD_DAY",
     "MarketImpliedBallast",
@@ -864,6 +1036,7 @@ __all__ = [
     "arb_usd_t",
     "ballast_breakeven",
     "ballast_lower_bound",
+    "ballast_value_by_route",
     "ballast_value_usd_t",
     "build_conventions",
     "disagreement_episodes",
@@ -875,6 +1048,7 @@ __all__ = [
     "pnl_attribution",
     "sensitivity_grid",
     "sign_flip_rate",
+    "smoothing_bias",
     "spread_distribution",
     "spread_seasonality",
 ]
